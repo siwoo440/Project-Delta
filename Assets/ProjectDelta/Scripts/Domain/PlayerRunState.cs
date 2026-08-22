@@ -24,6 +24,7 @@ namespace ProjectDelta.Domain
 
         public int Gold;
         public string CurrentRoomId;
+        public GridPosition CurrentGridPosition = GridPosition.Zero; // 현재 방 내부 그리드 위치
 
         public StatBlock GetFinalStats()
         {
