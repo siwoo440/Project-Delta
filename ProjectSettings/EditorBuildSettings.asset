@@ -6,8 +6,20 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/ProjectDelta/Scenes/BootstrapScene.unity
+    guid: 706feabab45d4c0a9f98658f1f8b6c5c
+  - enabled: 1
+    path: Assets/ProjectDelta/Scenes/TitleScene.unity
+    guid: 3ad60ffb74cb4155ad8f3ac7f3678546
+  - enabled: 1
+    path: Assets/ProjectDelta/Scenes/DungeonScene.unity
+    guid: 26d6b967f5474d6887997b4b0cf2fcb9
+  - enabled: 1
+    path: Assets/ProjectDelta/Scenes/SettingsScene.unity
+    guid: cc1de2a8c17144628caf339a66b26ba3
+  - enabled: 1
+    path: Assets/ProjectDelta/Scenes/LoadingScene.unity
+    guid: eb9a150bb75b4d4a80ee880a2257e56a
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0
