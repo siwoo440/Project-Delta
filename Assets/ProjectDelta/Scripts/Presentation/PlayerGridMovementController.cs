@@ -9,6 +9,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         [SerializeField] private InputActionAsset inputActions; // 프로젝트 입력 액션 에셋
         [SerializeField] private Transform viewTransform; // 바라보는 방향 기준 Transform
         [SerializeField] private RoomPassageController passageController; // 현재 방 통로 판정 컨트롤러
+        [SerializeField] private TestRoomTransitionController roomTransitionController; // 테스트 방 경계 이동 컨트롤러
         [SerializeField] private float cellSize = 2f; // 한 칸 월드 크기
         [SerializeField] private int minX = -2; // 테스트 방 최소 X
         [SerializeField] private int maxX = 2; // 테스트 방 최대 X
@@ -16,6 +17,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         [SerializeField] private int maxZ = 2; // 테스트 방 최대 Z
 
         private PlayerRunState playerState; // 현재 플레이어 런타임 상태
+        private Transform roomOrigin; // 현재 방 월드 원점
         private InputActionMap explorationMap; // 탐험 입력 맵
         private InputAction moveForwardAction; // 전진 액션
         private InputAction moveBackwardAction; // 후진 액션
@@ -23,6 +25,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputAction moveRightAction; // 우측 액션
 
         public PlayerRunState PlayerState => playerState; // 다른 탐험 기능용 플레이어 상태 공개
+        public RoomPassageController CurrentPassageController => passageController; // 현재 방 통로 컨트롤러 공개
+        public Transform CurrentRoomOrigin => roomOrigin; // 현재 방 월드 원점 공개
 
         private void Awake() // 초기 상태 연결
         {
@@ -37,15 +41,29 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 passageController = FindFirstObjectByType<RoomPassageController>(); // 현재 방 통로 컨트롤러 자동 검색
             }
 
+            if (roomTransitionController == null) // 방 전환 컨트롤러 미지정 확인
+            {
+                roomTransitionController = FindFirstObjectByType<TestRoomTransitionController>(); // 테스트 방 전환 컨트롤러 자동 검색
+            }
+
+            roomOrigin = passageController != null ? passageController.transform : null; // 초기 방 월드 원점 연결
+
             if (RunContext.Current != null) // 실제 런 진행 여부 확인
             {
                 playerState = RunContext.Current.Player; // 실제 플레이어 상태 연결
-                ApplyWorldPosition(playerState.CurrentGridPosition); // 저장된 논리 위치를 월드에 반영
+
+                if (string.IsNullOrEmpty(playerState.CurrentRoomId) && passageController != null) // 현재 방 식별자 미설정 확인
+                {
+                    playerState.CurrentRoomId = passageController.RoomId; // 첫 테스트 방 식별자 초기화
+                }
+
+                ApplyWorldPosition(playerState.CurrentGridPosition); // 저장된 논리 위치를 현재 방 월드 위치에 반영
             }
             else // 테스트 씬 상태 처리
             {
                 playerState = new PlayerRunState(); // 테스트용 런타임 상태 생성
                 playerState.CurrentGridPosition = WorldToGridPosition(transform.position); // 현재 월드 위치를 논리 좌표로 변환
+                playerState.CurrentRoomId = passageController != null ? passageController.RoomId : "TestRoom_A"; // 테스트 시작 방 식별자 저장
                 playerState.KeyCount = 1; // 잠긴 문 검증용 테스트 열쇠 한 개 지급
             }
         }
@@ -83,12 +101,12 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 moveBackwardAction.performed -= OnMoveBackward; // 후진 입력 이벤트 해제
             }
 
-            if (moveLeftAction != null) // 좌측 액션 존재 확인
+            if (moveLeftAction != null) // 좌측 입력 액션 존재 확인
             {
                 moveLeftAction.performed -= OnMoveLeft; // 좌측 입력 이벤트 해제
             }
 
-            if (moveRightAction != null) // 우측 액션 존재 확인
+            if (moveRightAction != null) // 우측 입력 액션 존재 확인
             {
                 moveRightAction.performed -= OnMoveRight; // 우측 입력 이벤트 해제
             }
@@ -122,7 +140,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             TryMove(GridMoveInput.Right); // 한 칸 우측 이동 시도
         }
 
-        private void TryMove(GridMoveInput input) // 한 칸 이동 처리
+        private void TryMove(GridMoveInput input) // 한 칸 이동 또는 방 경계 이동 처리
         {
             if (playerState == null) // 런타임 상태 존재 확인
             {
@@ -132,13 +150,9 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             float yaw = viewTransform != null ? viewTransform.eulerAngles.y : transform.eulerAngles.y; // 현재 수평 시점 각도 읽기
             CardinalDirection facing = GridMovement.GetFacingFromYaw(yaw); // 시점 각도를 4방향으로 변환
             CardinalDirection moveDirection = GridMovement.GetMoveDirection(facing, input); // 상대 입력을 절대 이동 방향으로 변환
-            GridBounds bounds = new GridBounds(minX, maxX, minZ, maxZ); // 테스트 방 이동 범위 생성
-
-            if (!GridMovement.TryGetTarget(playerState.CurrentGridPosition, facing, input, bounds, out GridPosition target)) // 목표 칸 범위 확인
-            {
-                Debug.Log($"[Project Delta] 이동 불가: {playerState.CurrentGridPosition} -> 범위 밖", this); // 이동 거부 로그 출력
-                return; // 범위 밖 이동 중단
-            }
+            GridPosition delta = GridMovement.GetMoveDelta(facing, input); // 이동 변화량 계산
+            GridPosition target = new GridPosition(playerState.CurrentGridPosition.X + delta.X, playerState.CurrentGridPosition.Z + delta.Z); // 목표 논리 좌표 계산
+            GridBounds bounds = new GridBounds(minX, maxX, minZ, maxZ); // 현재 방 이동 범위 생성
 
             if (passageController != null && !passageController.CanPass(playerState.CurrentGridPosition, moveDirection)) // 벽 또는 닫힌 문 통과 여부 확인
             {
@@ -146,22 +160,58 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 return; // 막힌 통로 이동 중단
             }
 
-            playerState.CurrentGridPosition = target; // 논리 그리드 위치 갱신
-            ApplyWorldPosition(target); // 실제 Player 위치 갱신
-            Debug.Log($"[Project Delta] GridPosition {target} / Facing {facing}", this); // 현재 좌표 로그 출력
+            if (bounds.Contains(target)) // 현재 방 내부 목표 칸 확인
+            {
+                CommitGridMove(target, facing); // 현재 방 안에서 한 칸 이동 확정
+                return; // 이동 처리 완료
+            }
+
+            TryMoveAcrossRoomBoundary(moveDirection, facing); // 현재 방 밖 이동이면 연결 방 이동 시도
         }
 
-        private GridPosition WorldToGridPosition(Vector3 worldPosition) // 월드 위치를 논리 좌표로 변환
+        private void TryMoveAcrossRoomBoundary(CardinalDirection moveDirection, CardinalDirection facing) // 열린 문을 통한 인접 방 이동 처리
         {
-            int gridX = Mathf.RoundToInt(worldPosition.x / cellSize); // X 그리드 좌표 계산
-            int gridZ = Mathf.RoundToInt(worldPosition.z / cellSize); // Z 그리드 좌표 계산
+            if (roomTransitionController == null || passageController == null) // 방 전환에 필요한 참조 확인
+            {
+                Debug.Log("[Project Delta] 이동 불가: 연결된 테스트 방 정보가 없습니다.", this); // 연결 방 없음 로그 출력
+                return; // 방 경계 이동 중단
+            }
+
+            if (!roomTransitionController.TryTransition(playerState.CurrentRoomId, playerState.CurrentGridPosition, moveDirection, out RoomPassageController destinationRoom, out GridPosition destinationEntryPosition)) // 현재 경계에 연결된 방 조회
+            {
+                Debug.Log($"[Project Delta] 이동 불가: {playerState.CurrentRoomId} / {moveDirection} 방향 연결 방 없음", this); // 연결 조건 실패 로그 출력
+                return; // 방 경계 이동 중단
+            }
+
+            passageController = destinationRoom; // 현재 방 통로 컨트롤러를 목적 방으로 변경
+            roomOrigin = destinationRoom.transform; // 현재 방 월드 원점을 목적 방으로 변경
+            playerState.CurrentRoomId = destinationRoom.RoomId; // 현재 방 식별자 갱신
+            playerState.CurrentGridPosition = destinationEntryPosition; // 목적 방 입구 칸으로 논리 위치 변경
+            ApplyWorldPosition(destinationEntryPosition); // 목적 방 입구의 실제 월드 위치로 이동
+            Debug.Log($"[Project Delta] 방 이동: {playerState.CurrentRoomId} / Entry {destinationEntryPosition} / Facing {facing}", this); // 방 경계 이동 결과 출력
+        }
+
+        private void CommitGridMove(GridPosition target, CardinalDirection facing) // 현재 방 내부 한 칸 이동 확정
+        {
+            playerState.CurrentGridPosition = target; // 논리 그리드 위치 갱신
+            ApplyWorldPosition(target); // 실제 Player 위치 갱신
+            Debug.Log($"[Project Delta] GridPosition {target} / Room {playerState.CurrentRoomId} / Facing {facing}", this); // 현재 좌표와 방 로그 출력
+        }
+
+        private GridPosition WorldToGridPosition(Vector3 worldPosition) // 월드 위치를 현재 방 논리 좌표로 변환
+        {
+            Vector3 localPosition = roomOrigin != null ? roomOrigin.InverseTransformPoint(worldPosition) : worldPosition; // 현재 방 원점 기준 로컬 위치 계산
+            int gridX = Mathf.RoundToInt(localPosition.x / cellSize); // X 그리드 좌표 계산
+            int gridZ = Mathf.RoundToInt(localPosition.z / cellSize); // Z 그리드 좌표 계산
             return new GridPosition(gridX, gridZ); // 논리 좌표 반환
         }
 
-        private void ApplyWorldPosition(GridPosition gridPosition) // 논리 좌표를 월드 위치로 반영
+        private void ApplyWorldPosition(GridPosition gridPosition) // 논리 좌표를 현재 방 월드 위치로 반영
         {
-            Vector3 currentPosition = transform.position; // 현재 월드 위치 저장
-            transform.position = new Vector3(gridPosition.X * cellSize, currentPosition.y, gridPosition.Z * cellSize); // 한 칸 단위 월드 위치 적용
+            Vector3 localPosition = new Vector3(gridPosition.X * cellSize, 0f, gridPosition.Z * cellSize); // 현재 방 기준 목표 로컬 위치 계산
+            Vector3 targetWorldPosition = roomOrigin != null ? roomOrigin.TransformPoint(localPosition) : localPosition; // 현재 방 원점을 이용해 월드 위치 계산
+            targetWorldPosition.y = transform.position.y; // Player 현재 높이 유지
+            transform.position = targetWorldPosition; // Player 실제 월드 위치 적용
         }
     }
 }
