@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using ProjectDelta.Application;
+using ProjectDelta.Data;
 
 namespace ProjectDelta.Infrastructure
 {
@@ -62,8 +63,18 @@ namespace ProjectDelta.Infrastructure
             Services.Register<ISaveService>(saveService);
             log.Info("Save service ready");
 
-            // TODO: file I/O (경로 규칙) 붙는 이후 일차에 실제 프로필 불러오기로 교체
-            log.Info("Profile load skipped (not implemented yet)");
+            // TODO: 아직 로드한 프로필을 들고 있을 곳(ProfileContext 등)이 없어 값은 버려진다.
+            // 무언가 이 값을 실제로 읽어야 하는 시점(타이틀 화면 등)에 보관 지점을 만든다.
+            if (saveService.HasProfile())
+            {
+                saveService.ReadProfile();
+                log.Info("Profile loaded");
+            }
+            else
+            {
+                saveService.WriteProfile(new ProfileData());
+                log.Info("New profile created");
+            }
 
             var addressables = new AddressableService();
             Services.Register<IAddressableService>(addressables);

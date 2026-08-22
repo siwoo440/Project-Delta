@@ -1,3 +1,4 @@
+using System.IO;
 using Newtonsoft.Json;
 using ProjectDelta.Data;
 
@@ -38,6 +39,62 @@ namespace ProjectDelta.Infrastructure
         public SettingsData DeserializeSettings(string json)
         {
             return JsonConvert.DeserializeObject<SaveEnvelope<SettingsData>>(json, JsonSettings).Payload;
+        }
+
+        public void WriteProfile(ProfileData profile)
+        {
+            SavePaths.EnsureSaveDirectoryExists();
+            File.WriteAllText(SavePaths.ProfilePath, SerializeProfile(profile));
+        }
+
+        public ProfileData ReadProfile()
+        {
+            return DeserializeProfile(File.ReadAllText(SavePaths.ProfilePath));
+        }
+
+        public bool HasProfile()
+        {
+            return File.Exists(SavePaths.ProfilePath);
+        }
+
+        public void WriteRun(RunData run, string saveState)
+        {
+            SavePaths.EnsureSaveDirectoryExists();
+            File.WriteAllText(SavePaths.RunPath, SerializeRun(run, saveState));
+        }
+
+        public RunData ReadRun()
+        {
+            return DeserializeRun(File.ReadAllText(SavePaths.RunPath));
+        }
+
+        public bool HasRun()
+        {
+            return File.Exists(SavePaths.RunPath);
+        }
+
+        public void DeleteRun()
+        {
+            if (File.Exists(SavePaths.RunPath))
+            {
+                File.Delete(SavePaths.RunPath);
+            }
+        }
+
+        public void WriteSettings(SettingsData settings)
+        {
+            SavePaths.EnsureSaveDirectoryExists();
+            File.WriteAllText(SavePaths.SettingsPath, SerializeSettings(settings));
+        }
+
+        public SettingsData ReadSettings()
+        {
+            return DeserializeSettings(File.ReadAllText(SavePaths.SettingsPath));
+        }
+
+        public bool HasSettings()
+        {
+            return File.Exists(SavePaths.SettingsPath);
         }
     }
 }
