@@ -23,6 +23,7 @@ namespace ProjectDelta.Domain
         public List<string> StatusEffects = new List<string>();
 
         public int Gold;
+        public int KeyCount; // 현재 보유 열쇠 수
         public string CurrentRoomId;
         public GridPosition CurrentGridPosition = GridPosition.Zero; // 현재 방 내부 그리드 위치
 

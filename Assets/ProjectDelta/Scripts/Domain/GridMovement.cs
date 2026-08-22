@@ -68,7 +68,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
         public static GridPosition GetMoveDelta(CardinalDirection facing, GridMoveInput input) // 상대 입력을 좌표 변화량으로 변환
         {
-            GridPosition forward = GetForwardDelta(facing); // 정면 방향 변화량 계산
+            GridPosition forward = GetDirectionDelta(facing); // 정면 방향 변화량 계산
             GridPosition right = new GridPosition(forward.Z, -forward.X); // 우측 방향 변화량 계산
 
             switch (input) // 입력 종류 분기
@@ -86,16 +86,31 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             }
         }
 
-        public static bool TryGetTarget(GridPosition current, CardinalDirection facing, GridMoveInput input, GridBounds bounds, out GridPosition target) // 목표 칸 이동 가능 여부 계산
+        public static CardinalDirection GetMoveDirection(CardinalDirection facing, GridMoveInput input) // 상대 입력을 절대 방향으로 변환
         {
-            GridPosition delta = GetMoveDelta(facing, input); // 이동 변화량 계산
-            target = new GridPosition(current.X + delta.X, current.Z + delta.Z); // 목표 좌표 계산
-            return bounds.Contains(target); // 이동 가능 여부 반환
+            GridPosition delta = GetMoveDelta(facing, input); // 입력 이동 변화량 계산
+
+            if (delta.Z > 0) // 북쪽 변화량 확인
+            {
+                return CardinalDirection.North; // 북쪽 반환
+            }
+
+            if (delta.X > 0) // 동쪽 변화량 확인
+            {
+                return CardinalDirection.East; // 동쪽 반환
+            }
+
+            if (delta.Z < 0) // 남쪽 변화량 확인
+            {
+                return CardinalDirection.South; // 남쪽 반환
+            }
+
+            return CardinalDirection.West; // 서쪽 반환
         }
 
-        private static GridPosition GetForwardDelta(CardinalDirection facing) // 바라보는 방향의 전진 변화량 계산
+        public static GridPosition GetDirectionDelta(CardinalDirection direction) // 절대 방향 변화량 계산
         {
-            switch (facing) // 방향 분기
+            switch (direction) // 방향 분기
             {
                 case CardinalDirection.North: // 북쪽 처리
                     return new GridPosition(0, 1); // 북쪽 변화량 반환
@@ -108,6 +123,13 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 default: // 예외 방향 처리
                     return GridPosition.Zero; // 변화 없음 반환
             }
+        }
+
+        public static bool TryGetTarget(GridPosition current, CardinalDirection facing, GridMoveInput input, GridBounds bounds, out GridPosition target) // 목표 칸 이동 가능 여부 계산
+        {
+            GridPosition delta = GetMoveDelta(facing, input); // 이동 변화량 계산
+            target = new GridPosition(current.X + delta.X, current.Z + delta.Z); // 목표 좌표 계산
+            return bounds.Contains(target); // 이동 가능 여부 반환
         }
     }
 }

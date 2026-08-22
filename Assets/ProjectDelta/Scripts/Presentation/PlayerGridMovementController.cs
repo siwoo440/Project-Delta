@@ -8,6 +8,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
     {
         [SerializeField] private InputActionAsset inputActions; // 프로젝트 입력 액션 에셋
         [SerializeField] private Transform viewTransform; // 바라보는 방향 기준 Transform
+        [SerializeField] private RoomPassageController passageController; // 현재 방 통로 판정 컨트롤러
         [SerializeField] private float cellSize = 2f; // 한 칸 월드 크기
         [SerializeField] private int minX = -2; // 테스트 방 최소 X
         [SerializeField] private int maxX = 2; // 테스트 방 최대 X
@@ -21,12 +22,19 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputAction moveLeftAction; // 좌측 액션
         private InputAction moveRightAction; // 우측 액션
 
+        public PlayerRunState PlayerState => playerState; // 다른 탐험 기능용 플레이어 상태 공개
+
         private void Awake() // 초기 상태 연결
         {
             if (viewTransform == null) // 시점 Transform 미지정 확인
             {
                 Camera mainCamera = Camera.main; // 메인 카메라 검색
                 viewTransform = mainCamera != null ? mainCamera.transform : transform; // 시점 기준 자동 지정
+            }
+
+            if (passageController == null) // 통로 컨트롤러 미지정 확인
+            {
+                passageController = FindFirstObjectByType<RoomPassageController>(); // 현재 방 통로 컨트롤러 자동 검색
             }
 
             if (RunContext.Current != null) // 실제 런 진행 여부 확인
@@ -38,6 +46,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 playerState = new PlayerRunState(); // 테스트용 런타임 상태 생성
                 playerState.CurrentGridPosition = WorldToGridPosition(transform.position); // 현재 월드 위치를 논리 좌표로 변환
+                playerState.KeyCount = 1; // 잠긴 문 검증용 테스트 열쇠 한 개 지급
             }
         }
 
@@ -122,12 +131,19 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             float yaw = viewTransform != null ? viewTransform.eulerAngles.y : transform.eulerAngles.y; // 현재 수평 시점 각도 읽기
             CardinalDirection facing = GridMovement.GetFacingFromYaw(yaw); // 시점 각도를 4방향으로 변환
+            CardinalDirection moveDirection = GridMovement.GetMoveDirection(facing, input); // 상대 입력을 절대 이동 방향으로 변환
             GridBounds bounds = new GridBounds(minX, maxX, minZ, maxZ); // 테스트 방 이동 범위 생성
 
-            if (!GridMovement.TryGetTarget(playerState.CurrentGridPosition, facing, input, bounds, out GridPosition target)) // 목표 칸 이동 가능 여부 확인
+            if (!GridMovement.TryGetTarget(playerState.CurrentGridPosition, facing, input, bounds, out GridPosition target)) // 목표 칸 범위 확인
             {
                 Debug.Log($"[Project Delta] 이동 불가: {playerState.CurrentGridPosition} -> 범위 밖", this); // 이동 거부 로그 출력
                 return; // 범위 밖 이동 중단
+            }
+
+            if (passageController != null && !passageController.CanPass(playerState.CurrentGridPosition, moveDirection)) // 벽 또는 닫힌 문 통과 여부 확인
+            {
+                Debug.Log($"[Project Delta] 이동 불가: {playerState.CurrentGridPosition} / {moveDirection} 통로 차단", this); // 통로 차단 로그 출력
+                return; // 막힌 통로 이동 중단
             }
 
             playerState.CurrentGridPosition = target; // 논리 그리드 위치 갱신
