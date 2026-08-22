@@ -19,6 +19,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         [SerializeField] private Transform lockedDoorVisual; // 잠긴 문 시각 오브젝트
         [SerializeField] private Transform boundaryDoorVisual; // 방 연결 경계 문 시각 오브젝트
 
+        private RoomInstance roomInstance; // 방 런타임 인스턴스 (통로 데이터 + 방문 상태, 20일차)
         private RoomGridLayout layout; // 방 통로 논리 데이터
         private GridPassage unlockedDoorPassage; // 일반 문 통로 상태
         private GridPassage lockedDoorPassage; // 잠긴 문 통로 상태
@@ -29,6 +30,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         public GridPosition BoundaryPosition => layoutKind == TestRoomLayoutKind.Primary ? new GridPosition(0, 2) : new GridPosition(0, -2); // 방 연결 경계 칸 공개
         public CardinalDirection BoundaryDirection => layoutKind == TestRoomLayoutKind.Primary ? CardinalDirection.North : CardinalDirection.South; // 방 연결 출구 방향 공개
         public GridPassage BoundaryDoorPassage => boundaryDoorPassage; // 방 연결 문 상태 공개
+        public RoomInstance CurrentInstance => roomInstance; // 방문 상태 확인용 방 인스턴스 공개 (20일차)
 
         private void Awake() // 방 정의로부터 통로 데이터 구성 (18일차: 하드코딩 대신 RoomDefinition 사용)
         {
@@ -37,8 +39,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 Debug.LogError($"[Project Delta] {roomId}에 RoomDefinition이 지정되지 않았습니다. 모든 방향이 벽 없이 열린 상태로 동작합니다.", this); // 정의 누락 경고 출력
             }
 
-            RoomInstance instance = RoomInstance.Create(roomId, roomDefinition != null ? roomDefinition.Id : roomId, roomDefinition != null ? roomDefinition.Passages : null); // 정의 데이터로 방 인스턴스 생성
-            layout = instance.Layout; // 생성된 통로 데이터 연결
+            roomInstance = RoomInstance.Create(roomId, roomDefinition != null ? roomDefinition.Id : roomId, roomDefinition != null ? roomDefinition.Passages : null); // 정의 데이터로 방 인스턴스 생성
+            layout = roomInstance.Layout; // 생성된 통로 데이터 연결
 
             if (layoutKind == TestRoomLayoutKind.Primary) // 첫 번째 테스트 방 확인
             {

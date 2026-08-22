@@ -18,12 +18,25 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public string RoomId { get; } // 이 방 인스턴스의 식별자
         public string DefinitionId { get; } // 원본 RoomDefinition의 Id
         public RoomGridLayout Layout { get; } // 이 방의 통로 상태
+        public bool Visited { get; private set; } // 최초 방문 여부 (기획서 3.3.3절 "처음 들어온 순간 한 번만 처리")
 
         private RoomInstance(string roomId, string definitionId, RoomGridLayout layout) // 방 인스턴스 생성자
         {
             RoomId = roomId; // 방 식별자 저장
             DefinitionId = definitionId; // 정의 식별자 저장
             Layout = layout; // 통로 데이터 저장
+        }
+
+        // 처음 호출될 때만 true를 반환한다. 두 번째 호출부터는 이미 방문한 상태이므로 false.
+        public bool MarkVisited() // 최초 방문 처리 및 여부 반환
+        {
+            if (Visited) // 이미 방문한 방인지 확인
+            {
+                return false; // 최초 방문이 아님을 반환
+            }
+
+            Visited = true; // 방문 상태로 전환
+            return true; // 최초 방문임을 반환
         }
 
         // RoomDefinition의 정적 통로 목록으로부터 실제 방 인스턴스를 만든다.

@@ -2094,7 +2094,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.PlayerGridMovementController
   inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   viewTransform: {fileID: 330585546}
-  passageController: {fileID: 71002140}
+  currentRoomView: {fileID: 719100001}
   roomTransitionController: {fileID: 1407915815}
   cellSize: 2
   minX: -2
