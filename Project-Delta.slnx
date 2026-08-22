@@ -1,12 +1,12 @@
 ﻿<Solution>
   <Project Path="ProjectDelta.Infrastructure.csproj" />
   <Project Path="ProjectDelta.Data.csproj" />
+  <Project Path="ProjectDelta.Presentation.csproj" />
   <Project Path="ProjectDelta.Tests.EditMode.csproj" />
   <Project Path="ProjectDelta.Application.csproj" />
   <Project Path="ProjectDelta.Domain.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="ProjectDelta.Tests.PlayMode.csproj" />
-  <Project Path="ProjectDelta.Presentation.csproj" />
   <Project Path="ProjectDelta.Editor.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
 </Solution>
