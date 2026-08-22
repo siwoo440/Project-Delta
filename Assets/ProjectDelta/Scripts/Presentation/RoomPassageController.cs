@@ -1,3 +1,4 @@
+using ProjectDelta.Data; // 방 정의 데이터 사용 (18일차)
 using ProjectDelta.Domain; // 도메인 통로 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 
@@ -12,6 +13,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
     public sealed class RoomPassageController : MonoBehaviour // 현재 테스트 방 통로 상태 제어
     {
         [SerializeField] private string roomId = "TestRoom_A"; // 현재 테스트 방 식별자
+        [SerializeField] private RoomDefinition roomDefinition; // 방 통로 배치를 담은 정의 데이터 (18일차)
         [SerializeField] private TestRoomLayoutKind layoutKind = TestRoomLayoutKind.Primary; // 테스트 방 통로 구성 종류
         [SerializeField] private Transform unlockedDoorVisual; // 일반 문 시각 오브젝트
         [SerializeField] private Transform lockedDoorVisual; // 잠긴 문 시각 오브젝트
@@ -28,18 +30,23 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         public CardinalDirection BoundaryDirection => layoutKind == TestRoomLayoutKind.Primary ? CardinalDirection.North : CardinalDirection.South; // 방 연결 출구 방향 공개
         public GridPassage BoundaryDoorPassage => boundaryDoorPassage; // 방 연결 문 상태 공개
 
-        private void Awake() // 테스트 방 통로 데이터 구성
+        private void Awake() // 방 정의로부터 통로 데이터 구성 (18일차: 하드코딩 대신 RoomDefinition 사용)
         {
-            layout = new RoomGridLayout(); // 방 통로 데이터 생성
+            if (roomDefinition == null) // 방 정의 미지정 확인
+            {
+                Debug.LogError($"[Project Delta] {roomId}에 RoomDefinition이 지정되지 않았습니다. 모든 방향이 벽 없이 열린 상태로 동작합니다.", this); // 정의 누락 경고 출력
+            }
+
+            RoomInstance instance = RoomInstance.Create(roomId, roomDefinition != null ? roomDefinition.Id : roomId, roomDefinition != null ? roomDefinition.Passages : null); // 정의 데이터로 방 인스턴스 생성
+            layout = instance.Layout; // 생성된 통로 데이터 연결
 
             if (layoutKind == TestRoomLayoutKind.Primary) // 첫 번째 테스트 방 확인
             {
-                ConfigurePrimaryRoom(); // 기존 통로와 북쪽 경계 문 구성
+                unlockedDoorPassage = layout.GetPassage(new GridPosition(0, 0), CardinalDirection.North); // 일반 문 통로 참조 조회
+                lockedDoorPassage = layout.GetPassage(new GridPosition(1, 0), CardinalDirection.North); // 잠긴 문 통로 참조 조회
             }
-            else // 두 번째 테스트 방 처리
-            {
-                ConfigureSecondaryRoom(); // 남쪽 경계 문 구성
-            }
+
+            boundaryDoorPassage = layout.GetPassage(BoundaryPosition, BoundaryDirection); // 방 연결 경계 문 통로 참조 조회
 
             RefreshDoorVisuals(); // 초기 문 시각 상태 적용
         }
@@ -94,23 +101,6 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             boundaryDoorPassage = sharedPassage; // 공유 경계 문 상태 저장
             layout.SetPassage(BoundaryPosition, BoundaryDirection, boundaryDoorPassage); // 현재 방 경계에 공유 문 등록
             RefreshDoorVisuals(); // 공유 상태 즉시 시각 반영
-        }
-
-        private void ConfigurePrimaryRoom() // 첫 번째 테스트 방 통로 구성
-        {
-            unlockedDoorPassage = GridPassage.CreateDoor(false); // 일반 닫힌 문 생성
-            lockedDoorPassage = GridPassage.CreateDoor(true); // 잠긴 닫힌 문 생성
-            boundaryDoorPassage = GridPassage.CreateDoor(false); // 북쪽 방 연결 문 생성
-            layout.SetPassage(new GridPosition(0, 0), CardinalDirection.North, unlockedDoorPassage); // 중앙 북쪽 일반 문 등록
-            layout.SetPassage(new GridPosition(1, 0), CardinalDirection.North, lockedDoorPassage); // 동쪽 북쪽 잠긴 문 등록
-            layout.SetPassage(new GridPosition(-1, 0), CardinalDirection.North, GridPassage.CreateWall()); // 서쪽 북쪽 테스트 벽 등록
-            layout.SetPassage(BoundaryPosition, BoundaryDirection, boundaryDoorPassage); // 북쪽 방 연결 경계 문 등록
-        }
-
-        private void ConfigureSecondaryRoom() // 두 번째 테스트 방 통로 구성
-        {
-            boundaryDoorPassage = GridPassage.CreateDoor(false); // 남쪽 방 연결 문 생성
-            layout.SetPassage(BoundaryPosition, BoundaryDirection, boundaryDoorPassage); // 남쪽 방 연결 경계 문 등록
         }
 
         private void RefreshDoorVisuals() // 문 시각 상태 동기화

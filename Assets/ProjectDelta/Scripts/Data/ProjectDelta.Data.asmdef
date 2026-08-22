@@ -1,7 +1,9 @@
 {
     "name": "ProjectDelta.Data",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "ProjectDelta.Domain"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

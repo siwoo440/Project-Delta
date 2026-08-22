@@ -1,0 +1,188 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8347727bb87bd92449171030cc13c0e3, type: 3}
+  m_Name: RoomDefinition_Maze10
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.RoomDefinition
+  id: ROOM_MAZE_10
+  width: 5
+  height: 5
+  passages:
+  - X: -2
+    Z: -2
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: -2
+    Direction: 2
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: -2
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: -1
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: 0
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: 0
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: 1
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: 2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: -2
+    Z: 2
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: -2
+    Direction: 2
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: -1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: 0
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: 1
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: 2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: -1
+    Z: 2
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: -2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: -2
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: -2
+    Direction: 2
+    Type: 2
+    IsLocked: 0
+  - X: 0
+    Z: -1
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: 0
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: 1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: 2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: -2
+    Direction: 2
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: -1
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: -1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: 1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: 2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: -2
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: -2
+    Direction: 2
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: -1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: 0
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: 1
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: 2
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 2
+    Z: 2
+    Direction: 1
+    Type: 1
+    IsLocked: 0
