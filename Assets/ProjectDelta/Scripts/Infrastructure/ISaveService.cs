@@ -2,21 +2,12 @@ using ProjectDelta.Data;
 
 namespace ProjectDelta.Infrastructure
 {
-    // Compression, obfuscation, checksum and atomic temp-file writing are
-    // added in later days (기획서 9.6절). Today this reads/writes files directly -
-    // domain systems call these methods instead of touching File I/O themselves
-    // (10.4절: "도메인 시스템이 파일을 직접 열거나 JSON을 작성하지 않는다").
+    // Domain systems call these methods instead of touching File I/O or JSON
+    // directly (10.4절 원칙). Writes go through a temp-file-then-replace
+    // sequence with checksum verification (기획서 9.5절 안전한 파일 쓰기);
+    // reads reject files whose checksum doesn't match as corrupted.
     public interface ISaveService
     {
-        string SerializeProfile(ProfileData profile);
-        ProfileData DeserializeProfile(string json);
-
-        string SerializeRun(RunData run, string saveState);
-        RunData DeserializeRun(string json);
-
-        string SerializeSettings(SettingsData settings);
-        SettingsData DeserializeSettings(string json);
-
         void WriteProfile(ProfileData profile);
         ProfileData ReadProfile();
         bool HasProfile();

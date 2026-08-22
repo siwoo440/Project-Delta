@@ -1,4 +1,7 @@
+using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using Newtonsoft.Json;
 using ProjectDelta.Data;
 
@@ -11,67 +14,13 @@ namespace ProjectDelta.Infrastructure
             Formatting = Formatting.Indented
         };
 
-        public string SerializeProfile(ProfileData profile)
-        {
-            return JsonConvert.SerializeObject(SaveEnvelope<ProfileData>.Wrap(profile, saveState: null), JsonSettings);
-        }
+        public void WriteProfile(ProfileData profile) => WriteFile(SavePaths.ProfilePath, profile, saveState: null);
+        public ProfileData ReadProfile() => ReadFile<ProfileData>(SavePaths.ProfilePath);
+        public bool HasProfile() => File.Exists(SavePaths.ProfilePath);
 
-        public ProfileData DeserializeProfile(string json)
-        {
-            return JsonConvert.DeserializeObject<SaveEnvelope<ProfileData>>(json, JsonSettings).Payload;
-        }
-
-        public string SerializeRun(RunData run, string saveState)
-        {
-            return JsonConvert.SerializeObject(SaveEnvelope<RunData>.Wrap(run, saveState), JsonSettings);
-        }
-
-        public RunData DeserializeRun(string json)
-        {
-            return JsonConvert.DeserializeObject<SaveEnvelope<RunData>>(json, JsonSettings).Payload;
-        }
-
-        public string SerializeSettings(SettingsData settings)
-        {
-            return JsonConvert.SerializeObject(SaveEnvelope<SettingsData>.Wrap(settings, saveState: null), JsonSettings);
-        }
-
-        public SettingsData DeserializeSettings(string json)
-        {
-            return JsonConvert.DeserializeObject<SaveEnvelope<SettingsData>>(json, JsonSettings).Payload;
-        }
-
-        public void WriteProfile(ProfileData profile)
-        {
-            SavePaths.EnsureSaveDirectoryExists();
-            File.WriteAllText(SavePaths.ProfilePath, SerializeProfile(profile));
-        }
-
-        public ProfileData ReadProfile()
-        {
-            return DeserializeProfile(File.ReadAllText(SavePaths.ProfilePath));
-        }
-
-        public bool HasProfile()
-        {
-            return File.Exists(SavePaths.ProfilePath);
-        }
-
-        public void WriteRun(RunData run, string saveState)
-        {
-            SavePaths.EnsureSaveDirectoryExists();
-            File.WriteAllText(SavePaths.RunPath, SerializeRun(run, saveState));
-        }
-
-        public RunData ReadRun()
-        {
-            return DeserializeRun(File.ReadAllText(SavePaths.RunPath));
-        }
-
-        public bool HasRun()
-        {
-            return File.Exists(SavePaths.RunPath);
-        }
+        public void WriteRun(RunData run, string saveState) => WriteFile(SavePaths.RunPath, run, saveState);
+        public RunData ReadRun() => ReadFile<RunData>(SavePaths.RunPath);
+        public bool HasRun() => File.Exists(SavePaths.RunPath);
 
         public void DeleteRun()
         {
@@ -81,20 +30,80 @@ namespace ProjectDelta.Infrastructure
             }
         }
 
-        public void WriteSettings(SettingsData settings)
+        public void WriteSettings(SettingsData settings) => WriteFile(SavePaths.SettingsPath, settings, saveState: null);
+        public SettingsData ReadSettings() => ReadFile<SettingsData>(SavePaths.SettingsPath);
+        public bool HasSettings() => File.Exists(SavePaths.SettingsPath);
+
+        // 기획서 9.5절 "안전한 파일 쓰기":
+        // 새 데이터 생성 → 임시 파일 기록 → 기록 완료 확인 → 체크섬 생성
+        // → 임시 파일 다시 읽기 → 데이터 검증 → 기존 파일을 백업으로 이동
+        // → 임시 파일을 현재 파일로 교체 → 저장 완료 표시
+        //
+        // 백업은 오늘은 슬롯 1개(.bak)까지만 유지한다. 최근 3개 순환 보관은 9일차.
+        private void WriteFile<T>(string targetPath, T payload, string saveState)
         {
             SavePaths.EnsureSaveDirectoryExists();
-            File.WriteAllText(SavePaths.SettingsPath, SerializeSettings(settings));
+
+            var now = DateTime.UtcNow.ToString("o");
+            var payloadJson = JsonConvert.SerializeObject(payload, JsonSettings);
+            var envelope = new SaveEnvelope
+            {
+                GameVersion = UnityEngine.Application.version,
+                CreatedAtIso8601 = now,
+                ModifiedAtIso8601 = now,
+                Platform = UnityEngine.Application.platform.ToString(),
+                SaveState = saveState,
+                Checksum = ComputeChecksum(payloadJson),
+                PayloadJson = payloadJson
+            };
+
+            var tempPath = targetPath + ".tmp";
+            File.WriteAllText(tempPath, JsonConvert.SerializeObject(envelope, JsonSettings));
+
+            // 기록 완료 확인 + 임시 파일 다시 읽기 + 데이터 검증
+            if (!TryReadEnvelope(tempPath, out _))
+            {
+                File.Delete(tempPath);
+                throw new IOException($"저장 검증 실패: {targetPath}");
+            }
+
+            if (File.Exists(targetPath))
+            {
+                // 기존 파일을 백업으로 이동하면서 임시 파일로 원자적 교체
+                File.Replace(tempPath, targetPath, targetPath + ".bak");
+            }
+            else
+            {
+                File.Move(tempPath, targetPath);
+            }
         }
 
-        public SettingsData ReadSettings()
+        private T ReadFile<T>(string path)
         {
-            return DeserializeSettings(File.ReadAllText(SavePaths.SettingsPath));
+            if (!TryReadEnvelope(path, out var envelope))
+            {
+                throw new InvalidDataException($"손상된 저장 파일: {path}");
+            }
+
+            return JsonConvert.DeserializeObject<T>(envelope.PayloadJson, JsonSettings);
         }
 
-        public bool HasSettings()
+        private static bool TryReadEnvelope(string path, out SaveEnvelope envelope)
         {
-            return File.Exists(SavePaths.SettingsPath);
+            envelope = JsonConvert.DeserializeObject<SaveEnvelope>(File.ReadAllText(path), JsonSettings);
+
+            return envelope != null
+                   && envelope.PayloadJson != null
+                   && envelope.Checksum == ComputeChecksum(envelope.PayloadJson);
+        }
+
+        private static string ComputeChecksum(string content)
+        {
+            using (var sha256 = SHA256.Create())
+            {
+                var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(content ?? string.Empty));
+                return Convert.ToBase64String(hash);
+            }
         }
     }
 }
