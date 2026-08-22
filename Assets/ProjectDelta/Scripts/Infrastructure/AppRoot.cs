@@ -58,8 +58,11 @@ namespace ProjectDelta.Infrastructure
             // TODO Day 3+: Audio initialization
             log.Info("Audio init skipped (not implemented yet)");
 
-            // TODO Day 4~18: Save system, profile load
-            log.Info("Save system init skipped (not implemented yet)");
+            var saveService = new SaveService();
+            Services.Register<ISaveService>(saveService);
+            log.Info("Save service ready");
+
+            // TODO: file I/O (경로 규칙) 붙는 이후 일차에 실제 프로필 불러오기로 교체
             log.Info("Profile load skipped (not implemented yet)");
 
             var addressables = new AddressableService();
