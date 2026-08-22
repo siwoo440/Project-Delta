@@ -64,6 +64,11 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
         private void OnInteract(InputAction.CallbackContext context) // F 상호작용 처리
         {
+            if (movementController != null && movementController.IsMoving) // 이동 보간 중 상호작용 차단 (17일차)
+            {
+                return; // 이동 중 상호작용 중단
+            }
+
             PlayerRunState playerState = movementController != null ? movementController.PlayerState : null; // 현재 플레이어 상태 조회
             RoomPassageController currentPassageController = GetCurrentPassageController(); // 현재 방 통로 컨트롤러 조회
 

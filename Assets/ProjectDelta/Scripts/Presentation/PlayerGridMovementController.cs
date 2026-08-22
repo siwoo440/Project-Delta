@@ -1,3 +1,4 @@
+using System.Collections; // 이동 보간 코루틴 사용
 using ProjectDelta.Domain; // 도메인 이동 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 using UnityEngine.InputSystem; // Input System 사용
@@ -11,6 +12,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         [SerializeField] private RoomPassageController passageController; // 현재 방 통로 판정 컨트롤러
         [SerializeField] private TestRoomTransitionController roomTransitionController; // 테스트 방 경계 이동 컨트롤러
         [SerializeField] private float cellSize = 2f; // 한 칸 월드 크기
+        [SerializeField] private float moveDuration = 0.15f; // 한 칸 이동 보간 시간(초)
         [SerializeField] private int minX = -2; // 테스트 방 최소 X
         [SerializeField] private int maxX = 2; // 테스트 방 최대 X
         [SerializeField] private int minZ = -2; // 테스트 방 최소 Z
@@ -18,6 +20,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
         private PlayerRunState playerState; // 현재 플레이어 런타임 상태
         private Transform roomOrigin; // 현재 방 월드 원점
+        private bool isMoving; // 이동 보간 진행 중 여부 (16일차 이동 잠금)
         private InputActionMap explorationMap; // 탐험 입력 맵
         private InputAction moveForwardAction; // 전진 액션
         private InputAction moveBackwardAction; // 후진 액션
@@ -27,6 +30,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         public PlayerRunState PlayerState => playerState; // 다른 탐험 기능용 플레이어 상태 공개
         public RoomPassageController CurrentPassageController => passageController; // 현재 방 통로 컨트롤러 공개
         public Transform CurrentRoomOrigin => roomOrigin; // 현재 방 월드 원점 공개
+        public bool IsMoving => isMoving; // 이동 잠금 상태 공개 (다른 입력 컨트롤러가 참조)
 
         private void Awake() // 초기 상태 연결
         {
@@ -142,7 +146,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
         private void TryMove(GridMoveInput input) // 한 칸 이동 또는 방 경계 이동 처리
         {
-            if (playerState == null) // 런타임 상태 존재 확인
+            if (playerState == null || isMoving) // 런타임 상태와 이동 잠금 확인 (16일차 중복 이동 방지)
             {
                 return; // 이동 처리 중단
             }
@@ -186,15 +190,15 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             passageController = destinationRoom; // 현재 방 통로 컨트롤러를 목적 방으로 변경
             roomOrigin = destinationRoom.transform; // 현재 방 월드 원점을 목적 방으로 변경
             playerState.CurrentRoomId = destinationRoom.RoomId; // 현재 방 식별자 갱신
-            playerState.CurrentGridPosition = destinationEntryPosition; // 목적 방 입구 칸으로 논리 위치 변경
-            ApplyWorldPosition(destinationEntryPosition); // 목적 방 입구의 실제 월드 위치로 이동
+            playerState.CurrentGridPosition = destinationEntryPosition; // 목적 방 입구 칸으로 논리 위치 즉시 갱신
+            StartCoroutine(MoveRoutine(CalculateWorldPosition(destinationEntryPosition))); // 문을 통과하듯 목적 방 입구까지 부드럽게 이동
             Debug.Log($"[Project Delta] 방 이동: {playerState.CurrentRoomId} / Entry {destinationEntryPosition} / Facing {facing}", this); // 방 경계 이동 결과 출력
         }
 
         private void CommitGridMove(GridPosition target, CardinalDirection facing) // 현재 방 내부 한 칸 이동 확정
         {
-            playerState.CurrentGridPosition = target; // 논리 그리드 위치 갱신
-            ApplyWorldPosition(target); // 실제 Player 위치 갱신
+            playerState.CurrentGridPosition = target; // 논리 그리드 위치 즉시 갱신 (17일차: 화면 위치와 분리)
+            StartCoroutine(MoveRoutine(CalculateWorldPosition(target))); // 실제 Player 위치를 목표 칸까지 부드럽게 이동
             Debug.Log($"[Project Delta] GridPosition {target} / Room {playerState.CurrentRoomId} / Facing {facing}", this); // 현재 좌표와 방 로그 출력
         }
 
@@ -206,12 +210,37 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             return new GridPosition(gridX, gridZ); // 논리 좌표 반환
         }
 
-        private void ApplyWorldPosition(GridPosition gridPosition) // 논리 좌표를 현재 방 월드 위치로 반영
+        private Vector3 CalculateWorldPosition(GridPosition gridPosition) // 논리 좌표를 현재 방 월드 위치로 계산
         {
             Vector3 localPosition = new Vector3(gridPosition.X * cellSize, 0f, gridPosition.Z * cellSize); // 현재 방 기준 목표 로컬 위치 계산
             Vector3 targetWorldPosition = roomOrigin != null ? roomOrigin.TransformPoint(localPosition) : localPosition; // 현재 방 원점을 이용해 월드 위치 계산
             targetWorldPosition.y = transform.position.y; // Player 현재 높이 유지
-            transform.position = targetWorldPosition; // Player 실제 월드 위치 적용
+            return targetWorldPosition; // 계산된 목표 월드 위치 반환
+        }
+
+        private void ApplyWorldPosition(GridPosition gridPosition) // 논리 좌표를 현재 방 월드 위치로 즉시 반영 (Awake 초기 배치 전용)
+        {
+            transform.position = CalculateWorldPosition(gridPosition); // Player 실제 월드 위치 즉시 적용
+        }
+
+        private IEnumerator MoveRoutine(Vector3 targetWorldPosition) // 한 칸 또는 방 경계 이동을 부드럽게 보간 (16~17일차)
+        {
+            isMoving = true; // 이동 잠금 시작 - 보간이 끝날 때까지 다른 입력 차단
+
+            Vector3 startWorldPosition = transform.position; // 보간 시작 위치 저장
+            float elapsed = 0f; // 경과 시간 초기화
+
+            while (elapsed < moveDuration) // 지정한 이동 시간 동안 반복
+            {
+                elapsed += Time.deltaTime; // 경과 시간 누적
+                float t = Mathf.Clamp01(elapsed / moveDuration); // 진행 비율 계산
+                float smoothT = t * t * (3f - 2f * t); // SmoothStep 완화 곡선 적용 (느리게 출발 - 빠르게 - 느리게 정지)
+                transform.position = Vector3.Lerp(startWorldPosition, targetWorldPosition, smoothT); // 보간 위치 적용
+                yield return null; // 다음 프레임까지 대기
+            }
+
+            transform.position = targetWorldPosition; // 목표 위치로 정확히 고정 (논리 위치와 최종 일치)
+            isMoving = false; // 이동 잠금 해제 - 다음 입력 허용
         }
     }
 }
