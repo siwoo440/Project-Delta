@@ -130,6 +130,7 @@ GameObject:
   - component: {fileID: 71002139}
   - component: {fileID: 71002140}
   - component: {fileID: 71002141}
+  - component: {fileID: 719100001}
   m_Layer: 0
   m_Name: TestRoom_A
   m_TagString: Untagged
@@ -177,6 +178,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.RoomPassageController
   roomId: TestRoom_A
+  roomDefinition: {fileID: 11400000, guid: adfa10bc792143f0b83abf42dc708ef2, type: 2}
   layoutKind: 0
   unlockedDoorVisual: {fileID: 1003047913}
   lockedDoorVisual: {fileID: 1133539309}
@@ -200,6 +202,19 @@ MonoBehaviour:
   cellSize: 2
   lineHeight: 0.015
   lineWidth: 0.025
+--- !u!114 &719100001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 71002138}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 284af06cde4ec5149a11c615aa1fff57, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.RoomView
+  themeId: 
 --- !u!1 &105016384
 GameObject:
   m_ObjectHideFlags: 0
@@ -1857,6 +1872,19 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1220281941}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &719100002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2015266238}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 284af06cde4ec5149a11c615aa1fff57, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.RoomView
+  themeId: 
 --- !u!1 &1266452038
 GameObject:
   m_ObjectHideFlags: 0
@@ -2744,6 +2772,7 @@ GameObject:
   - component: {fileID: 2015266241}
   - component: {fileID: 2015266240}
   - component: {fileID: 2015266239}
+  - component: {fileID: 719100002}
   m_Layer: 0
   m_Name: TestRoom_B
   m_TagString: Untagged
@@ -2783,6 +2812,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.RoomPassageController
   roomId: TestRoom_B
+  roomDefinition: {fileID: 11400000, guid: ce94a768d50d41a9898d40bc26f7c9e7, type: 2}
   layoutKind: 1
   unlockedDoorVisual: {fileID: 0}
   lockedDoorVisual: {fileID: 0}
