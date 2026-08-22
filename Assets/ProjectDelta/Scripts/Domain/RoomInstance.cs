@@ -19,6 +19,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public string DefinitionId { get; } // 원본 RoomDefinition의 Id
         public RoomGridLayout Layout { get; } // 이 방의 통로 상태
         public bool Visited { get; private set; } // 최초 방문 여부 (기획서 3.3.3절 "처음 들어온 순간 한 번만 처리")
+        public bool Completed { get; private set; } // 콘텐츠 처리 상태 (기획서 3.3.3절 "이벤트가 완료되면 해당 방은 일반적으로 빈 방으로 전환한다")
 
         private RoomInstance(string roomId, string definitionId, RoomGridLayout layout) // 방 인스턴스 생성자
         {
@@ -37,6 +38,13 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
             Visited = true; // 방문 상태로 전환
             return true; // 최초 방문임을 반환
+        }
+
+        // TODO: 실제 이벤트/조우/함정 판정 시스템이 생기면 그 결과가 끝났을 때 호출한다.
+        // 지금은 아직 그 시스템이 없어서 아무도 호출하지 않는다.
+        public void MarkCompleted() // 방 콘텐츠 처리 완료로 전환
+        {
+            Completed = true; // 콘텐츠 처리 완료 상태로 전환
         }
 
         // RoomDefinition의 정적 통로 목록으로부터 실제 방 인스턴스를 만든다.
