@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using ProjectDelta.Application;
 
 namespace ProjectDelta.Infrastructure
@@ -9,6 +10,8 @@ namespace ProjectDelta.Infrastructure
         public static AppRoot Instance { get; private set; }
 
         public ServiceRegistry Services { get; private set; }
+
+        [SerializeField] private InputActionAsset inputActions;
 
         private ApplicationFlow _applicationFlow;
 
@@ -39,18 +42,30 @@ namespace ProjectDelta.Infrastructure
             Services.Register<ILogService>(log);
             log.Info("Log service ready");
 
-            // TODO Day 3+: Settings load, Localization, Input, Audio initialization here
+            // TODO Day 4+: Settings load
             log.Info("Settings load skipped (not implemented yet)");
-            log.Info("Localization init skipped (not implemented yet)");
-            log.Info("Input init skipped (not implemented yet)");
+
+            var localization = new LocalizationService();
+            Services.Register<ILocalizationService>(localization);
+            yield return localization.InitializeRoutine();
+            log.Info("Localization service ready");
+
+            var input = new InputService(inputActions);
+            Services.Register<IInputService>(input);
+            input.SetActiveMap(InputMapNames.UI);
+            log.Info("Input service ready");
+
+            // TODO Day 3+: Audio initialization
             log.Info("Audio init skipped (not implemented yet)");
 
             // TODO Day 4~18: Save system, profile load
             log.Info("Save system init skipped (not implemented yet)");
             log.Info("Profile load skipped (not implemented yet)");
 
-            // TODO Day 3: Addressables init
-            log.Info("Addressables init skipped (not implemented yet)");
+            var addressables = new AddressableService();
+            Services.Register<IAddressableService>(addressables);
+            yield return addressables.InitializeRoutine();
+            log.Info("Addressables service ready");
 
             // TODO: Steam init, Cloud status check
             log.Info("Steam init skipped (not implemented yet)");
