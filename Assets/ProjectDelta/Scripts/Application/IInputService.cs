@@ -1,4 +1,4 @@
-namespace ProjectDelta.Infrastructure
+namespace ProjectDelta.Application
 {
     public interface IInputService
     {

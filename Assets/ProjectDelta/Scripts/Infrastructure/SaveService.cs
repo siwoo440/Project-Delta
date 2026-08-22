@@ -1,3 +1,4 @@
+using ProjectDelta.Application;
 using System;
 using System.IO;
 using System.Security.Cryptography;
@@ -126,7 +127,18 @@ namespace ProjectDelta.Infrastructure
 
         private static bool TryReadEnvelope(string path, out SaveEnvelope envelope)
         {
-            envelope = JsonConvert.DeserializeObject<SaveEnvelope>(File.ReadAllText(path), JsonSettings);
+            // 파일 내용 자체가 손상되어 JSON으로 파싱조차 안 되는 경우(예: 쓰다 만 파일)도
+            // "이 후보는 못 씀"으로 처리해야 한다 - 예외를 여기서 삼키지 않으면 복구 순회가
+            // 다음 후보로 넘어가지 못하고 그대로 실패한다.
+            try
+            {
+                envelope = JsonConvert.DeserializeObject<SaveEnvelope>(File.ReadAllText(path), JsonSettings);
+            }
+            catch (JsonException)
+            {
+                envelope = null;
+                return false;
+            }
 
             return envelope != null
                    && envelope.PayloadJson != null

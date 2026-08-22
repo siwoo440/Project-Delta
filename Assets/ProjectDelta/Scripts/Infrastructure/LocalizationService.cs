@@ -1,3 +1,4 @@
+using ProjectDelta.Application;
 using System.Collections;
 using UnityEngine.Localization.Settings;
 

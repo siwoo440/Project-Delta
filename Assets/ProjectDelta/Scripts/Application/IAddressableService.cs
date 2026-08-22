@@ -1,6 +1,6 @@
 using System.Collections;
 
-namespace ProjectDelta.Infrastructure
+namespace ProjectDelta.Application
 {
     public interface IAddressableService
     {

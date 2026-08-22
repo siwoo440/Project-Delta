@@ -1,6 +1,6 @@
 using ProjectDelta.Data;
 
-namespace ProjectDelta.Infrastructure
+namespace ProjectDelta.Application
 {
     // Domain systems call these methods instead of touching File I/O or JSON
     // directly (10.4절 원칙). Writes go through a temp-file-then-replace

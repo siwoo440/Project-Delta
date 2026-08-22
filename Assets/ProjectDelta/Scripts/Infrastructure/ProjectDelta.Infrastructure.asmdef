@@ -1,0 +1,21 @@
+{
+    "name": "ProjectDelta.Infrastructure",
+    "rootNamespace": "",
+    "references": [
+        "ProjectDelta.Application",
+        "ProjectDelta.Data",
+        "Unity.InputSystem",
+        "Unity.Addressables",
+        "Unity.Localization",
+        "Unity.ResourceManager"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,17 @@
+{
+    "name": "ProjectDelta.Presentation",
+    "rootNamespace": "",
+    "references": [
+        "ProjectDelta.Application",
+        "ProjectDelta.Data"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

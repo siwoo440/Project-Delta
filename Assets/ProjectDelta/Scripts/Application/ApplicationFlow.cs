@@ -1,5 +1,3 @@
-using ProjectDelta.Infrastructure;
-
 namespace ProjectDelta.Application
 {
     public sealed class ApplicationFlow

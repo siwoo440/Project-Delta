@@ -1,6 +1,6 @@
 using System;
 
-namespace ProjectDelta.Infrastructure
+namespace ProjectDelta.Application
 {
     public interface ISceneLoaderService
     {
