@@ -24,5 +24,11 @@ namespace ProjectDelta.Infrastructure
                 Directory.CreateDirectory(SaveDirectory);
             }
         }
+
+        // 최근 3개 백업 순환 (기획서 9.5절 자동 백업). slot 1 = 직전 정상 저장.
+        public static string GetBackupPath(string targetPath, int slot)
+        {
+            return $"{targetPath}.bak{slot}";
+        }
     }
 }

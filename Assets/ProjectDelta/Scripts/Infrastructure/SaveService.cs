@@ -9,17 +9,19 @@ namespace ProjectDelta.Infrastructure
 {
     public sealed class SaveService : ISaveService
     {
+        private const int BackupSlotCount = 3;
+
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             Formatting = Formatting.Indented
         };
 
         public void WriteProfile(ProfileData profile) => WriteFile(SavePaths.ProfilePath, profile, saveState: null);
-        public ProfileData ReadProfile() => ReadFile<ProfileData>(SavePaths.ProfilePath);
+        public ProfileData ReadProfile() => ReadFileWithRecovery<ProfileData>(SavePaths.ProfilePath);
         public bool HasProfile() => File.Exists(SavePaths.ProfilePath);
 
         public void WriteRun(RunData run, string saveState) => WriteFile(SavePaths.RunPath, run, saveState);
-        public RunData ReadRun() => ReadFile<RunData>(SavePaths.RunPath);
+        public RunData ReadRun() => ReadFileWithRecovery<RunData>(SavePaths.RunPath);
         public bool HasRun() => File.Exists(SavePaths.RunPath);
 
         public void DeleteRun()
@@ -31,15 +33,10 @@ namespace ProjectDelta.Infrastructure
         }
 
         public void WriteSettings(SettingsData settings) => WriteFile(SavePaths.SettingsPath, settings, saveState: null);
-        public SettingsData ReadSettings() => ReadFile<SettingsData>(SavePaths.SettingsPath);
+        public SettingsData ReadSettings() => ReadFileWithRecovery<SettingsData>(SavePaths.SettingsPath);
         public bool HasSettings() => File.Exists(SavePaths.SettingsPath);
 
-        // 기획서 9.5절 "안전한 파일 쓰기":
-        // 새 데이터 생성 → 임시 파일 기록 → 기록 완료 확인 → 체크섬 생성
-        // → 임시 파일 다시 읽기 → 데이터 검증 → 기존 파일을 백업으로 이동
-        // → 임시 파일을 현재 파일로 교체 → 저장 완료 표시
-        //
-        // 백업은 오늘은 슬롯 1개(.bak)까지만 유지한다. 최근 3개 순환 보관은 9일차.
+        // 기획서 9.5절 "안전한 파일 쓰기" + "자동 백업"(최근 3개 순환).
         private void WriteFile<T>(string targetPath, T payload, string saveState)
         {
             SavePaths.EnsureSaveDirectoryExists();
@@ -60,7 +57,6 @@ namespace ProjectDelta.Infrastructure
             var tempPath = targetPath + ".tmp";
             File.WriteAllText(tempPath, JsonConvert.SerializeObject(envelope, JsonSettings));
 
-            // 기록 완료 확인 + 임시 파일 다시 읽기 + 데이터 검증
             if (!TryReadEnvelope(tempPath, out _))
             {
                 File.Delete(tempPath);
@@ -69,8 +65,9 @@ namespace ProjectDelta.Infrastructure
 
             if (File.Exists(targetPath))
             {
-                // 기존 파일을 백업으로 이동하면서 임시 파일로 원자적 교체
-                File.Replace(tempPath, targetPath, targetPath + ".bak");
+                RotateBackups(targetPath);
+                // File.Replace가 "기존 파일을 Backup1로 이동 + 임시 파일로 교체"를 원자적으로 처리한다.
+                File.Replace(tempPath, targetPath, SavePaths.GetBackupPath(targetPath, 1));
             }
             else
             {
@@ -78,14 +75,53 @@ namespace ProjectDelta.Infrastructure
             }
         }
 
-        private T ReadFile<T>(string path)
+        // Backup2 → Backup3, Backup1 → Backup2로 밀어낸다.
+        // 현재 파일 → Backup1 이동은 File.Replace가 대신 처리한다.
+        private static void RotateBackups(string targetPath)
         {
-            if (!TryReadEnvelope(path, out var envelope))
+            for (var slot = BackupSlotCount; slot >= 2; slot--)
             {
-                throw new InvalidDataException($"손상된 저장 파일: {path}");
+                var source = SavePaths.GetBackupPath(targetPath, slot - 1);
+                var destination = SavePaths.GetBackupPath(targetPath, slot);
+
+                if (File.Exists(source))
+                {
+                    File.Copy(source, destination, overwrite: true);
+                }
+            }
+        }
+
+        // 기획서 9.5절 "강제 종료 복구" 순서: 현재 파일 → 임시 파일 → Backup1 → Backup2 → Backup3.
+        // 플레이어가 백업을 선택해 과거 시점으로 되돌아갈 수는 없다 - 손상 시에만 자동으로 사용한다.
+        private T ReadFileWithRecovery<T>(string targetPath)
+        {
+            var candidates = new[]
+            {
+                targetPath,
+                targetPath + ".tmp",
+                SavePaths.GetBackupPath(targetPath, 1),
+                SavePaths.GetBackupPath(targetPath, 2),
+                SavePaths.GetBackupPath(targetPath, 3)
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (!File.Exists(candidate) || !TryReadEnvelope(candidate, out var envelope))
+                {
+                    continue;
+                }
+
+                if (candidate != targetPath)
+                {
+                    // TODO: UI 시스템이 생기면 9.5절 복구 안내 문구("저장 데이터에 문제가 발견되어
+                    // 최근 정상 데이터로 복구했습니다")를 여기서 표시한다.
+                    UnityEngine.Debug.LogWarning($"[ProjectDelta] 저장 데이터가 손상되어 백업에서 복구했습니다: {candidate}");
+                }
+
+                return JsonConvert.DeserializeObject<T>(envelope.PayloadJson, JsonSettings);
             }
 
-            return JsonConvert.DeserializeObject<T>(envelope.PayloadJson, JsonSettings);
+            throw new InvalidDataException($"복구 실패: 정상적인 저장 데이터를 찾을 수 없습니다 ({targetPath})");
         }
 
         private static bool TryReadEnvelope(string path, out SaveEnvelope envelope)
