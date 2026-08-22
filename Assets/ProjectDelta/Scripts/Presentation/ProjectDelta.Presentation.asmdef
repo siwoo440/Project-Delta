@@ -3,7 +3,9 @@
     "rootNamespace": "",
     "references": [
         "ProjectDelta.Application",
-        "ProjectDelta.Data"
+        "ProjectDelta.Data",
+        "ProjectDelta.Domain",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
