@@ -1,28 +1,32 @@
-using ProjectDelta.Domain; // 그리드 좌표 사용 (22일차)
+using ProjectDelta.Domain; // 그리드 좌표 사용
 using UnityEngine; // Unity 기본 기능 사용
 
-namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
+namespace ProjectDelta.Presentation
 {
-    // 기획서 10.3절 "방 표현"이 나열한 콘텐츠 종류.
-    // TODO: 이후 생성 시스템(Domain/Application)이 이 종류를 직접 다뤄야 하면
-    // Domain으로 옮긴다. 지금은 화면에 자리만 표시하는 용도라 Presentation에 둔다.
-    public enum RoomContentType // 방 콘텐츠 배치 지점 종류
+    public enum RoomContentType
     {
-        Stairs, // 계단
-        Chest, // 상자
-        SecretWall, // 비밀 벽
-        NpcPoint, // NPC 상호작용 지점
-        AmbientProp // 환경 소품
+        Stairs,
+        Chest,
+        SecretWall,
+        NpcPoint,
+        AmbientProp
     }
 
-    // 콘텐츠가 나중에 배치될 빈 자리를 표시만 한다. 스스로 아무것도 생성하거나 판정하지 않는다.
-    public sealed class RoomContentMarker : MonoBehaviour // 방 콘텐츠 배치 지점 표시
+    public sealed class RoomContentMarker : MonoBehaviour
     {
-        [SerializeField] private RoomContentType contentType; // 이 자리에 배치될 콘텐츠 종류
-        [SerializeField] private int gridX; // 이 자리의 방 내부 그리드 X (22일차: 계단 상호작용 판정용)
-        [SerializeField] private int gridZ; // 이 자리의 방 내부 그리드 Z (22일차: 계단 상호작용 판정용)
+        [SerializeField] private RoomContentType contentType;
+        [SerializeField] private int gridX;
+        [SerializeField] private int gridZ;
 
-        public RoomContentType ContentType => contentType; // 콘텐츠 종류 공개
-        public GridPosition GridPosition => new GridPosition(gridX, gridZ); // 이 자리의 방 내부 그리드 좌표 공개
+        public RoomContentType ContentType => contentType;
+        public GridPosition GridPosition => new GridPosition(gridX, gridZ);
+
+        // 36일차: 절차 생성된 방에 런타임 콘텐츠 마커를 만들 때 사용한다.
+        public void Configure(RoomContentType type, GridPosition position)
+        {
+            contentType = type;
+            gridX = position.X;
+            gridZ = position.Z;
+        }
     }
 }

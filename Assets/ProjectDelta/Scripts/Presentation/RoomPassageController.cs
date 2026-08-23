@@ -1,135 +1,466 @@
-using ProjectDelta.Data; // 방 정의 데이터 사용 (18일차)
-using ProjectDelta.Domain; // 도메인 통로 규칙 사용
+using System.Collections.Generic; // 출구 마커 사전 사용
+using ProjectDelta.Data; // RoomDefinition 사용
+using ProjectDelta.Domain; // 통로 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 
-namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
+namespace ProjectDelta.Presentation
 {
-    public enum TestRoomLayoutKind // 15일차 테스트 방 종류
+    public enum TestRoomLayoutKind
     {
-        Primary, // 첫 번째 테스트 방
-        Secondary // 두 번째 테스트 방
+        Primary,
+        Secondary
     }
 
-    public sealed class RoomPassageController : MonoBehaviour // 현재 테스트 방 통로 상태 제어
+    public sealed class RoomPassageController : MonoBehaviour
     {
-        [SerializeField] private string roomId = "TestRoom_A"; // 현재 테스트 방 식별자
-        [SerializeField] private RoomDefinition roomDefinition; // 방 통로 배치를 담은 정의 데이터 (18일차)
-        [SerializeField] private TestRoomLayoutKind layoutKind = TestRoomLayoutKind.Primary; // 테스트 방 통로 구성 종류
-        [SerializeField] private Transform unlockedDoorVisual; // 일반 문 시각 오브젝트
-        [SerializeField] private Transform lockedDoorVisual; // 잠긴 문 시각 오브젝트
-        [SerializeField] private Transform boundaryDoorVisual; // 방 연결 경계 문 시각 오브젝트
+        [SerializeField] private string roomId = "TestRoom_A";
+        [SerializeField] private RoomDefinition roomDefinition;
+        [SerializeField] private TestRoomLayoutKind layoutKind = TestRoomLayoutKind.Primary;
+        [SerializeField] private Transform unlockedDoorVisual;
+        [SerializeField] private Transform lockedDoorVisual;
+        [SerializeField] private Transform boundaryDoorVisual;
 
-        private RoomInstance roomInstance; // 방 런타임 인스턴스 (통로 데이터 + 방문 상태, 20일차)
-        private RoomGridLayout layout; // 방 통로 논리 데이터
-        private GridPassage unlockedDoorPassage; // 일반 문 통로 상태
-        private GridPassage lockedDoorPassage; // 잠긴 문 통로 상태
-        private GridPassage boundaryDoorPassage; // 방 연결 경계 문 상태
+        private RoomInstance roomInstance;
+        private RoomGridLayout layout;
+        private GridPassage unlockedDoorPassage;
+        private GridPassage lockedDoorPassage;
+        private GridPassage boundaryDoorPassage;
 
-        public string RoomId => roomId; // 현재 방 식별자 공개
-        public TestRoomLayoutKind LayoutKind => layoutKind; // 테스트 방 종류 공개
-        public GridPosition BoundaryPosition => layoutKind == TestRoomLayoutKind.Primary ? new GridPosition(0, 2) : new GridPosition(0, -2); // 방 연결 경계 칸 공개
-        public CardinalDirection BoundaryDirection => layoutKind == TestRoomLayoutKind.Primary ? CardinalDirection.North : CardinalDirection.South; // 방 연결 출구 방향 공개
-        public GridPassage BoundaryDoorPassage => boundaryDoorPassage; // 방 연결 문 상태 공개
-        public RoomInstance CurrentInstance => roomInstance; // 방문 상태 확인용 방 인스턴스 공개 (20일차)
+        private readonly Dictionary<RoomExit, RoomExitMarker> generatedExitMarkers =
+            new Dictionary<RoomExit, RoomExitMarker>();
 
-        private void Awake() // 방 정의로부터 통로 데이터 구성 (18일차: 하드코딩 대신 RoomDefinition 사용)
+        private const float GeneratedWallHeight = 2.5f;
+        private const float GeneratedWallThickness = 0.2f;
+        private const float GeneratedDoorWidth = 1.8f;
+        private const float GeneratedDoorHeight = 2.2f;
+        private const string GeneratedWallBlockerName = "GeneratedWallBlocker";
+        private const string GeneratedDoorLintelName = "GeneratedDoorLintel";
+
+        private static readonly int BaseColorProperty = Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorProperty = Shader.PropertyToID("_Color");
+        private static readonly Color GeneratedDoorColor = new Color(0.60f, 0.60f, 0.60f, 1f);
+        private MaterialPropertyBlock doorColorPropertyBlock;
+
+        public string RoomId => roomId;
+        public RoomDefinition RoomDefinition => roomDefinition;
+        public TestRoomLayoutKind LayoutKind => layoutKind;
+        public GridPosition BoundaryPosition =>
+            layoutKind == TestRoomLayoutKind.Primary ? new GridPosition(0, 2) : new GridPosition(0, -2);
+        public CardinalDirection BoundaryDirection =>
+            layoutKind == TestRoomLayoutKind.Primary ? CardinalDirection.North : CardinalDirection.South;
+        public GridPassage BoundaryDoorPassage => boundaryDoorPassage;
+        public RoomInstance CurrentInstance => roomInstance;
+
+        private void Awake()
         {
-            if (roomDefinition == null) // 방 정의 미지정 확인
+            InitializeRoom(roomId, roomDefinition, false);
+        }
+
+        private void Update()
+        {
+            RefreshDoorVisuals();
+        }
+
+        // 36일차: 같은 프리팹을 여러 RoomNode로 사용할 수 있도록 런타임 ID와 정의로 다시 초기화한다.
+        // prepareGeneratedExits=true이면 실제 그래프 연결이 확정되기 전 모든 경계 출구를 벽으로 막아둔다.
+        public void ConfigureRuntime(string runtimeRoomId, RoomDefinition definition, bool prepareGeneratedExits)
+        {
+            if (string.IsNullOrEmpty(runtimeRoomId))
             {
-                Debug.LogError($"[Project Delta] {roomId}에 RoomDefinition이 지정되지 않았습니다. 모든 방향이 벽 없이 열린 상태로 동작합니다.", this); // 정의 누락 경고 출력
+                Debug.LogError("[Project Delta] 생성 방 Runtime RoomId가 비어있습니다.", this);
+                return;
             }
 
-            roomInstance = RoomInstance.Create(roomId, roomDefinition != null ? roomDefinition.Id : roomId, roomDefinition != null ? roomDefinition.Passages : null); // 정의 데이터로 방 인스턴스 생성
-            layout = roomInstance.Layout; // 생성된 통로 데이터 연결
+            roomId = runtimeRoomId;
+            roomDefinition = definition;
+            InitializeRoom(roomId, roomDefinition, prepareGeneratedExits);
+        }
 
-            if (RunContext.Current != null) // 실제 런 진행 여부 확인 (21일차: 테스트 씬은 등록하지 않음)
+        private void InitializeRoom(string targetRoomId, RoomDefinition definition, bool blockGeneratedExits)
+        {
+            if (definition == null)
             {
-                RunContext.Current.Dungeon.Register(roomInstance); // 현재 런의 방 레지스트리에 등록
+                Debug.LogError($"[Project Delta] {targetRoomId}에 RoomDefinition이 지정되지 않았습니다.", this);
+            }
 
-                if (DungeonSaveMapper.TryGetRoomState(roomId, out RoomRunState savedState)) // 26일차: 이어하기로 복원할 상태가 있는지 확인
+            roomInstance = RoomInstance.Create(
+                targetRoomId,
+                definition != null ? definition.Id : targetRoomId,
+                definition != null ? definition.Passages : null);
+
+            layout = roomInstance.Layout;
+
+            if (RunContext.Current != null)
+            {
+                RunContext.Current.Dungeon.Register(roomInstance);
+
+                if (DungeonSaveMapper.TryGetRoomState(targetRoomId, out RoomRunState savedState))
                 {
-                    roomInstance.ApplySavedState(savedState.Visited, savedState.Completed, savedState.ChestOpened); // 저장된 방 상태 복원
+                    roomInstance.ApplySavedState(
+                        savedState.Visited,
+                        savedState.Completed,
+                        savedState.ChestOpened);
                 }
             }
 
-            if (layoutKind == TestRoomLayoutKind.Primary) // 첫 번째 테스트 방 확인
+            unlockedDoorPassage = null;
+            lockedDoorPassage = null;
+            boundaryDoorPassage = null;
+
+            if (layoutKind == TestRoomLayoutKind.Primary && layout != null)
             {
-                unlockedDoorPassage = layout.GetPassage(new GridPosition(0, 0), CardinalDirection.North); // 일반 문 통로 참조 조회
-                lockedDoorPassage = layout.GetPassage(new GridPosition(1, 0), CardinalDirection.North); // 잠긴 문 통로 참조 조회
+                unlockedDoorPassage = layout.GetPassage(new GridPosition(0, 0), CardinalDirection.North);
+                lockedDoorPassage = layout.GetPassage(new GridPosition(1, 0), CardinalDirection.North);
             }
 
-            boundaryDoorPassage = layout.GetPassage(BoundaryPosition, BoundaryDirection); // 방 연결 경계 문 통로 참조 조회
+            if (layout != null)
+            {
+                boundaryDoorPassage = layout.GetPassage(BoundaryPosition, BoundaryDirection);
+            }
 
-            RefreshDoorVisuals(); // 초기 문 시각 상태 적용
+            CollectGeneratedExitMarkers();
+
+            if (blockGeneratedExits && definition != null && layout != null)
+            {
+                foreach (PassageEntry entry in definition.GetExits())
+                {
+                    RoomExit exit = new RoomExit(
+                        new GridPosition(entry.X, entry.Z),
+                        entry.Direction);
+
+                    layout.SetPassage(exit.LocalPosition, exit.Direction, GridPassage.CreateWall());
+                }
+            }
+
+            RefreshDoorVisuals();
         }
 
-        private void Update() // 공유 문 시각 상태 갱신
+        private void CollectGeneratedExitMarkers()
         {
-            RefreshDoorVisuals(); // 양쪽 방의 공유 경계 문 상태 반영
+            generatedExitMarkers.Clear();
+
+            foreach (RoomExitMarker marker in GetComponentsInChildren<RoomExitMarker>(true))
+            {
+                generatedExitMarkers[marker.Exit] = marker;
+                ApplyGeneratedDoorColor(marker);
+            }
         }
 
-        public bool CanPass(GridPosition position, CardinalDirection direction) // 현재 칸 방향 통과 가능 여부 검사
+        private void ApplyGeneratedDoorColor(RoomExitMarker marker)
         {
-            return layout != null && layout.CanPass(position, direction); // 통로 데이터 판정 반환
+            if (marker == null)
+            {
+                return;
+            }
+
+            Transform visual = marker.transform.Find("DoorVisual");
+
+            if (visual == null)
+            {
+                return;
+            }
+
+            if (doorColorPropertyBlock == null)
+            {
+                doorColorPropertyBlock = new MaterialPropertyBlock();
+            }
+
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                doorColorPropertyBlock.Clear();
+                renderer.GetPropertyBlock(doorColorPropertyBlock);
+                doorColorPropertyBlock.SetColor(BaseColorProperty, GeneratedDoorColor);
+                doorColorPropertyBlock.SetColor(ColorProperty, GeneratedDoorColor);
+                renderer.SetPropertyBlock(doorColorPropertyBlock);
+            }
         }
 
-        public bool TryGetDoor(GridPosition position, CardinalDirection direction, out GridPassage doorPassage) // 정면 문 조회
+        public bool CanPass(GridPosition position, CardinalDirection direction)
         {
-            doorPassage = layout != null ? layout.GetPassage(position, direction) : null; // 현재 방향 통로 조회
-
-            if (doorPassage == null || doorPassage.Type != PassageType.Door) // 문 통로 여부 확인
-            {
-                doorPassage = null; // 문 결과 초기화
-                return false; // 문 없음 반환
-            }
-
-            return true; // 문 존재 반환
+            return layout != null && layout.CanPass(position, direction);
         }
 
-        public DoorOpenResult TryOpenDoor(GridPosition position, CardinalDirection direction, PlayerRunState playerState) // 정면 문 열기 시도
+        public bool TryGetDoor(
+            GridPosition position,
+            CardinalDirection direction,
+            out GridPassage doorPassage)
         {
-            if (!TryGetDoor(position, direction, out GridPassage doorPassage)) // 정면 문 존재 확인
+            doorPassage = layout != null ? layout.GetPassage(position, direction) : null;
+
+            if (doorPassage == null || doorPassage.Type != PassageType.Door)
             {
-                return DoorOpenResult.NotDoor; // 문 아님 반환
+                doorPassage = null;
+                return false;
             }
 
-            DoorOpenResult result = doorPassage.TryOpenDoor(playerState); // 도메인 문 열기 규칙 실행
-
-            if (result == DoorOpenResult.Opened) // 문 열기 성공 확인
-            {
-                RefreshDoorVisuals(); // 열린 문 시각 상태 갱신
-            }
-
-            return result; // 문 열기 결과 반환
+            return true;
         }
 
-        public void SetBoundaryDoorPassage(GridPassage sharedPassage) // 연결된 두 방의 경계 문 상태 공유
+        public DoorOpenResult TryOpenDoor(
+            GridPosition position,
+            CardinalDirection direction,
+            PlayerRunState playerState)
         {
-            if (sharedPassage == null || layout == null) // 공유 통로와 방 데이터 확인
+            if (!TryGetDoor(position, direction, out GridPassage doorPassage))
             {
-                return; // 공유 설정 중단
+                return DoorOpenResult.NotDoor;
             }
 
-            boundaryDoorPassage = sharedPassage; // 공유 경계 문 상태 저장
-            layout.SetPassage(BoundaryPosition, BoundaryDirection, boundaryDoorPassage); // 현재 방 경계에 공유 문 등록
-            RefreshDoorVisuals(); // 공유 상태 즉시 시각 반영
+            DoorOpenResult result = doorPassage.TryOpenDoor(playerState);
+
+            if (result == DoorOpenResult.Opened)
+            {
+                RefreshDoorVisuals();
+            }
+
+            return result;
         }
 
-        private void RefreshDoorVisuals() // 문 시각 상태 동기화
+        // 기존 2방 테스트 연결 호환 API
+        public void SetBoundaryDoorPassage(GridPassage sharedPassage)
         {
-            if (unlockedDoorVisual != null) // 일반 문 시각 오브젝트 확인
+            if (sharedPassage == null || layout == null)
             {
-                unlockedDoorVisual.gameObject.SetActive(unlockedDoorPassage == null || !unlockedDoorPassage.IsOpen); // 일반 문 열림 시 숨김
+                return;
             }
 
-            if (lockedDoorVisual != null) // 잠긴 문 시각 오브젝트 확인
+            boundaryDoorPassage = sharedPassage;
+            layout.SetPassage(BoundaryPosition, BoundaryDirection, boundaryDoorPassage);
+            RefreshDoorVisuals();
+        }
+
+        // 36일차: 정확한 RoomExit 위치에 그래프의 공유 문을 연결한다.
+        public bool SetGeneratedDoorPassage(RoomExit exit, GridPassage sharedPassage)
+        {
+            if (layout == null || sharedPassage == null)
             {
-                lockedDoorVisual.gameObject.SetActive(lockedDoorPassage == null || !lockedDoorPassage.IsOpen); // 잠긴 문 열림 시 숨김
+                return false;
             }
 
-            if (boundaryDoorVisual != null) // 방 연결 문 시각 오브젝트 확인
+            if (!generatedExitMarkers.ContainsKey(exit))
             {
-                boundaryDoorVisual.gameObject.SetActive(boundaryDoorPassage == null || !boundaryDoorPassage.IsOpen); // 공유 경계 문 열림 시 숨김
+                Debug.LogError(
+                    $"[Project Delta] {roomId} 프리팹에서 그래프 출구 {exit}에 대응하는 RoomExitMarker를 찾을 수 없습니다.",
+                    this);
+                return false;
+            }
+
+            layout.SetPassage(exit.LocalPosition, exit.Direction, sharedPassage);
+            RefreshDoorVisuals();
+            return true;
+        }
+
+        public bool TryGetGeneratedPassage(RoomExit exit, out GridPassage passage)
+        {
+            passage = layout != null
+                ? layout.GetPassage(exit.LocalPosition, exit.Direction)
+                : null;
+
+            return passage != null;
+        }
+
+        private void RefreshDoorVisuals()
+        {
+            if (unlockedDoorVisual != null)
+            {
+                unlockedDoorVisual.gameObject.SetActive(
+                    unlockedDoorPassage == null || !unlockedDoorPassage.IsOpen);
+            }
+
+            if (lockedDoorVisual != null)
+            {
+                lockedDoorVisual.gameObject.SetActive(
+                    lockedDoorPassage == null || !lockedDoorPassage.IsOpen);
+            }
+
+            if (boundaryDoorVisual != null)
+            {
+                boundaryDoorVisual.gameObject.SetActive(
+                    boundaryDoorPassage == null || !boundaryDoorPassage.IsOpen);
+            }
+
+            if (layout == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<RoomExit, RoomExitMarker> pair in generatedExitMarkers)
+            {
+                RoomExit exit = pair.Key;
+                RoomExitMarker marker = pair.Value;
+
+                if (marker == null)
+                {
+                    continue;
+                }
+
+                GridPassage passage = layout.GetPassage(exit.LocalPosition, exit.Direction);
+                RefreshGeneratedExitVisual(marker, exit, passage);
+            }
+        }
+
+        private void RefreshGeneratedExitVisual(
+            RoomExitMarker marker,
+            RoomExit exit,
+            GridPassage passage)
+        {
+            Transform doorVisual = marker.transform.Find("DoorVisual");
+            Transform wallBlocker = GetOrCreateWallBlocker(marker, exit);
+            Transform lintel = GetOrCreateDoorLintel(marker, exit);
+
+            bool isDoor = passage != null && passage.Type == PassageType.Door;
+
+            if (doorVisual != null)
+            {
+                // 실제 Door일 때만 회색 문을 사용한다.
+                // 열린 문은 문 판만 사라지고 위쪽 고정 벽은 남는다.
+                doorVisual.gameObject.SetActive(isDoor && !passage.CanPass());
+            }
+
+            if (wallBlocker != null)
+            {
+                // 연결되지 않은 출구는 문처럼 보이지 않도록 실제 고정 벽으로 완전히 막는다.
+                wallBlocker.gameObject.SetActive(!isDoor);
+            }
+
+            if (lintel != null)
+            {
+                // DoorHeight 2.2와 WallHeight 2.5 사이의 0.3 공간을 고정 벽으로 채운다.
+                lintel.gameObject.SetActive(isDoor);
+            }
+        }
+
+        private Transform GetOrCreateWallBlocker(RoomExitMarker marker, RoomExit exit)
+        {
+            Transform existing = marker.transform.Find(GeneratedWallBlockerName);
+
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.name = GeneratedWallBlockerName;
+            wall.transform.SetParent(marker.transform, false);
+
+            // RoomExitMarker 중심 Y는 DoorHeight * 0.5 = 1.1이다.
+            // 전체 벽 중심 Y 1.25에 맞추기 위해 로컬 Y를 0.15 올린다.
+            wall.transform.localPosition = new Vector3(
+                0f,
+                (GeneratedWallHeight - GeneratedDoorHeight) * 0.5f,
+                0f);
+
+            wall.transform.localRotation = Quaternion.identity;
+
+            if (exit.Direction == CardinalDirection.North
+                || exit.Direction == CardinalDirection.South)
+            {
+                wall.transform.localScale = new Vector3(
+                    GeneratedDoorWidth,
+                    GeneratedWallHeight,
+                    GeneratedWallThickness);
+            }
+            else
+            {
+                wall.transform.localScale = new Vector3(
+                    GeneratedWallThickness,
+                    GeneratedWallHeight,
+                    GeneratedDoorWidth);
+            }
+
+            ApplyFixedWallMaterial(wall);
+
+            Collider collider = wall.GetComponent<Collider>();
+
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+
+            return wall.transform;
+        }
+
+        private Transform GetOrCreateDoorLintel(RoomExitMarker marker, RoomExit exit)
+        {
+            Transform existing = marker.transform.Find(GeneratedDoorLintelName);
+
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            float lintelHeight = GeneratedWallHeight - GeneratedDoorHeight;
+
+            GameObject lintel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lintel.name = GeneratedDoorLintelName;
+            lintel.transform.SetParent(marker.transform, false);
+
+            // 문 상단 2.2부터 벽 상단 2.5까지 정확히 채운다.
+            lintel.transform.localPosition = new Vector3(
+                0f,
+                (GeneratedDoorHeight * 0.5f) + (lintelHeight * 0.5f),
+                0f);
+
+            lintel.transform.localRotation = Quaternion.identity;
+
+            if (exit.Direction == CardinalDirection.North
+                || exit.Direction == CardinalDirection.South)
+            {
+                lintel.transform.localScale = new Vector3(
+                    GeneratedDoorWidth,
+                    lintelHeight,
+                    GeneratedWallThickness);
+            }
+            else
+            {
+                lintel.transform.localScale = new Vector3(
+                    GeneratedWallThickness,
+                    lintelHeight,
+                    GeneratedDoorWidth);
+            }
+
+            ApplyFixedWallMaterial(lintel);
+
+            Collider collider = lintel.GetComponent<Collider>();
+
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+
+            return lintel.transform;
+        }
+
+        private void ApplyFixedWallMaterial(GameObject target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            Renderer targetRenderer = target.GetComponent<Renderer>();
+
+            if (targetRenderer == null)
+            {
+                return;
+            }
+
+            foreach (Renderer renderer in GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null
+                    || renderer == targetRenderer
+                    || !renderer.gameObject.name.StartsWith("Wall_"))
+                {
+                    continue;
+                }
+
+                targetRenderer.sharedMaterial = renderer.sharedMaterial;
+                return;
             }
         }
     }
