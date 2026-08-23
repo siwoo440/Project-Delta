@@ -2060,6 +2060,7 @@ GameObject:
   - component: {fileID: 500000004}
   - component: {fileID: 500000005}
   - component: {fileID: 500000010}
+  - component: {fileID: 500000011}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2197,6 +2198,18 @@ MonoBehaviour:
   maxX: 2
   minZ: -2
   maxZ: 2
+--- !u!114 &500000011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454137229}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5db798fc5c9844fca632c18f72322eaf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.DungeonDebugMenuController
 --- !u!1 &1458016176
 GameObject:
   m_ObjectHideFlags: 0

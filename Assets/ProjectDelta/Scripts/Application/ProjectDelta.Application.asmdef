@@ -2,7 +2,8 @@
     "name": "ProjectDelta.Application",
     "rootNamespace": "",
     "references": [
-        "ProjectDelta.Data"
+        "ProjectDelta.Data",
+        "ProjectDelta.Domain"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
