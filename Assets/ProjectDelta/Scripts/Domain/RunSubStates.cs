@@ -19,6 +19,15 @@ namespace ProjectDelta.Domain
     {
         private readonly Dictionary<string, RoomInstance> rooms = new Dictionary<string, RoomInstance>();
 
+        // 현재 층 번호 (22일차). 실제 절차적 생성·연결 데이터는 26~35일차에 채운다.
+        public int CurrentFloor { get; private set; } = 1;
+
+        // 계단으로 다음 층으로 내려갈 때 호출한다. 되돌아가는 방향은 없다(기획서 3.1절).
+        public void AdvanceFloor()
+        {
+            CurrentFloor++;
+        }
+
         public void Register(RoomInstance roomInstance)
         {
             if (roomInstance == null || string.IsNullOrEmpty(roomInstance.RoomId))

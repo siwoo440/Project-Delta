@@ -1,3 +1,4 @@
+using ProjectDelta.Domain; // 그리드 좌표 사용 (22일차)
 using UnityEngine; // Unity 기본 기능 사용
 
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
@@ -18,7 +19,10 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
     public sealed class RoomContentMarker : MonoBehaviour // 방 콘텐츠 배치 지점 표시
     {
         [SerializeField] private RoomContentType contentType; // 이 자리에 배치될 콘텐츠 종류
+        [SerializeField] private int gridX; // 이 자리의 방 내부 그리드 X (22일차: 계단 상호작용 판정용)
+        [SerializeField] private int gridZ; // 이 자리의 방 내부 그리드 Z (22일차: 계단 상호작용 판정용)
 
         public RoomContentType ContentType => contentType; // 콘텐츠 종류 공개
+        public GridPosition GridPosition => new GridPosition(gridX, gridZ); // 이 자리의 방 내부 그리드 좌표 공개
     }
 }

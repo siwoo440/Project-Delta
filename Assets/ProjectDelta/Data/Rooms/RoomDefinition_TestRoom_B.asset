@@ -21,3 +21,33 @@ MonoBehaviour:
     Direction: 2
     Type: 2
     IsLocked: 0
+  - X: 0
+    Z: 0
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: 0
+    Direction: 2
+    Type: 1
+    IsLocked: 0
+  - X: 0
+    Z: 0
+    Direction: 3
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: 0
+    Direction: 0
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: 0
+    Direction: 1
+    Type: 1
+    IsLocked: 0
+  - X: 1
+    Z: 0
+    Direction: 2
+    Type: 1
+    IsLocked: 0

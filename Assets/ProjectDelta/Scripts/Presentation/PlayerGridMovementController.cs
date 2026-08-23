@@ -209,7 +209,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         // 기획서 3.3.1절 방 진입 순서: 이동 가능 여부 확인(TryMove) -> 문 상태 확인(TryMove)
         // -> 방 이동 -> 현재 위치 갱신 -> 지도 갱신 -> 최초 방문 여부 확인 -> 방 이벤트 처리 -> 자동 저장 요청.
         // 앞 두 단계는 호출부(TryMove)에서 이미 끝난 상태로 여기 들어온다.
-        private void EnterRoom(RoomView roomView, GridPosition entryPosition, CardinalDirection facing) // 정식 방 진입 절차 (20일차)
+        // 22일차: 계단으로 다음 층에 들어갈 때도 같은 진입 순서를 그대로 따르므로 DungeonFloorController에도 공개한다.
+        public void EnterRoom(RoomView roomView, GridPosition entryPosition, CardinalDirection facing) // 정식 방 진입 절차 (20일차)
         {
             currentRoomView = roomView; // 방 이동 -> 현재 방 갱신
 
