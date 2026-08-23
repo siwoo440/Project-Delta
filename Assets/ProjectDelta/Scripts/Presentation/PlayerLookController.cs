@@ -16,6 +16,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputAction lookAction; // 마우스 시점 액션
         private float yaw; // 현재 수평 회전값
         private float pitch; // 현재 수직 회전값
+        private bool isSuspendedForUi; // 25일차: 상자 패널 등 마우스가 필요한 UI가 열려있는 동안 시점 회전·커서 잠금 중단
 
         public float YawDegrees => transform.eulerAngles.y; // 현재 수평 시점 각도 공개
         public float PitchDegrees => pitch; // 현재 수직 시점 각도 공개
@@ -55,8 +56,29 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             LockCursor(); // 마우스 커서 잠금
         }
 
+        // 25일차: 상자 패널처럼 마우스로 클릭해야 하는 UI가 열릴 때 호출한다.
+        // isFree가 true면 커서를 풀어 클릭 가능하게 하고 시점 회전을 멈춘다.
+        public void SetCursorFreeForUi(bool isFree)
+        {
+            isSuspendedForUi = isFree; // 시점 회전 중단 여부 갱신
+
+            if (isFree) // UI 사용을 위해 커서가 필요한지 확인
+            {
+                UnlockCursor(); // 커서 잠금 해제 및 표시
+            }
+            else // 다시 탐험으로 돌아가는 경우
+            {
+                LockCursor(); // 커서 화면 중앙 고정 및 숨김
+            }
+        }
+
         private void Update() // 매 프레임 시점 회전
         {
+            if (isSuspendedForUi) // 마우스가 필요한 UI가 열려있는지 확인
+            {
+                return; // UI 사용 중에는 시점 회전 생략
+            }
+
             if (lookAction == null || cameraTransform == null) // 입력 또는 카메라 누락 확인
             {
                 return; // 시점 처리 중단

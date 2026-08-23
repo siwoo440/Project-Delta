@@ -46,7 +46,36 @@ namespace ProjectDelta.Domain
         public IReadOnlyCollection<RoomInstance> AllRooms => rooms.Values;
     }
 
-    public sealed class InventoryRunState { }
+    // 25일차: 상자 상호작용 확인용 최소 인벤토리. 실제 아이템 정의(6.4절)가 생기기 전까지는
+    // 아이템을 문자열 이름 하나로만 다룬다.
+    public sealed class InventoryItemStack
+    {
+        public string ItemId; // 아이템 식별자 (지금은 표시 이름과 동일한 자리표시자)
+        public string DisplayName; // 화면에 보일 이름
+
+        public InventoryItemStack(string itemId, string displayName)
+        {
+            ItemId = itemId;
+            DisplayName = displayName;
+        }
+    }
+
+    public sealed class InventoryRunState
+    {
+        private readonly List<InventoryItemStack> items = new List<InventoryItemStack>();
+
+        public IReadOnlyList<InventoryItemStack> Items => items;
+
+        public void Add(InventoryItemStack item)
+        {
+            if (item == null)
+            {
+                return;
+            }
+
+            items.Add(item);
+        }
+    }
     public sealed class SkillRunState { }
     public sealed class CharacterRunState { }
     public sealed class EventRunState { }

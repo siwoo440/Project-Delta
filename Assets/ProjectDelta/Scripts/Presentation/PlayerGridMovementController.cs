@@ -31,6 +31,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         public RoomPassageController CurrentPassageController => currentRoomView != null ? currentRoomView.PassageController : null; // 현재 방 통로 컨트롤러 공개
         public Transform CurrentRoomOrigin => currentRoomView != null ? currentRoomView.transform : null; // 현재 방 월드 원점 공개
         public bool IsMoving => isMoving; // 이동 잠금 상태 공개 (다른 입력 컨트롤러가 참조)
+        public bool IsInputLocked { get; set; } // 25일차: 상자 패널 등 모달 UI가 열려있는 동안 이동 차단
 
         private void Awake() // 초기 상태 연결
         {
@@ -150,7 +151,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
         private void TryMove(GridMoveInput input) // 한 칸 이동 또는 방 경계 이동 처리
         {
-            if (playerState == null || isMoving) // 런타임 상태와 이동 잠금 확인 (16일차 중복 이동 방지)
+            if (playerState == null || isMoving || IsInputLocked) // 런타임 상태와 이동 잠금 확인 (16일차 중복 이동 방지, 25일차 모달 UI 잠금)
             {
                 return; // 이동 처리 중단
             }
