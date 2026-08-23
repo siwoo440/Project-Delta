@@ -18,8 +18,20 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
         private void Awake() // 층 상태 연결
         {
-            // 20~21일차와 같은 패턴: 실제 런이 있으면 그 던전 상태를, 없으면(테스트 씬) 로컬 상태를 사용한다.
-            dungeonState = RunContext.Current != null ? RunContext.Current.Dungeon : new DungeonRunState();
+            GetDungeonState(); // 이 시점에 미리 준비 (다른 스크립트가 Awake 순서와 무관하게 먼저 호출할 수도 있어 아래 GetDungeonState()가 실제로는 항상 안전함)
+        }
+
+        // 27일차: 같은 Player 오브젝트의 다른 컴포넌트가 이 컨트롤러보다 먼저 Awake()를 실행해서
+        // EnsureCurrentFloorRoomExists()를 호출하더라도 안전하도록, 여기서 지연 초기화한다.
+        private DungeonRunState GetDungeonState()
+        {
+            if (dungeonState == null) // 아직 초기화되지 않았는지 확인
+            {
+                // 20~21일차와 같은 패턴: 실제 런이 있으면 그 던전 상태를, 없으면(테스트 씬) 로컬 상태를 사용한다.
+                dungeonState = RunContext.Current != null ? RunContext.Current.Dungeon : new DungeonRunState();
+            }
+
+            return dungeonState; // 준비된 던전 상태 반환
         }
 
         // 계단 상호작용이 성공했을 때 호출한다. 다음 층 자리표시자 방을 만들고 플레이어를 그 안에 옮긴다.
@@ -31,11 +43,46 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 return false; // 층 이동 불가 반환
             }
 
-            dungeonState.AdvanceFloor(); // 층 번호 증가 (되돌아가는 방향은 없음, 기획서 3.1절)
+            GetDungeonState().AdvanceFloor(); // 층 번호 증가 (되돌아가는 방향은 없음, 기획서 3.1절)
+            RoomView newRoomView = SpawnRoomForCurrentFloor(); // 새 층 번호에 맞는 자리표시자 방 생성
 
-            RoomView prefab = nextFloorRoomPrefabs[(dungeonState.CurrentFloor - 1) % nextFloorRoomPrefabs.Length]; // 자리표시자 방 순환 선택
-            Vector3 spawnPosition = floorOrigin + floorSpacing * (dungeonState.CurrentFloor - 1); // 층별 스폰 위치 계산 (기존 층과 겹치지 않게)
-            RoomView newRoomView = Instantiate(prefab, spawnPosition, Quaternion.identity); // 다음 층 자리표시자 방 생성
+            movementController.EnterRoom(newRoomView, GridPosition.Zero, CardinalDirection.North); // 새 방 원점으로 정식 진입 절차 실행
+
+            Debug.Log($"[Project Delta] 계단 이동: {GetDungeonState().CurrentFloor}층 / {newRoomView.name}", this); // 층 이동 결과 출력
+            return true; // 층 이동 성공 반환
+        }
+
+        // 27일차: 이어하기로 CurrentFloor가 이미 1보다 큰 상태로 씬이 로드될 때 호출한다.
+        // 계단을 실제로 밟지 않아도, 저장된 층 번호에 맞는 자리표시자 방을 미리 만들어둔다.
+        // PlayerGridMovementController가 RoomId로 방을 찾기 전에 반드시 이 메서드부터 호출해야 한다.
+        public void EnsureCurrentFloorRoomExists()
+        {
+            if (GetDungeonState().CurrentFloor <= 1) // 1층이면(씬 기본 시작 방) 처리 불필요 확인
+            {
+                return; // 준비할 자리표시자 방 없음
+            }
+
+            if (spawnedRoomView != null) // 이미 만들어둔 자리표시자 방이 있는지 확인
+            {
+                return; // 중복 생성 방지
+            }
+
+            if (nextFloorRoomPrefabs == null || nextFloorRoomPrefabs.Length == 0) // 자리표시자 방 프리팹 존재 확인
+            {
+                Debug.LogWarning("[Project Delta] 다음 층 방 프리팹이 지정되지 않아 이어하기 대상 층을 준비할 수 없습니다.", this); // 설정 누락 경고 출력
+                return; // 생성 불가
+            }
+
+            SpawnRoomForCurrentFloor(); // 현재 층 번호에 맞는 자리표시자 방 생성
+        }
+
+        // 현재 층 번호에 맞는 자리표시자 방을 생성하고, 이전 방이 있었다면 정리한다.
+        private RoomView SpawnRoomForCurrentFloor() // 층 번호 기반 자리표시자 방 생성
+        {
+            int floor = GetDungeonState().CurrentFloor; // 현재 층 번호 조회
+            RoomView prefab = nextFloorRoomPrefabs[(floor - 1) % nextFloorRoomPrefabs.Length]; // 자리표시자 방 순환 선택
+            Vector3 spawnPosition = floorOrigin + (floorSpacing * (floor - 1)); // 층별 스폰 위치 계산 (기존 층과 겹치지 않게)
+            RoomView newRoomView = Instantiate(prefab, spawnPosition, Quaternion.identity); // 자리표시자 방 생성
 
             if (spawnedRoomView != null) // 이전에 만든 자리표시자 방 존재 확인
             {
@@ -43,11 +90,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             }
 
             spawnedRoomView = newRoomView; // 새로 만든 자리표시자 방 기록
-
-            movementController.EnterRoom(newRoomView, GridPosition.Zero, CardinalDirection.North); // 새 방 원점으로 정식 진입 절차 실행
-
-            Debug.Log($"[Project Delta] 계단 이동: {dungeonState.CurrentFloor}층 / {newRoomView.name}", this); // 층 이동 결과 출력
-            return true; // 층 이동 성공 반환
+            return newRoomView; // 생성된 방 반환
         }
     }
 }

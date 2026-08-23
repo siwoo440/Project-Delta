@@ -46,6 +46,8 @@ namespace ProjectDelta.Application
         }
 
         // 26일차: "이어하기" 버튼에서 호출. 저장된 런을 읽어 RunContext를 복원하고 던전으로 이동한다.
+        // 27일차: 타이틀뿐 아니라 던전 안(이미 런이 진행 중인 상태)에서도 부를 수 있게 되어,
+        // 그 경우 먼저 진행 중이던 런을 정리한다.
         public void ContinueGame()
         {
             if (_saveService == null || !_saveService.HasRun()) // 저장 서비스·저장 데이터 존재 확인
@@ -53,6 +55,11 @@ namespace ProjectDelta.Application
                 _log.Info("이어할 저장 데이터가 없어 새 게임으로 시작합니다"); // 대체 동작 안내
                 StartNewGame(); // 새 게임으로 대체
                 return; // 이어하기 중단
+            }
+
+            if (RunContext.Current != null) // 27일차: 던전 안에서 불러오기 - 이미 진행 중인 런 확인
+            {
+                RunContext.End(); // 저장 시점으로 덮어쓸 것이므로 지금 진행 중이던 런은 그냥 정리 (별도 저장 없음)
             }
 
             RunData savedRun = _saveService.ReadRun(); // 저장 데이터 읽기

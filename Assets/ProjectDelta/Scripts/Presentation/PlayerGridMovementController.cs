@@ -62,6 +62,12 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 }
                 else if (CurrentPassageController != null && playerState.CurrentRoomId != CurrentPassageController.RoomId) // 26일차: 이어하기로 복원된 방이 씬 기본 시작 방과 다른지 확인
                 {
+                    // 27일차: 2층 이상에서 저장했던 경우, 그 층의 자리표시자 방은 계단을 밟아야만
+                    // 만들어지는데 씬을 새로 열면 아무도 안 밟은 상태다. RoomId로 찾기 전에
+                    // DungeonFloorController에게 현재 층 방을 먼저 만들어두라고 요청한다.
+                    DungeonFloorController floorController = FindFirstObjectByType<DungeonFloorController>(); // 층 전환 컨트롤러 검색
+                    floorController?.EnsureCurrentFloorRoomExists(); // 이어하기 대상 층 방 준비
+
                     RoomView restoredRoomView = FindRoomViewById(playerState.CurrentRoomId); // 복원 대상 방 검색 (RoomId 기반 테스트용 방식)
 
                     if (restoredRoomView != null) // 복원 대상 방을 씬에서 찾았는지 확인
@@ -228,7 +234,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             playerState.CurrentRoomId = roomView.PassageController != null ? roomView.PassageController.RoomId : roomView.name; // 현재 위치 갱신: 방 식별자
             playerState.CurrentGridPosition = entryPosition; // 현재 위치 갱신: 그리드 좌표
 
-            // TODO: 지도 갱신 - 지도 시스템이 생기는 일차에 연결한다.
+            // 23일차: 지도는 DungeonMinimapController가 currentRoomView/PlayerState를 매 프레임 직접
+            // 조회해서 그리므로, 여기서 별도로 갱신을 요청할 필요가 없다.
 
             bool isFirstVisit = roomView.PassageController != null
                 && roomView.PassageController.CurrentInstance != null

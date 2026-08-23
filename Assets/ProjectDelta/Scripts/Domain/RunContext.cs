@@ -42,7 +42,7 @@ namespace ProjectDelta.Domain
             Statistics = new RunStatistics();
         }
 
-        // TODO: not yet called anywhere - wire this in once the new-game flow exists.
+        // 24일차: ApplicationFlow.StartNewGame()/ContinueGame()에서 호출한다.
         public static RunContext Begin(string runId)
         {
             if (Current != null)
@@ -54,7 +54,8 @@ namespace ProjectDelta.Domain
             return Current;
         }
 
-        // TODO: not yet called anywhere - wire this in on game over / ending / run abandon.
+        // 24일차: ApplicationFlow.ReturnToTitle()에서 런 포기 시 호출한다.
+        // TODO: 게임 오버·엔딩 시에도 호출해야 한다 (해당 시스템이 생기는 일차에 연결).
         public static void End()
         {
             Current = null;
