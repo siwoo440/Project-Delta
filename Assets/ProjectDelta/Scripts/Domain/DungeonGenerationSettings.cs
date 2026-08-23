@@ -11,6 +11,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public int MinBranchLength { get; } // 가지 하나의 최소 방 수
         public int MaxBranchLength { get; } // 가지 하나의 최대 방 수
         public double SpecialCandidateChance { get; } // 가지 끝 방을 특수 방 후보로 지정할 확률
+        public double LoopChance { get; } // 서로 인접한 미연결 방을 추가 루프로 연결할 확률
 
         public DungeonGenerationSettings(
             int targetRoomCount,
@@ -19,7 +20,8 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             double branchChance = 0.65d,
             int minBranchLength = 1,
             int maxBranchLength = 3,
-            double specialCandidateChance = 0.30d) // 생성 규칙 생성자
+            double specialCandidateChance = 0.30d,
+            double loopChance = 0d) // 생성 규칙 생성자
         {
             if (targetRoomCount < 1) // 전체 목표 방 수 확인
             {
@@ -61,6 +63,11 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 throw new ArgumentOutOfRangeException(nameof(specialCandidateChance), "특수 방 후보 확률은 0~1 범위여야 합니다."); // 잘못된 확률 차단
             }
 
+            if (loopChance < 0d || loopChance > 1d) // 루프 확률 범위 확인
+            {
+                throw new ArgumentOutOfRangeException(nameof(loopChance), "루프 연결 확률은 0~1 범위여야 합니다."); // 잘못된 확률 차단
+            }
+
             TargetRoomCount = targetRoomCount; // 전체 목표 방 수 저장
             MinMainPathLength = minMainPathLength; // 최소 메인 경로 길이 저장
             MaxMainPathLength = maxMainPathLength; // 최대 메인 경로 길이 저장
@@ -68,6 +75,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             MinBranchLength = minBranchLength; // 가지 최소 길이 저장
             MaxBranchLength = maxBranchLength; // 가지 최대 길이 저장
             SpecialCandidateChance = specialCandidateChance; // 특수 방 후보 확률 저장
+            LoopChance = loopChance; // 루프 연결 확률 저장
         }
     }
 }

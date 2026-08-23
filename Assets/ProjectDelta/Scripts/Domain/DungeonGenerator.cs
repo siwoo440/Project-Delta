@@ -72,7 +72,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             IReadOnlyList<RoomNode> generatedSpecialCandidates,
             int targetMainPathLength,
             int targetRoomCount,
-            string failureReason) // 33일차 생성 결과 생성자
+            string failureReason) // 생성 결과 생성자
         {
             Layout = layout; // 그래프 저장
             EntryRoom = entryRoom; // 시작 방 저장
@@ -128,6 +128,12 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
     public sealed class DungeonGenerator // 절차적 던전 층 생성기
     {
+        private static readonly CardinalDirection[] LoopScanDirections =
+        {
+            CardinalDirection.North,
+            CardinalDirection.East
+        }; // 인접 관계를 한 번씩만 검사하기 위한 방향
+
         private readonly Random random; // 생성에 쓰는 난수 발생기
 
         public DungeonGenerator(int seed) // 시드 기반 생성기 생성자
@@ -164,7 +170,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 return CreateFailedMainPathResult(entryTemplate, targetMainPathLength, settings.TargetRoomCount); // 실패 상태 반환
             }
 
-            return BuildDungeonWithBranches(plannedPath, roomPool, settings, targetMainPathLength); // 메인 경로 확정 후 가지 생성
+            return BuildDungeonWithBranches(plannedPath, roomPool, settings, targetMainPathLength); // 메인 경로·가지·루프 생성
         }
 
         public GeneratedDungeon Generate(RoomTemplate entryTemplate, IReadOnlyList<RoomTemplate> roomPool, int targetRoomCount) // 이전 일차 호환 던전 생성
@@ -208,7 +214,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 }
 
                 CardinalDirection neededDirection = RoomGridLayout.GetOpposite(currentExit.Direction); // 새 방이 가져야 할 반대 방향
-                RoomTemplate nextTemplate = PickTemplateWithExit(roomPool, neededDirection); // 필요한 방향 출구를 가진 방 선택
+                RoomTemplate nextTemplate = PickCompatibleTemplate(roomPool, currentExit); // 실제 출구 정렬까지 맞는 방 선택
 
                 if (nextTemplate == null) // 연결 가능한 방이 없는지 확인
                 {
@@ -216,13 +222,13 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                     continue; // 다음 시도로 이동
                 }
 
-                RoomExit connectedExit = FindFirstExit(nextTemplate, neededDirection); // 새 방에서 실제로 연결에 사용할 출구 선택
+                RoomExit connectedExit = FindCompatibleExit(nextTemplate, currentExit); // 실제 연결에 사용할 정렬된 반대 출구 선택
                 RoomNode newNode = graph.AddRoom(NewRoomId(nextTemplate, roomIdCounter), nextTemplate.DefinitionId, candidatePosition); // 새 방 노드 생성
                 roomIdCounter++; // 다음 번호 준비
-                graph.Connect(current.Node, currentExit.Direction, newNode); // 두 방 연결
+                graph.Connect(current.Node, currentExit, newNode, connectedExit); // 정확한 출구 쌍으로 연결
 
                 List<RoomExit> newRemaining = new List<RoomExit>(nextTemplate.Exits); // 새 방 출구 목록 복사
-                newRemaining.Remove(connectedExit); // 이번 연결에 사용한 정확한 출구 하나만 제거
+                newRemaining.Remove(connectedExit); // 이번 연결에 사용한 정확한 출구 제거
 
                 if (newRemaining.Count > 0) // 새 방에 사용할 수 있는 출구가 남았는지 확인
                 {
@@ -269,7 +275,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 }
 
                 CardinalDirection requiredEntranceDirection = RoomGridLayout.GetOpposite(outgoingExit.Direction); // 다음 방에 필요한 입구 방향
-                List<RoomTemplate> templateCandidates = GetTemplatesWithExit(roomPool, requiredEntranceDirection); // 연결 가능한 방 수집
+                List<RoomTemplate> templateCandidates = GetTemplatesWithExit(roomPool, requiredEntranceDirection); // 반대 방향 출구가 있는 방 수집
                 Shuffle(templateCandidates); // Seed 기반 후보 순서 무작위화
 
                 for (int templateIndex = 0; templateIndex < templateCandidates.Count; templateIndex++) // 방 종류 후보 순회
@@ -281,7 +287,13 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                     for (int entranceIndex = 0; entranceIndex < entranceCandidates.Count; entranceIndex++) // 입구 후보 순회
                     {
                         RoomExit entranceExit = entranceCandidates[entranceIndex]; // 새 방에서 사용할 입구
-                        plannedPath.Add(new PlannedRoom(template, candidatePosition, entranceExit, outgoingExit.Direction)); // 임시 경로에 새 방 추가
+
+                        if (!outgoingExit.CanConnectTo(entranceExit)) // 실제 출구 정렬 축 검사
+                        {
+                            continue; // 위치가 맞지 않는 출구는 사용하지 않음
+                        }
+
+                        plannedPath.Add(new PlannedRoom(template, candidatePosition, entranceExit, outgoingExit)); // 정확한 출구 쌍을 포함해 임시 경로 추가
                         occupiedCoordinates.Add(candidatePosition); // 임시 좌표 점유
 
                         if (TryExtendMainPath(plannedPath, occupiedCoordinates, roomPool, targetMainPathLength)) // 다음 단계 탐색
@@ -302,7 +314,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             List<PlannedRoom> plannedPath,
             IReadOnlyList<RoomTemplate> roomPool,
             DungeonGenerationSettings settings,
-            int targetMainPathLength) // 메인 경로를 확정하고 가지 경로 추가
+            int targetMainPathLength) // 메인 경로를 확정하고 가지·루프 추가
         {
             DungeonLayoutGraph graph = new DungeonLayoutGraph(); // 새 던전 그래프 생성
             List<RoomNode> mainPathNodes = new List<RoomNode>(); // 메인 경로 노드 목록
@@ -320,7 +332,11 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
                 if (i > 0) // 시작 방 이후인지 확인
                 {
-                    graph.Connect(mainPathNodes[i - 1], plannedRoom.ConnectionDirectionFromPrevious.Value, node); // 앞뒤 메인 방 연결
+                    graph.Connect(
+                        mainPathNodes[i - 1],
+                        plannedRoom.ExitFromPreviousRoom.Value,
+                        node,
+                        plannedRoom.EntranceExit.Value); // 메인 경로 실제 출구 쌍 연결
                 }
             }
 
@@ -335,6 +351,10 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 branchRooms,
                 deadEndCandidates,
                 specialCandidates); // 남은 목표 방 수만큼 가지 생성 시도
+
+            GenerateLoops(graph, templateByRoomId, settings.LoopChance); // 인접한 미연결 방의 루프 연결 시도
+            RevalidateEndCandidates(deadEndCandidates); // 루프로 막다른 상태가 사라진 일반 후보 제거
+            RevalidateEndCandidates(specialCandidates); // 루프로 막다른 상태가 사라진 특수 후보 제거
 
             RoomNode entryNode = mainPathNodes[0]; // 첫 방을 시작 방으로 확정
             RoomNode stairsRoom = mainPathNodes[mainPathNodes.Count - 1]; // 메인 경로 마지막 방을 계단 방으로 유지
@@ -392,7 +412,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
                 BranchStartCandidate start = starts[startIndex]; // 현재 가지 시작 후보
 
-                if (start.SourceNode.Connections.ContainsKey(start.SourceExit.Direction)) // 다른 가지가 이미 같은 방향을 사용했는지 확인
+                if (start.SourceNode.Connections.ContainsKey(start.SourceExit.Direction)) // 다른 연결이 이미 같은 방향을 사용했는지 확인
                 {
                     continue; // 이미 사용된 방향이면 생략
                 }
@@ -434,7 +454,11 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                     PlannedRoom plannedRoom = plannedBranch[branchIndex]; // 현재 가지 방 계획
                     RoomNode newNode = graph.AddRoom(NewRoomId(plannedRoom.Template, roomIdCounter), plannedRoom.Template.DefinitionId, plannedRoom.Coordinate); // 가지 방 생성
                     roomIdCounter++; // 다음 방 ID 번호 증가
-                    graph.Connect(previousNode, plannedRoom.ConnectionDirectionFromPrevious.Value, newNode); // 앞 방과 가지 방 연결
+                    graph.Connect(
+                        previousNode,
+                        plannedRoom.ExitFromPreviousRoom.Value,
+                        newNode,
+                        plannedRoom.EntranceExit.Value); // 정확한 출구 쌍으로 가지 연결
                     branchRooms.Add(newNode); // 가지 방 목록 등록
                     templateByRoomId[newNode.RoomId] = plannedRoom.Template; // 템플릿 기록
                     previousNode = newNode; // 다음 연결 기준 갱신
@@ -472,7 +496,13 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 for (int entranceIndex = 0; entranceIndex < entranceCandidates.Count; entranceIndex++) // 입구 후보 순회
                 {
                     RoomExit entranceExit = entranceCandidates[entranceIndex]; // 이번 입구
-                    PlannedRoom plannedRoom = new PlannedRoom(template, candidatePosition, entranceExit, sourceExit.Direction); // 가지 방 계획 생성
+
+                    if (!sourceExit.CanConnectTo(entranceExit)) // 실제 출구 정렬 축 검사
+                    {
+                        continue; // 위치가 맞지 않는 출구는 사용하지 않음
+                    }
+
+                    PlannedRoom plannedRoom = new PlannedRoom(template, candidatePosition, entranceExit, sourceExit); // 정확한 출구 쌍을 보존한 가지 계획
                     plannedBranch.Add(plannedRoom); // 임시 가지에 추가
                     occupied.Add(candidatePosition); // 임시 좌표 점유
 
@@ -507,6 +537,119 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             return false; // 목표 길이 가지 생성 불가
         }
 
+        private void GenerateLoops(
+            DungeonLayoutGraph graph,
+            Dictionary<string, RoomTemplate> templateByRoomId,
+            double loopChance) // 이미 존재하는 인접 방 사이에 선택적 루프 연결
+        {
+            if (loopChance <= 0d) // 루프 기능 비활성 확인
+            {
+                return; // 추가 연결 없음
+            }
+
+            List<RoomNode> rooms = new List<RoomNode>(graph.AllRooms); // 안정적인 순회를 위해 방 목록 복사
+            rooms.Sort((left, right) => string.CompareOrdinal(left.RoomId, right.RoomId)); // 동일 Seed 재현을 위한 순서 고정
+
+            for (int roomIndex = 0; roomIndex < rooms.Count; roomIndex++) // 전체 방 순회
+            {
+                RoomNode room = rooms[roomIndex]; // 현재 방
+
+                if (!templateByRoomId.TryGetValue(room.RoomId, out RoomTemplate roomTemplate)) // 현재 방 템플릿 확인
+                {
+                    continue; // 템플릿 정보가 없으면 루프 검사 불가
+                }
+
+                for (int directionIndex = 0; directionIndex < LoopScanDirections.Length; directionIndex++) // North·East만 검사해 중복 탐색 방지
+                {
+                    CardinalDirection direction = LoopScanDirections[directionIndex]; // 현재 검사 방향
+
+                    if (room.Connections.ContainsKey(direction)) // 이미 해당 방향에 연결이 있는지 확인
+                    {
+                        continue; // 기존 연결 보호
+                    }
+
+                    GridPosition neighborCoordinate = room.MacroCoordinate + GridMovement.GetDirectionDelta(direction); // 인접 좌표 계산
+
+                    if (!graph.TryGetRoomAt(neighborCoordinate, out RoomNode neighbor)) // 실제 인접 방 존재 확인
+                    {
+                        continue; // 방이 없으면 루프 후보 아님
+                    }
+
+                    CardinalDirection opposite = RoomGridLayout.GetOpposite(direction); // 이웃 방 기준 반대 방향 계산
+
+                    if (neighbor.Connections.ContainsKey(opposite)) // 이웃 방의 대응 방향 사용 여부 확인
+                    {
+                        continue; // 기존 연결 보호
+                    }
+
+                    if (!templateByRoomId.TryGetValue(neighbor.RoomId, out RoomTemplate neighborTemplate)) // 이웃 방 템플릿 확인
+                    {
+                        continue; // 템플릿 정보 없으면 연결 불가
+                    }
+
+                    if (!TryFindCompatibleExitPair(
+                        roomTemplate,
+                        direction,
+                        neighborTemplate,
+                        opposite,
+                        out RoomExit roomExit,
+                        out RoomExit neighborExit)) // 양쪽 실제 출구 위치 정렬 확인
+                    {
+                        continue; // 방향은 맞아도 문 위치가 어긋나면 연결 금지
+                    }
+
+                    if (random.NextDouble() > loopChance) // 루프 확률 판정
+                    {
+                        continue; // 이번 인접 관계는 연결하지 않음
+                    }
+
+                    graph.TryConnect(room, roomExit, neighbor, neighborExit); // 중복·좌표·출구 규칙을 다시 검증하며 안전하게 연결
+                }
+            }
+        }
+
+        private static bool TryFindCompatibleExitPair(
+            RoomTemplate fromTemplate,
+            CardinalDirection fromDirection,
+            RoomTemplate toTemplate,
+            CardinalDirection toDirection,
+            out RoomExit fromExit,
+            out RoomExit toExit) // 두 방의 실제 연결 가능한 출구 쌍 검색
+        {
+            for (int fromIndex = 0; fromIndex < fromTemplate.Exits.Count; fromIndex++) // 시작 방 출구 순회
+            {
+                RoomExit candidateFrom = fromTemplate.Exits[fromIndex]; // 시작 방 출구 후보
+
+                if (candidateFrom.Direction != fromDirection) // 필요한 방향인지 확인
+                {
+                    continue; // 다른 방향 생략
+                }
+
+                for (int toIndex = 0; toIndex < toTemplate.Exits.Count; toIndex++) // 이웃 방 출구 순회
+                {
+                    RoomExit candidateTo = toTemplate.Exits[toIndex]; // 이웃 방 출구 후보
+
+                    if (candidateTo.Direction != toDirection) // 필요한 반대 방향인지 확인
+                    {
+                        continue; // 다른 방향 생략
+                    }
+
+                    if (!candidateFrom.CanConnectTo(candidateTo)) // 실제 정렬 축 일치 확인
+                    {
+                        continue; // 문 위치가 맞지 않으면 생략
+                    }
+
+                    fromExit = candidateFrom; // 연결 가능한 시작 출구 반환
+                    toExit = candidateTo; // 연결 가능한 이웃 출구 반환
+                    return true; // 출구 쌍 검색 성공
+                }
+            }
+
+            fromExit = default; // 실패 기본값
+            toExit = default; // 실패 기본값
+            return false; // 연결 가능한 출구 쌍 없음
+        }
+
         private void ClassifyBranchEnd(
             RoomNode branchEnd,
             DungeonGenerationSettings settings,
@@ -525,6 +668,68 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             }
 
             deadEndCandidates.Add(branchEnd); // 일반 막다른 방 후보 등록
+        }
+
+        private static void RevalidateEndCandidates(List<RoomNode> candidates) // 루프 연결 이후 막다른 방 후보 재검사
+        {
+            for (int i = candidates.Count - 1; i >= 0; i--) // 뒤에서부터 안전하게 제거
+            {
+                RoomNode room = candidates[i]; // 현재 후보
+
+                if (room == null || room.Connections.Count != 1) // 더 이상 막다른 방이 아닌지 확인
+                {
+                    candidates.RemoveAt(i); // 후보 목록에서 제거
+                }
+            }
+        }
+
+        private RoomTemplate PickCompatibleTemplate(IReadOnlyList<RoomTemplate> roomPool, RoomExit sourceExit) // 실제 출구 위치까지 맞는 방 선택
+        {
+            CardinalDirection requiredDirection = RoomGridLayout.GetOpposite(sourceExit.Direction); // 필요한 반대 방향
+            List<RoomTemplate> candidates = GetTemplatesWithExit(roomPool, requiredDirection); // 우선 방향 후보 수집
+
+            for (int i = candidates.Count - 1; i >= 0; i--) // 정렬 불가능한 템플릿 제거
+            {
+                if (!HasCompatibleExit(candidates[i], sourceExit)) // 실제 연결 가능한 출구 존재 확인
+                {
+                    candidates.RemoveAt(i); // 정렬 불가 후보 제거
+                }
+            }
+
+            if (candidates.Count == 0) // 최종 후보가 없는지 확인
+            {
+                return null; // 선택 불가
+            }
+
+            return candidates[random.Next(candidates.Count)]; // 정렬 가능한 후보 중 무작위 선택
+        }
+
+        private static bool HasCompatibleExit(RoomTemplate template, RoomExit sourceExit) // 템플릿에 실제 연결 가능한 출구가 있는지 확인
+        {
+            for (int i = 0; i < template.Exits.Count; i++) // 출구 전체 순회
+            {
+                if (sourceExit.CanConnectTo(template.Exits[i])) // 방향과 정렬 축이 모두 맞는지 확인
+                {
+                    return true; // 호환 출구 존재
+                }
+            }
+
+            return false; // 호환 출구 없음
+        }
+
+        private static RoomExit FindCompatibleExit(RoomTemplate template, RoomExit sourceExit) // 실제 연결 가능한 첫 출구 조회
+        {
+            for (int i = 0; i < template.Exits.Count; i++) // 출구 전체 순회
+            {
+                RoomExit exit = template.Exits[i]; // 현재 출구
+
+                if (sourceExit.CanConnectTo(exit)) // 실제 정렬 가능 여부 확인
+                {
+                    return exit; // 호환 출구 반환
+                }
+            }
+
+            throw new InvalidOperationException($"RoomTemplate '{template.DefinitionId}'에 {sourceExit}과 연결 가능한 출구가 없습니다."); // 선택 로직과 데이터 불일치
         }
 
         private static List<RoomExit> GetUnusedExits(RoomNode node, RoomTemplate template) // 그래프에서 아직 사용하지 않은 출구 조회
@@ -575,7 +780,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 reason); // 실패 결과 반환
         }
 
-        private RoomTemplate PickTemplateWithExit(IReadOnlyList<RoomTemplate> roomPool, CardinalDirection requiredDirection) // 필요한 방향 출구를 가진 방 선택
+        private RoomTemplate PickTemplateWithExit(IReadOnlyList<RoomTemplate> roomPool, CardinalDirection requiredDirection) // 이전 생성 방식 호환용 방향 기반 방 선택
         {
             List<RoomTemplate> candidates = GetTemplatesWithExit(roomPool, requiredDirection); // 조건에 맞는 후보 수집
 
@@ -637,21 +842,6 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             }
 
             return false; // 미보유
-        }
-
-        private static RoomExit FindFirstExit(RoomTemplate template, CardinalDirection direction) // 특정 방향 첫 출구 조회
-        {
-            for (int i = 0; i < template.Exits.Count; i++) // 실제 출구 전체 순회
-            {
-                RoomExit exit = template.Exits[i]; // 현재 출구
-
-                if (exit.Direction == direction) // 필요한 방향인지 확인
-                {
-                    return exit; // 출구 반환
-                }
-            }
-
-            throw new InvalidOperationException($"RoomTemplate '{template.DefinitionId}'에 {direction} 출구가 없습니다."); // 데이터 불일치 예외
         }
 
         private void Shuffle<T>(List<T> items) // 현재 Seed의 Random을 이용해 목록 순서 섞기
@@ -738,19 +928,19 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         {
             public RoomTemplate Template { get; } // 사용할 방 종류
             public GridPosition Coordinate { get; } // 던전 매크로 좌표
-            public RoomExit? EntranceExit { get; } // 이전 방에서 들어온 실제 입구
-            public CardinalDirection? ConnectionDirectionFromPrevious { get; } // 이전 방 기준 현재 방 방향
+            public RoomExit? EntranceExit { get; } // 현재 방에서 이전 방과 연결된 실제 입구
+            public RoomExit? ExitFromPreviousRoom { get; } // 이전 방에서 현재 방으로 나온 실제 출구
 
             public PlannedRoom(
                 RoomTemplate template,
                 GridPosition coordinate,
                 RoomExit? entranceExit,
-                CardinalDirection? connectionDirectionFromPrevious) // 계획 방 생성자
+                RoomExit? exitFromPreviousRoom) // 계획 방 생성자
             {
                 Template = template; // 방 종류 저장
                 Coordinate = coordinate; // 좌표 저장
-                EntranceExit = entranceExit; // 입구 저장
-                ConnectionDirectionFromPrevious = connectionDirectionFromPrevious; // 이전 방 연결 방향 저장
+                EntranceExit = entranceExit; // 현재 방 입구 저장
+                ExitFromPreviousRoom = exitFromPreviousRoom; // 이전 방 실제 출구 저장
             }
         }
 

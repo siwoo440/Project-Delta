@@ -3,31 +3,32 @@ using System.Collections.Generic; // 사전 기능 사용
 
 namespace ProjectDelta.Domain // 도메인 네임스페이스
 {
-    // 28일차: 던전 한 층의 방-방 연결을 나타내는 그래프.
-    // RoomGridLayout(방 하나 내부 칸 단위 통로)과는 스케일이 다르다 - 여기서는 "방 하나 = 노드 하나".
-    // 방 내부 모양(칸 크기, 문 배치)은 계속 RoomDefinition/RoomGridLayout이 담당하고,
-    // 이 그래프는 그 방들을 던전 전체 격자에서 어떻게 배치·연결했는지만 다룬다.
     public sealed class RoomConnectionEdge // 노드 하나가 한쪽 방향으로 가진 연결 정보
     {
         public RoomNode Neighbor { get; } // 그 방향으로 연결된 옆 방
         public bool IsLocked { get; } // 잠긴 문으로 연결되었는지 여부
+        public RoomExit? LocalExit { get; } // 현재 방에서 실제로 사용된 출구
+        public RoomExit? NeighborExit { get; } // 이웃 방에서 실제로 사용된 출구
+        public bool HasExactExitPair => LocalExit.HasValue && NeighborExit.HasValue; // 정확한 출구 쌍 보유 여부
 
-        public RoomConnectionEdge(RoomNode neighbor, bool isLocked) // 연결 정보 생성자
+        public RoomConnectionEdge(RoomNode neighbor, bool isLocked) // 이전 일차 호환 생성자
+            : this(neighbor, isLocked, null, null)
+        {
+        }
+
+        public RoomConnectionEdge(RoomNode neighbor, bool isLocked, RoomExit? localExit, RoomExit? neighborExit) // 정확한 출구 정보를 포함한 연결 생성자
         {
             Neighbor = neighbor; // 옆 방 저장
             IsLocked = isLocked; // 잠김 여부 저장
+            LocalExit = localExit; // 현재 방 출구 저장
+            NeighborExit = neighborExit; // 이웃 방 출구 저장
         }
     }
 
     public sealed class RoomNode // 던전 그래프 안 방 하나
     {
-        public string RoomId { get; } // 방 식별자 (RoomInstance.RoomId와 대응)
+        public string RoomId { get; } // 방 식별자
         public string DefinitionId { get; } // 원본 RoomDefinition의 Id
-
-        // 지금은 방 하나가 던전 격자 한 칸만 차지한다고 가정한다.
-        // TODO: 여러 칸을 차지하는 방 모양이 생기면 이 필드 하나로는 부족해진다. 그때는
-        // MacroCoordinate 대신 OccupiedCoordinates(IReadOnlyList<GridPosition>) 형태로 바꾸고,
-        // DungeonLayoutGraph의 좌표별 조회(nodesByCoordinate)도 여러 칸을 등록하도록 손보면 된다.
         public GridPosition MacroCoordinate { get; } // 던전 격자 안 이 방의 좌표
 
         private readonly Dictionary<CardinalDirection, RoomConnectionEdge> connections = new Dictionary<CardinalDirection, RoomConnectionEdge>(); // 방향별 연결 정보
@@ -46,9 +47,14 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             return connections.TryGetValue(direction, out edge); // 연결 정보 조회 결과 반환
         }
 
-        internal void SetConnection(CardinalDirection direction, RoomConnectionEdge edge) // 방향별 연결 설정 (DungeonLayoutGraph.Connect 전용)
+        internal bool HasConnection(CardinalDirection direction) // 해당 방향 연결 존재 여부
         {
-            connections[direction] = edge; // 연결 정보 저장
+            return connections.ContainsKey(direction); // 방향 키 존재 결과 반환
+        }
+
+        internal void SetConnection(CardinalDirection direction, RoomConnectionEdge edge) // DungeonLayoutGraph 전용 연결 기록
+        {
+            connections[direction] = edge; // 방향별 연결 저장
         }
     }
 
@@ -59,12 +65,16 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
 
         public IReadOnlyCollection<RoomNode> AllRooms => nodesByRoomId.Values; // 전체 방 노드 공개
 
-        // 새 방 노드를 그래프에 등록한다. 같은 좌표에 이미 방이 있으면 예외를 던진다.
         public RoomNode AddRoom(string roomId, string definitionId, GridPosition macroCoordinate) // 방 노드 추가
         {
             if (string.IsNullOrEmpty(roomId)) // 방 식별자 존재 확인
             {
                 throw new ArgumentException("roomId는 비어있을 수 없습니다.", nameof(roomId)); // 식별자 누락 예외
+            }
+
+            if (nodesByRoomId.ContainsKey(roomId)) // 같은 방 ID 중복 확인
+            {
+                throw new InvalidOperationException($"방 ID '{roomId}'는 이미 존재합니다."); // 방 ID 중복 예외
             }
 
             if (nodesByCoordinate.ContainsKey(macroCoordinate)) // 좌표 중복 확인
@@ -88,22 +98,97 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             return nodesByCoordinate.TryGetValue(macroCoordinate, out node); // 조회 결과 반환
         }
 
-        // 두 방을 양방향으로 연결한다. direction은 from 기준 방향이고, to에는 자동으로 반대 방향에 연결된다.
-        public void Connect(RoomNode from, CardinalDirection direction, RoomNode to, bool isLocked = false) // 두 방 노드 연결
+        public bool TryConnect(RoomNode from, CardinalDirection direction, RoomNode to, bool isLocked = false) // 방향 정보만 사용한 안전한 연결 시도
         {
-            if (from == null) // from 노드 존재 확인
+            if (!CanConnectNodes(from, direction, to)) // 기본 그래프 연결 규칙 확인
             {
-                throw new ArgumentNullException(nameof(from)); // from 누락 예외
+                return false; // 규칙 위반 시 연결 거부
             }
 
-            if (to == null) // to 노드 존재 확인
+            CardinalDirection opposite = RoomGridLayout.GetOpposite(direction); // 반대 방향 계산
+            from.SetConnection(direction, new RoomConnectionEdge(to, isLocked)); // from -> to 연결
+            to.SetConnection(opposite, new RoomConnectionEdge(from, isLocked)); // to -> from 연결
+            return true; // 연결 성공
+        }
+
+        public bool TryConnect(RoomNode from, RoomExit fromExit, RoomNode to, RoomExit toExit, bool isLocked = false) // 정확한 출구 쌍을 사용한 안전한 연결 시도
+        {
+            if (!fromExit.CanConnectTo(toExit)) // 방향과 정렬 축이 일치하는지 확인
             {
-                throw new ArgumentNullException(nameof(to)); // to 누락 예외
+                return false; // 물리적으로 맞지 않는 출구는 연결 거부
             }
 
-            CardinalDirection opposite = RoomGridLayout.GetOpposite(direction); // 반대 방향 계산 (기존 로직 재사용)
-            from.SetConnection(direction, new RoomConnectionEdge(to, isLocked)); // from -> to 방향 연결
-            to.SetConnection(opposite, new RoomConnectionEdge(from, isLocked)); // to -> from 반대 방향 연결
+            if (!CanConnectNodes(from, fromExit.Direction, to)) // 그래프 방향·좌표·중복 규칙 확인
+            {
+                return false; // 그래프 규칙 위반 시 연결 거부
+            }
+
+            CardinalDirection opposite = RoomGridLayout.GetOpposite(fromExit.Direction); // 반대 방향 계산
+
+            if (opposite != toExit.Direction) // 목적지 출구 방향 재확인
+            {
+                return false; // 반대 방향이 아니면 연결 거부
+            }
+
+            from.SetConnection(
+                fromExit.Direction,
+                new RoomConnectionEdge(to, isLocked, fromExit, toExit)); // from 쪽에 정확한 출구 쌍 저장
+
+            to.SetConnection(
+                toExit.Direction,
+                new RoomConnectionEdge(from, isLocked, toExit, fromExit)); // to 쪽에는 반대 관점으로 출구 쌍 저장
+
+            return true; // 연결 성공
+        }
+
+        public void Connect(RoomNode from, CardinalDirection direction, RoomNode to, bool isLocked = false) // 이전 일차 호환 연결 API
+        {
+            if (!TryConnect(from, direction, to, isLocked)) // 안전한 연결 시도
+            {
+                throw new InvalidOperationException($"방 연결에 실패했습니다. {DescribeRoom(from)} --{direction}--> {DescribeRoom(to)}"); // 잘못된 연결을 조용히 덮어쓰지 않음
+            }
+        }
+
+        public void Connect(RoomNode from, RoomExit fromExit, RoomNode to, RoomExit toExit, bool isLocked = false) // 정확한 출구 쌍 연결 API
+        {
+            if (!TryConnect(from, fromExit, to, toExit, isLocked)) // 정확한 출구 연결 시도
+            {
+                throw new InvalidOperationException($"출구 연결에 실패했습니다. {DescribeRoom(from)} [{fromExit}] <-> {DescribeRoom(to)} [{toExit}]"); // 잘못된 출구 연결 차단
+            }
+        }
+
+        private static bool CanConnectNodes(RoomNode from, CardinalDirection direction, RoomNode to) // 공통 그래프 연결 규칙
+        {
+            if (from == null || to == null) // 노드 존재 확인
+            {
+                return false; // null 연결 거부
+            }
+
+            if (ReferenceEquals(from, to)) // 자기 자신 연결 확인
+            {
+                return false; // 자기 연결 거부
+            }
+
+            CardinalDirection opposite = RoomGridLayout.GetOpposite(direction); // 목적지 반대 방향 계산
+
+            if (from.HasConnection(direction) || to.HasConnection(opposite)) // 양쪽 방향 사용 여부 확인
+            {
+                return false; // 기존 연결 덮어쓰기 방지
+            }
+
+            GridPosition expectedCoordinate = from.MacroCoordinate + GridMovement.GetDirectionDelta(direction); // 방향상 목적지 좌표 계산
+
+            if (expectedCoordinate != to.MacroCoordinate) // 실제 인접 좌표인지 확인
+            {
+                return false; // 떨어져 있거나 잘못된 방향이면 연결 거부
+            }
+
+            return true; // 모든 공통 규칙 통과
+        }
+
+        private static string DescribeRoom(RoomNode room) // 예외 메시지용 방 설명
+        {
+            return room == null ? "null" : $"{room.RoomId}@{room.MacroCoordinate}"; // 방 ID와 좌표 반환
         }
     }
 }
