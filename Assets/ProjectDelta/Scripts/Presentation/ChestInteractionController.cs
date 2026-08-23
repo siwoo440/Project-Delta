@@ -1,4 +1,5 @@
 using System.Collections.Generic; // 목록 기능 사용
+using ProjectDelta.Application; // 26일차: 던전 진행 상태 저장 요청
 using ProjectDelta.Domain; // 도메인 좌표·인벤토리 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 using UnityEngine.InputSystem; // Input System 사용
@@ -122,6 +123,17 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 lookController.SetCursorFreeForUi(true); // 커서 해제 및 시점 회전 중단, 클릭 가능하게 전환
             }
+
+            RoomInstance roomInstance = movementController != null && movementController.CurrentPassageController != null
+                ? movementController.CurrentPassageController.CurrentInstance
+                : null; // 현재 방 인스턴스 조회
+
+            if (roomInstance != null) // 방 인스턴스 존재 확인
+            {
+                roomInstance.MarkChestOpened(); // 26일차: 상자 개봉 상태를 저장 대상(Domain)에 기록
+            }
+
+            ApplicationFlow.Current?.SaveDungeonProgress(); // 26일차: 상자 개봉 시 자동 저장
         }
 
         private void ClosePanel() // 상자 패널 닫기
@@ -249,6 +261,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                     if (openChest.TryTake(i, out string takenName)) // 상자에서 꺼내기 시도
                     {
                         inventory.Add(new InventoryItemStack(takenName, takenName)); // 인벤토리에 추가
+                        ApplicationFlow.Current?.SaveDungeonProgress(); // 26일차: 아이템을 실제로 가져온 시점에 저장 (상자를 연 시점엔 아직 인벤토리에 없었음)
                     }
 
                     break; // 이번 프레임엔 목록이 바뀌었으므로 여기서 멈춤

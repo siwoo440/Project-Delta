@@ -33,6 +33,13 @@ namespace ProjectDelta.Data
         public int FacingDirection;
         public int DungeonSeed;
 
+        // 26일차: 방-방 연결 그래프가 없는 지금은 CurrentRoomCoordinate로 이어하기 위치를 못 찾는다.
+        // RoomId로 대신 찾는 테스트용 필드. 실제 좌표/연결 데이터가 생기면 이 필드는 걷어낸다.
+        public string CurrentRoomId;
+
+        // 26일차: 방을 다시 찾아간 뒤, 그 방 안 정확히 어느 칸에 서 있었는지 복원하기 위한 필드.
+        public Vector2Int CurrentGridPositionInRoom;
+
         // TODO 3.2.8절 던전 시드 구현 시 추가: 난수 생성기별 현재 상태
     }
 

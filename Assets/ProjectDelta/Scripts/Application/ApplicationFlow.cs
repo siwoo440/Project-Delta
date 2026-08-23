@@ -1,4 +1,5 @@
 using System;
+using ProjectDelta.Data;
 using ProjectDelta.Domain;
 
 namespace ProjectDelta.Application
@@ -11,12 +12,14 @@ namespace ProjectDelta.Application
 
         private readonly ISceneLoaderService _sceneLoader;
         private readonly ILogService _log;
+        private readonly ISaveService _saveService; // 26일차: 던전 진행 상태 저장·불러오기
         private string _pendingSceneName; // 24일차: 로딩 화면을 거쳐 이동할 다음 씬
 
-        public ApplicationFlow(ISceneLoaderService sceneLoader, ILogService log)
+        public ApplicationFlow(ISceneLoaderService sceneLoader, ILogService log, ISaveService saveService)
         {
             _sceneLoader = sceneLoader;
             _log = log;
+            _saveService = saveService;
             Current = this;
         }
 
@@ -31,8 +34,46 @@ namespace ProjectDelta.Application
         {
             string runId = Guid.NewGuid().ToString();
             _log.Info($"Starting new game: {runId}");
+            DungeonSaveMapper.ClearPendingRestore(); // 26일차: 이전 이어하기 시도의 복원 데이터가 새 런에 섞이지 않도록 정리
             RunContext.Begin(runId);
             LoadWithLoadingScreen(SceneNames.Dungeon);
+        }
+
+        // 26일차: 저장된 런이 있는지 확인한다. "이어하기" 버튼 표시 여부에 쓴다.
+        public bool HasSavedRun()
+        {
+            return _saveService != null && _saveService.HasRun();
+        }
+
+        // 26일차: "이어하기" 버튼에서 호출. 저장된 런을 읽어 RunContext를 복원하고 던전으로 이동한다.
+        public void ContinueGame()
+        {
+            if (_saveService == null || !_saveService.HasRun()) // 저장 서비스·저장 데이터 존재 확인
+            {
+                _log.Info("이어할 저장 데이터가 없어 새 게임으로 시작합니다"); // 대체 동작 안내
+                StartNewGame(); // 새 게임으로 대체
+                return; // 이어하기 중단
+            }
+
+            RunData savedRun = _saveService.ReadRun(); // 저장 데이터 읽기
+            RunContext.Begin(savedRun.BasicInfo.RunId); // 저장된 런 식별자로 런 시작
+            DungeonSaveMapper.ApplyBasics(RunContext.Current, savedRun); // 층 번호·현재 방 복원
+            DungeonSaveMapper.BeginRestore(savedRun); // 방별 복원 데이터 준비 (씬의 각 방이 스스로 조회)
+
+            _log.Info($"저장된 런 이어하기: {savedRun.BasicInfo.RunId}"); // 이어하기 로그 출력
+            LoadWithLoadingScreen(SceneNames.Dungeon); // 로딩 화면을 거쳐 던전으로 이동
+        }
+
+        // 22/25일차: 방 진입·상자 개봉처럼 진행 상태가 바뀌는 시점에서 호출한다.
+        public void SaveDungeonProgress()
+        {
+            if (_saveService == null || RunContext.Current == null) // 저장 서비스·진행 중인 런 확인
+            {
+                return; // 저장 대상 없음, 중단
+            }
+
+            RunData data = DungeonSaveMapper.BuildFromRunContext(RunContext.Current); // 현재 런 상태를 저장 데이터로 변환
+            _saveService.WriteRun(data, "InProgress"); // 저장 실행
         }
 
         // 24일차: "설정" 버튼에서 호출. 설정 화면은 가벼워서 로딩 화면 없이 바로 이동한다.
@@ -50,6 +91,8 @@ namespace ProjectDelta.Application
             {
                 _log.Info("Abandoning current run");
                 RunContext.End();
+                _saveService?.DeleteRun(); // 26일차: 로그라이트 관례상 런 포기 = 그 회차 저장 삭제
+                DungeonSaveMapper.ClearPendingRestore(); // 남아있을 수 있는 복원 데이터 정리
             }
 
             _log.Info("Returning to TitleScene");

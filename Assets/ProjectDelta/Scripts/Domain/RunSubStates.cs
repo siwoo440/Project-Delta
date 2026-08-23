@@ -28,6 +28,12 @@ namespace ProjectDelta.Domain
             CurrentFloor++;
         }
 
+        // 26일차: 저장된 런을 이어할 때 층 번호를 그대로 복원한다.
+        public void SetFloor(int floor)
+        {
+            CurrentFloor = floor;
+        }
+
         public void Register(RoomInstance roomInstance)
         {
             if (roomInstance == null || string.IsNullOrEmpty(roomInstance.RoomId))

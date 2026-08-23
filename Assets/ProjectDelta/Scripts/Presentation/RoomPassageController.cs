@@ -45,6 +45,11 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             if (RunContext.Current != null) // 실제 런 진행 여부 확인 (21일차: 테스트 씬은 등록하지 않음)
             {
                 RunContext.Current.Dungeon.Register(roomInstance); // 현재 런의 방 레지스트리에 등록
+
+                if (DungeonSaveMapper.TryGetRoomState(roomId, out RoomRunState savedState)) // 26일차: 이어하기로 복원할 상태가 있는지 확인
+                {
+                    roomInstance.ApplySavedState(savedState.Visited, savedState.Completed, savedState.ChestOpened); // 저장된 방 상태 복원
+                }
             }
 
             if (layoutKind == TestRoomLayoutKind.Primary) // 첫 번째 테스트 방 확인

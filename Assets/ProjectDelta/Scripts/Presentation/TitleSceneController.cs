@@ -20,20 +20,37 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             float buttonWidth = 220f; // 버튼 가로 크기
             float buttonHeight = 50f; // 버튼 세로 크기
+            float spacing = buttonHeight + 16f; // 버튼 사이 간격 포함 세로 이동량
             float buttonX = centerX - (buttonWidth / 2f); // 버튼 가로 중앙 정렬 좌표
-            float startY = Screen.height * 0.45f; // 첫 버튼 세로 시작 좌표
+            float y = Screen.height * 0.4f; // 첫 버튼 세로 시작 좌표
 
-            if (GUI.Button(new Rect(buttonX, startY, buttonWidth, buttonHeight), "새 게임", buttonStyle)) // 새 게임 버튼
+            bool hasSavedRun = ApplicationFlow.Current != null && ApplicationFlow.Current.HasSavedRun(); // 26일차: 저장된 런 존재 여부 확인
+
+            if (hasSavedRun) // 저장된 런이 있을 때만 이어하기 버튼 표시
+            {
+                if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "이어하기", buttonStyle)) // 이어하기 버튼
+                {
+                    ApplicationFlow.Current?.ContinueGame(); // 저장된 런 복원 후 로딩 화면을 거쳐 던전으로 이동
+                }
+
+                y += spacing; // 다음 버튼 위치로 이동
+            }
+
+            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "새 게임", buttonStyle)) // 새 게임 버튼
             {
                 ApplicationFlow.Current?.StartNewGame(); // 새 런 시작 후 로딩 화면을 거쳐 던전으로 이동
             }
 
-            if (GUI.Button(new Rect(buttonX, startY + buttonHeight + 16f, buttonWidth, buttonHeight), "설정", buttonStyle)) // 설정 버튼
+            y += spacing; // 다음 버튼 위치로 이동
+
+            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "설정", buttonStyle)) // 설정 버튼
             {
                 ApplicationFlow.Current?.OpenSettings(); // 설정 화면으로 이동
             }
 
-            if (GUI.Button(new Rect(buttonX, startY + ((buttonHeight + 16f) * 2f), buttonWidth, buttonHeight), "종료", buttonStyle)) // 종료 버튼
+            y += spacing; // 다음 버튼 위치로 이동
+
+            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "종료", buttonStyle)) // 종료 버튼
             {
                 QuitGame(); // 게임 종료 처리
             }

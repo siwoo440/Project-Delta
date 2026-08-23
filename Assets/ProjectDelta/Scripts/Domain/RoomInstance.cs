@@ -20,6 +20,7 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public RoomGridLayout Layout { get; } // 이 방의 통로 상태
         public bool Visited { get; private set; } // 최초 방문 여부 (기획서 3.3.3절 "처음 들어온 순간 한 번만 처리")
         public bool Completed { get; private set; } // 콘텐츠 처리 상태 (기획서 3.3.3절 "이벤트가 완료되면 해당 방은 일반적으로 빈 방으로 전환한다")
+        public bool ChestOpened { get; private set; } // 25일차 상자 개봉 여부 (26일차: 저장 대상에 포함)
 
         private RoomInstance(string roomId, string definitionId, RoomGridLayout layout) // 방 인스턴스 생성자
         {
@@ -45,6 +46,21 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public void MarkCompleted() // 방 콘텐츠 처리 완료로 전환
         {
             Completed = true; // 콘텐츠 처리 완료 상태로 전환
+        }
+
+        // 25일차: 상자를 열었을 때 호출한다. 저장 데이터(RoomRunState.ChestOpened)로 이어진다.
+        public void MarkChestOpened()
+        {
+            ChestOpened = true; // 상자 개봉 상태로 전환
+        }
+
+        // 26일차: 저장 데이터를 불러올 때 "최초 1회" 판정 없이 상태를 그대로 덮어씌운다.
+        // MarkVisited()/MarkCompleted()와 달리 몇 번을 호출해도 부작용이 없다.
+        public void ApplySavedState(bool visited, bool completed, bool chestOpened)
+        {
+            Visited = visited; // 저장된 방문 상태 복원
+            Completed = completed; // 저장된 완료 상태 복원
+            ChestOpened = chestOpened; // 저장된 상자 개봉 상태 복원
         }
 
         // RoomDefinition의 정적 통로 목록으로부터 실제 방 인스턴스를 만든다.

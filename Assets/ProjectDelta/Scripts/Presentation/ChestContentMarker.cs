@@ -23,6 +23,19 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             }
         }
 
+        // 26일차: RoomPassageController.Awake()가 저장 상태를 RoomInstance에 먼저 복원해둔 뒤에
+        // 실행되도록 Start()에서 확인한다 (Unity는 같은 프레임의 모든 Awake()를 Start()보다 먼저 끝낸다).
+        private void Start()
+        {
+            RoomPassageController passageController = GetComponentInParent<RoomPassageController>(); // 이 상자가 속한 방의 통로 컨트롤러 검색
+
+            if (passageController != null && passageController.CurrentInstance != null && passageController.CurrentInstance.ChestOpened) // 저장된 상태가 "이미 개봉함"인지 확인
+            {
+                EnsureInitialized(); // 목록 준비
+                remainingItems.Clear(); // 26일차: 부분 개봉 상태는 저장하지 않아 통째로 빈 상자로 복원 (테스트용 단순화)
+            }
+        }
+
         private void EnsureInitialized() // 인스펙터 목록을 런타임 목록으로 최초 1회 복사
         {
             if (initialized) // 이미 초기화되었는지 확인

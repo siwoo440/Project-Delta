@@ -89,7 +89,7 @@ namespace ProjectDelta.Infrastructure
             Services.Register<ISceneLoaderService>(sceneLoader);
             log.Info("Scene loader service ready");
 
-            _applicationFlow = new ApplicationFlow(sceneLoader, log);
+            _applicationFlow = new ApplicationFlow(sceneLoader, log, saveService);
 
             yield return null;
         }

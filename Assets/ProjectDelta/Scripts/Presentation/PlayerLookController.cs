@@ -16,7 +16,12 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputAction lookAction; // 마우스 시점 액션
         private float yaw; // 현재 수평 회전값
         private float pitch; // 현재 수직 회전값
-        private bool isSuspendedForUi; // 25일차: 상자 패널 등 마우스가 필요한 UI가 열려있는 동안 시점 회전·커서 잠금 중단
+        private bool isUiRequestingFreeCursor; // 25일차: 상자 패널 등 마우스가 필요한 UI가 열려있는 동안 커서 해제 요청
+        private bool isAltHeld; // 26일차: Alt 키를 누르고 있는 동안 커서 해제 요청
+
+        // 둘 중 하나라도 커서를 요구하면 커서를 풀어둔다 (26일차: 서로 독립적으로 추적해서,
+        // 예를 들어 상자 패널이 열린 채로 Alt를 뗐다고 커서가 다시 잠기는 일이 없게 한다).
+        private bool ShouldFreeCursor => isUiRequestingFreeCursor || isAltHeld;
 
         public float YawDegrees => transform.eulerAngles.y; // 현재 수평 시점 각도 공개
         public float PitchDegrees => pitch; // 현재 수직 시점 각도 공개
@@ -60,23 +65,17 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         // isFree가 true면 커서를 풀어 클릭 가능하게 하고 시점 회전을 멈춘다.
         public void SetCursorFreeForUi(bool isFree)
         {
-            isSuspendedForUi = isFree; // 시점 회전 중단 여부 갱신
-
-            if (isFree) // UI 사용을 위해 커서가 필요한지 확인
-            {
-                UnlockCursor(); // 커서 잠금 해제 및 표시
-            }
-            else // 다시 탐험으로 돌아가는 경우
-            {
-                LockCursor(); // 커서 화면 중앙 고정 및 숨김
-            }
+            isUiRequestingFreeCursor = isFree; // UI 쪽 커서 해제 요청 상태 갱신
+            RefreshCursorState(); // 최종 커서 상태 반영
         }
 
-        private void Update() // 매 프레임 시점 회전
+        private void Update() // 매 프레임 Alt 입력 확인 및 시점 회전
         {
-            if (isSuspendedForUi) // 마우스가 필요한 UI가 열려있는지 확인
+            UpdateAltHeld(); // 26일차: Alt를 누르고 있는 동안 커서 해제
+
+            if (ShouldFreeCursor) // 커서가 필요한 상태인지 확인
             {
-                return; // UI 사용 중에는 시점 회전 생략
+                return; // 커서가 필요한 동안은 시점 회전 생략
             }
 
             if (lookAction == null || cameraTransform == null) // 입력 또는 카메라 누락 확인
@@ -101,6 +100,37 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private void OnDisable() // 자유 시점 입력 해제
         {
             UnlockCursor(); // 마우스 커서 잠금 해제
+        }
+
+        // 26일차: 좌우 Alt 키 중 하나라도 눌려있으면 커서를 해제한다.
+        private void UpdateAltHeld() // Alt 키 상태 확인 및 커서 상태 갱신
+        {
+            if (Keyboard.current == null) // 키보드 장치 확인
+            {
+                return; // 조회 불가, 처리 중단
+            }
+
+            bool altPressed = Keyboard.current.leftAltKey.isPressed || Keyboard.current.rightAltKey.isPressed; // 좌우 Alt 키 상태 확인
+
+            if (altPressed == isAltHeld) // 이전 프레임과 상태 변화 여부 확인
+            {
+                return; // 변화 없음, 처리 생략
+            }
+
+            isAltHeld = altPressed; // Alt 보유 상태 갱신
+            RefreshCursorState(); // 최종 커서 상태 반영
+        }
+
+        private void RefreshCursorState() // UI 요청·Alt 보유 상태를 합쳐 최종 커서 상태 적용
+        {
+            if (ShouldFreeCursor) // 커서가 필요한 상태인지 확인
+            {
+                UnlockCursor(); // 커서 잠금 해제 및 표시
+            }
+            else // 둘 다 커서를 요구하지 않는 경우
+            {
+                LockCursor(); // 커서 화면 중앙 고정 및 숨김
+            }
         }
 
         private static float NormalizeSignedAngle(float angle) // 0~360 각도를 부호 각도로 변환

@@ -1,4 +1,5 @@
 using System.Collections; // 이동 보간 코루틴 사용
+using ProjectDelta.Application; // 26일차: 던전 진행 상태 저장 요청
 using ProjectDelta.Domain; // 도메인 이동 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 using UnityEngine.InputSystem; // Input System 사용
@@ -58,6 +59,15 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 if (string.IsNullOrEmpty(playerState.CurrentRoomId) && CurrentPassageController != null) // 현재 방 식별자 미설정 확인
                 {
                     playerState.CurrentRoomId = CurrentPassageController.RoomId; // 첫 테스트 방 식별자 초기화
+                }
+                else if (CurrentPassageController != null && playerState.CurrentRoomId != CurrentPassageController.RoomId) // 26일차: 이어하기로 복원된 방이 씬 기본 시작 방과 다른지 확인
+                {
+                    RoomView restoredRoomView = FindRoomViewById(playerState.CurrentRoomId); // 복원 대상 방 검색 (RoomId 기반 테스트용 방식)
+
+                    if (restoredRoomView != null) // 복원 대상 방을 씬에서 찾았는지 확인
+                    {
+                        currentRoomView = restoredRoomView; // 시작 방을 복원 대상으로 전환
+                    }
                 }
 
                 ApplyWorldPosition(playerState.CurrentGridPosition); // 저장된 논리 위치를 현재 방 월드 위치에 반영
@@ -225,7 +235,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
                 && roomView.PassageController.CurrentInstance.MarkVisited(); // 최초 방문 여부 확인 및 방문 처리
 
             // TODO: 방 이벤트 처리 - isFirstVisit를 기준으로 이벤트 시스템이 생기는 일차(99~108일차)에 연결한다.
-            // TODO: 자동 저장 요청 - SaveService/RunContext가 실제로 연결되는 일차에 호출한다.
+            ApplicationFlow.Current?.SaveDungeonProgress(); // 26일차: 방 진입 시 자동 저장
 
             StartCoroutine(MoveRoutine(CalculateWorldPosition(entryPosition))); // 목적 방 입구까지 부드럽게 이동
 
@@ -237,6 +247,21 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             playerState.CurrentGridPosition = target; // 논리 그리드 위치 즉시 갱신 (17일차: 화면 위치와 분리)
             StartCoroutine(MoveRoutine(CalculateWorldPosition(target))); // 실제 Player 위치를 목표 칸까지 부드럽게 이동
             Debug.Log($"[Project Delta] GridPosition {target} / Room {playerState.CurrentRoomId} / Facing {facing}", this); // 현재 좌표와 방 로그 출력
+        }
+
+        // 26일차: 이어하기로 복원된 RoomId를 가진 방을 씬에서 찾는다.
+        // 방-방 연결 그래프가 없는 지금은 이렇게 전체 검색으로 찾는 테스트용 방식이다.
+        private RoomView FindRoomViewById(string roomId) // RoomId로 씬의 RoomView 검색
+        {
+            foreach (RoomView candidate in FindObjectsByType<RoomView>(FindObjectsSortMode.None)) // 씬의 모든 RoomView 반복
+            {
+                if (candidate.PassageController != null && candidate.PassageController.RoomId == roomId) // 식별자 일치 확인
+                {
+                    return candidate; // 일치하는 방 반환
+                }
+            }
+
+            return null; // 일치하는 방 없음 반환
         }
 
         private GridPosition WorldToGridPosition(Vector3 worldPosition) // 월드 위치를 현재 방 논리 좌표로 변환
