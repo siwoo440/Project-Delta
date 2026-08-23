@@ -48,5 +48,10 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         {
             return !left.Equals(right); // 부등 비교 결과 반환
         }
+
+        public static GridPosition operator +(GridPosition left, GridPosition right) // 좌표 덧셈 연산자 (29일차: 던전 생성기의 방향 이동 계산용)
+        {
+            return new GridPosition(left.X + right.X, left.Z + right.Z); // 성분별 합 반환
+        }
     }
 }
