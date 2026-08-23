@@ -4,7 +4,9 @@
     "references": [
         "ProjectDelta.Application",
         "ProjectDelta.Infrastructure",
-        "ProjectDelta.Data"
+        "ProjectDelta.Data",
+        "ProjectDelta.Domain",
+        "ProjectDelta.Presentation"
     ],
     "includePlatforms": [
         "Editor"
