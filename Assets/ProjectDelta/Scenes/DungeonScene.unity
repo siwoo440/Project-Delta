@@ -447,6 +447,7 @@ MonoBehaviour:
   maxBranchLength: 1
   specialCandidateChance: 0.3
   loopChance: 0
+  defaultMonsterEncounter: {fileID: 11400000, guid: 1645821cbac980e42b1676eb27d5be1a, type: 2}
 --- !u!114 &500000010
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -463,18 +464,20 @@ MonoBehaviour:
   viewTransform: {fileID: 330585546}
   mapSize: 240
   margin: 20
-  cellPixelSize: 39
-  wallThickness: 4.5
-  doorMarkerSize: 12
-  contentMarkerSize: 13.5
+  roomSpacing: 34
+  roomMarkerSize: 24
   playerIconSize: 21
   fullMapScale: 5
   fullMapMaxScreenRatio: 0.92
   fullMapContentScale: 1.5
-  minX: -2
-  maxX: 2
-  minZ: -2
-  maxZ: 2
+  fullMapMinZoom: 0.6
+  fullMapMaxZoom: 2
+  fullMapZoomStep: 0.2
+  fullMapConnectionThickness: 4
+  fullMapPadding: 28
+  fullMapInfoHeight: 76
+  fullMapBottomHeight: 34
+  totalFloorCount: 5
 --- !u!114 &500000011
 MonoBehaviour:
   m_ObjectHideFlags: 0

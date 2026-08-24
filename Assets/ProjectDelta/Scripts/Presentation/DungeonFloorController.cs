@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectDelta.Application;
 using ProjectDelta.Data; // RoomDefinition 사용
 using ProjectDelta.Domain; // 생성 그래프·Seed·통로 사용
 using DungeonRunState = ProjectDelta.Domain.DungeonRunState; // Data/Domain 동명 타입 충돌 방지
@@ -34,10 +35,15 @@ namespace ProjectDelta.Presentation
         [SerializeField, Range(0f, 1f)] private float specialCandidateChance = 0.30f;
         [SerializeField, Range(0f, 1f)] private float loopChance = 0f;
 
+        [Header("40일차 인카운터 배치")]
+        [SerializeField] private EncounterDefinition defaultMonsterEncounter;
+
         private DungeonRunState dungeonState;
         private RoomView spawnedRoomView; // 기존 자리표시자 호환
         private Transform generatedFloorRoot;
         private DungeonGenerationRunResult currentGeneration;
+        private DungeonEncounterLayout currentEncounterLayout =
+            new DungeonEncounterLayout();
         private bool awakeCompleted;
 
         private readonly Dictionary<string, RoomView> spawnedRooms =
@@ -49,6 +55,7 @@ namespace ProjectDelta.Presentation
         public GeneratedDungeon CurrentDungeon => currentGeneration?.Dungeon;
         public int CurrentSuccessfulSeed => currentGeneration != null ? currentGeneration.SuccessfulSeed : 0;
         public IReadOnlyDictionary<string, RoomView> SpawnedRooms => spawnedRooms;
+        public DungeonEncounterLayout CurrentEncounterLayout => currentEncounterLayout;
 
         private void Awake()
         {
@@ -273,6 +280,10 @@ namespace ProjectDelta.Presentation
                 run.Dungeon,
                 run.SuccessfulSeed);
 
+            BuildEncounterLayout(
+                run.Dungeon,
+                run.SuccessfulSeed);
+
             if (movePlayerToEntry && movementController != null)
             {
                 if (!spawnedRooms.TryGetValue(run.Dungeon.EntryRoom.RoomId, out RoomView entryRoomView))
@@ -361,6 +372,10 @@ namespace ProjectDelta.Presentation
             }
 
             PlaceRuntimeStairs(dungeon);
+
+            BuildEncounterLayout(
+                dungeon,
+                savedSeed);
 
             if (movementController != null)
             {
@@ -780,10 +795,38 @@ namespace ProjectDelta.Presentation
                 macroCoordinate.Z * worldSize);
         }
 
+        private void BuildEncounterLayout(
+            GeneratedDungeon dungeon,
+            int seed)
+        {
+            RoomEncounterPlacementService service =
+                new RoomEncounterPlacementService();
+
+            currentEncounterLayout =
+                service.Build(
+                    dungeon,
+                    seed,
+                    defaultMonsterEncounter);
+
+            if (defaultMonsterEncounter == null)
+            {
+                Debug.LogWarning(
+                    "[Project Delta] 40일차 EncounterDefinition이 지정되지 않아 몬스터 방 배정을 건너뜁니다.",
+                    this);
+                return;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 40일차 Encounter 배치 완료 / Seed {seed} / MonsterRooms {currentEncounterLayout.Count}",
+                this);
+        }
+
         private void ClearGeneratedFloor()
         {
             spawnedRooms.Clear();
             currentGeneration = null;
+            currentEncounterLayout =
+                new DungeonEncounterLayout();
 
             if (generatedFloorRoot == null)
             {
