@@ -6,6 +6,7 @@
         "ProjectDelta.Infrastructure",
         "ProjectDelta.Data",
         "ProjectDelta.Domain",
+        "ProjectDelta.Presentation",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
