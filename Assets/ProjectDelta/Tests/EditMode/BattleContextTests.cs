@@ -100,7 +100,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 "PLAYER",
                 BattleTeam.Player,
                 20,
-                5); // 테스트용 플레이어 참가자
+                5,
+                6,
+                3,
+                90,
+                10,
+                0); // 테스트용 플레이어 참가자
         }
 
         private static BattleParticipant CreateEnemy(
@@ -111,7 +116,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 "MON_TEST",
                 BattleTeam.Enemy,
                 10,
-                5); // 슬롯 번호로 구분되는 테스트용 적 참가자
+                5,
+                4,
+                2,
+                80,
+                5,
+                0); // 슬롯 번호로 구분되는 테스트용 적 참가자
         }
 
         private static BattleContext CreateFullContext()

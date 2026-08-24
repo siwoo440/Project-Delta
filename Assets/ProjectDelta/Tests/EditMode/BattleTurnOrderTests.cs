@@ -140,7 +140,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "ENEMY_DEAD",
                     BattleTeam.Enemy,
                     0,
-                    20); // MaxHp 0 → CurrentHp 0 → IsAlive false
+                    20,
+                    4,
+                    2,
+                    80,
+                    5,
+                    0); // MaxHp 0 → CurrentHp 0 → IsAlive false
 
             BattleParticipant aliveEnemy =
                 CreateParticipant(
@@ -215,7 +220,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 instanceId,
                 team,
                 10,
-                speed);
+                speed,
+                4,
+                2,
+                80,
+                5,
+                0);
         }
     }
 }

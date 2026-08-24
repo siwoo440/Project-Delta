@@ -38,8 +38,18 @@ namespace ProjectDelta.Presentation
         private const string TestPlayerInstanceId = "PLAYER";
         private const int TestPlayerMaxHp = 20;
         private const int TestPlayerSpeed = 5;
+        private const int TestPlayerAttack = 6;
+        private const int TestPlayerDefense = 3;
+        private const int TestPlayerAccuracy = 90;
+        private const int TestPlayerEvasion = 10;
+        private const int TestPlayerPenetration = 0;
         private const int TestEnemyMaxHp = 10;
         private const int TestEnemySpeed = 5;
+        private const int TestEnemyAttack = 4;
+        private const int TestEnemyDefense = 2;
+        private const int TestEnemyAccuracy = 80;
+        private const int TestEnemyEvasion = 5;
+        private const int TestEnemyPenetration = 0;
 
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
@@ -304,7 +314,12 @@ namespace ProjectDelta.Presentation
                     TestPlayerInstanceId,
                     BattleTeam.Player,
                     TestPlayerMaxHp,
-                    TestPlayerSpeed);
+                    TestPlayerSpeed,
+                    TestPlayerAttack,
+                    TestPlayerDefense,
+                    TestPlayerAccuracy,
+                    TestPlayerEvasion,
+                    TestPlayerPenetration);
 
             // 47일차: 적 슬롯 4칸 레이아웃을 확인하기 위해 접촉한 몬스터를 1번 슬롯에 두고
             // 같은 정의로 4명을 채운다. 실제 적 구성은 EncounterDefinition 연동 시 교체한다.
@@ -319,7 +334,12 @@ namespace ProjectDelta.Presentation
                         session.Context.MonsterDefinitionId,
                         BattleTeam.Enemy,
                         TestEnemyMaxHp,
-                        TestEnemySpeed);
+                        TestEnemySpeed,
+                        TestEnemyAttack,
+                        TestEnemyDefense,
+                        TestEnemyAccuracy,
+                        TestEnemyEvasion,
+                        TestEnemyPenetration);
             }
 
             BattleContext context =
@@ -419,8 +439,8 @@ namespace ProjectDelta.Presentation
                 battleSession.CurrentActor);
         }
 
-        // 49일차: 지정된 대상으로 공격을 확정한다. 아직 데미지는 계산하지 않고(50일차 이후),
-        // 공격 선언이 유효하면 ResolvingAction으로 전환하고 이번 턴의 마지막 행동자였다면 다음 턴까지 진행한다.
+        // 49일차: 대상 유효성을 검증하고 확정한다.
+        // 50일차: 확정된 공격의 명중·피해를 실제로 계산해 적용한다.
         public BattleCommandResult ConfirmAttack()
         {
             if (battleSession.State != BattleState.AwaitingAction
@@ -430,53 +450,97 @@ namespace ProjectDelta.Presentation
                 return null;
             }
 
-            BattleCommandResult result =
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleParticipant target =
+                battleSession.SelectedTarget;
+
+            BattleCommandResult declaration =
                 attackCommand.Execute(
                     battleSession.Context,
-                    battleSession.CurrentActor,
-                    battleSession.SelectedTarget);
+                    actor,
+                    target);
 
-            LastBattleCommandResult =
-                result;
-
-            if (!result.Accepted)
+            if (!declaration.Accepted)
             {
+                LastBattleCommandResult =
+                    declaration;
+
                 Debug.LogWarning(
-                    $"[Project Delta] 49일차 공격 확정 실패 / {result.Message}",
+                    $"[Project Delta] 49일차 공격 확정 실패 / {declaration.Message}",
                     this);
 
-                return result;
+                return declaration;
             }
 
             if (!battleSession.TryBeginResolveAction())
             {
-                return result;
+                return declaration;
             }
 
+            // 50일차: 명중 판정에 쓰는 난수(0~99)는 여기(Presentation)에서 만들어
+            // BattleDamageCalculator(Application, 엔진 비의존)에 넘긴다.
+            int roll =
+                UnityEngine.Random.Range(
+                    0,
+                    100);
+
+            BattleDamageResult damageResult =
+                BattleDamageCalculator.Resolve(
+                    actor,
+                    target,
+                    roll);
+
+            string resolutionMessage;
+
+            if (damageResult.IsHit)
+            {
+                int appliedDamage =
+                    target.ApplyDamage(
+                        damageResult.Damage);
+
+                resolutionMessage =
+                    $"공격 적중 / {actor.InstanceId} → {target.InstanceId} / {appliedDamage} 데미지 (명중률 {damageResult.HitChancePercent}%)";
+            }
+            else
+            {
+                resolutionMessage =
+                    $"공격 빗나감 / {actor.InstanceId} → {target.InstanceId} (명중률 {damageResult.HitChancePercent}%)";
+            }
+
+            BattleCommandResult resolvedResult =
+                BattleCommandResult.Accept(
+                    declaration.CommandId,
+                    resolutionMessage);
+
+            LastBattleCommandResult =
+                resolvedResult;
+
             Debug.Log(
-                $"[Project Delta] 49일차 Battle 공격 확정 / {result.Message}",
+                $"[Project Delta] 50일차 Battle 공격 판정 / {resolutionMessage}",
                 this);
 
             if (battleSession.HasPendingActorsThisTurn)
             {
-                return result;
+                return resolvedResult;
             }
 
             if (!battleSession.TryEndTurn())
             {
-                return result;
+                return resolvedResult;
             }
 
             if (!battleSession.TryStartTurn())
             {
-                return result;
+                return resolvedResult;
             }
 
             Debug.Log(
                 $"[Project Delta] 49일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
 
-            return result;
+            return resolvedResult;
         }
 
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하고, 46일차 Encounter 결과 처리로 이어준다.

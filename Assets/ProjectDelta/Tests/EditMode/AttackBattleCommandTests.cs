@@ -138,7 +138,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 "PLAYER",
                 BattleTeam.Player,
                 20,
-                5);
+                5,
+                6,
+                3,
+                90,
+                10,
+                0);
         }
 
         private static BattleParticipant CreateEnemy(
@@ -150,7 +155,12 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 instanceId,
                 BattleTeam.Enemy,
                 maxHp,
-                5);
+                5,
+                4,
+                2,
+                80,
+                5,
+                0);
         }
     }
 }
