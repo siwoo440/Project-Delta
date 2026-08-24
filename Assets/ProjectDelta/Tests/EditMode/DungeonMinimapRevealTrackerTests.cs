@@ -162,6 +162,46 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
+        public void Restore_ImportsSavedRoomsAndIgnoresUnknownRoomIds()
+        {
+            DungeonLayoutGraph graph =
+                new DungeonLayoutGraph();
+
+            RoomNode roomA =
+                graph.AddRoom(
+                    "A",
+                    "ROOM_TEST",
+                    new GridPosition(0, 0));
+
+            graph.AddRoom(
+                "B",
+                "ROOM_TEST",
+                new GridPosition(1, 0));
+
+            GeneratedDungeon dungeon =
+                new GeneratedDungeon(
+                    graph,
+                    roomA,
+                    roomA);
+
+            DungeonMinimapRevealTracker tracker =
+                new DungeonMinimapRevealTracker();
+
+            tracker.Restore(
+                dungeon,
+                new[]
+                {
+                    "A",
+                    "UNKNOWN"
+                });
+
+            Assert.IsTrue(tracker.IsTracking(dungeon));
+            Assert.IsTrue(tracker.IsRevealed("A"));
+            Assert.IsFalse(tracker.IsRevealed("B"));
+            Assert.IsFalse(tracker.IsRevealed("UNKNOWN"));
+        }
+
+        [Test]
         public void IsRevealed_UnknownRoom_ReturnsFalse()
         {
             DungeonMinimapRevealTracker tracker =

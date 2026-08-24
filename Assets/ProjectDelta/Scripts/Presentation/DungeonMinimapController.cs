@@ -180,6 +180,14 @@ namespace ProjectDelta.Presentation
                     ? RunContext.Current.Dungeon
                     : null;
 
+            if (runState != null
+                && !revealTracker.IsTracking(dungeon))
+            {
+                revealTracker.Restore(
+                    dungeon,
+                    runState.RevealedRoomIds);
+            }
+
             DungeonMinimapSnapshot snapshot =
                 DungeonMinimapSnapshotBuilder.Build(
                     dungeon,
@@ -194,6 +202,12 @@ namespace ProjectDelta.Presentation
             revealTracker.Update(
                 dungeon,
                 currentRoomId);
+
+            if (runState != null)
+            {
+                runState.MergeRevealedRooms(
+                    revealTracker.RevealedRoomIds);
+            }
 
             if (isFullMapOpen)
             {

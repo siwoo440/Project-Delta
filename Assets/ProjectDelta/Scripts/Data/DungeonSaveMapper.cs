@@ -1,96 +1,319 @@
-using System.Collections.Generic; // 사전 기능 사용
-using ProjectDelta.Domain; // 런타임 던전 상태 사용
-using UnityEngine; // Vector2Int 사용
+using System;
+using System.Collections.Generic;
+using ProjectDelta.Domain;
+using UnityEngine;
 
-namespace ProjectDelta.Data // 데이터 네임스페이스
+namespace ProjectDelta.Data
 {
-    // 26일차: RunContext(Domain, 런타임)와 RunData(Data, 저장 DTO) 사이를 오가는 변환기.
-    // RunContext.cs의 오래된 주석("a later SaveService flattens it into RunData")이 예고했던
-    // 그 "나중"이 오늘이다.
-    //
-    // 지금은 방-방 연결 그래프가 없어서(28일차 이후 던전 생성 예정) 이어하기 위치를
-    // RoomId 하나로만 찾는 테스트용 방식이다. 실제 좌표/연결 데이터가 생기면
-    // Coordinate/ConnectedDirections 기반 매핑으로 교체한다.
-    public static class DungeonSaveMapper // 던전 진행 상태 저장·복원 변환
+    // RunContext(Domain)와 RunData(Data) 사이의 던전 저장·복원 변환기.
+    public static class DungeonSaveMapper
     {
-        private static Dictionary<string, RoomRunState> pendingRoomStates; // 씬 로드 중 각 방이 소비할 복원 대상
+        private static Dictionary<string, RoomRunState>
+            pendingRoomStates;
 
-        // 현재 런 상태를 저장용 DTO로 변환한다.
-        public static RunData BuildFromRunContext(RunContext context) // 저장 데이터 생성
+        public static RunData BuildFromRunContext(
+            RunContext context)
         {
-            RunData data = new RunData(); // 새 저장 데이터 생성
-            data.BasicInfo.RunId = context.Metadata.RunId; // 런 식별자 저장
-            data.BasicInfo.StartedAtIso8601 = context.Metadata.StartedAtIso8601; // 런 시작 시각 저장
-            data.BasicInfo.CurrentFloor = context.Dungeon.CurrentFloor; // 현재 층 번호 저장
-            data.BasicInfo.CurrentRoomId = context.Player.CurrentRoomId; // 현재 방 식별자 저장 (테스트용)
-            data.BasicInfo.CurrentGridPositionInRoom = new Vector2Int(context.Player.CurrentGridPosition.X, context.Player.CurrentGridPosition.Z); // 방 안 정확한 칸 저장
-
-            foreach (RoomInstance room in context.Dungeon.AllRooms) // 등록된 모든 방 반복
+            if (context == null)
             {
-                data.DungeonState.Rooms.Add(new RoomRunState // 방별 저장 항목 추가
-                {
-                    RoomId = room.RoomId, // 방 식별자
-                    Visited = room.Visited, // 방문 여부
-                    Completed = room.Completed, // 완료 여부
-                    ChestOpened = room.ChestOpened // 상자 개봉 여부
-                    // Coordinate/ConnectedDirections/Discovered 등은 해당 시스템이 생기기 전까지 기본값 유지
-                });
+                throw new ArgumentNullException(nameof(context));
             }
 
-            foreach (InventoryItemStack item in context.Inventory.Items) // 보유 아이템 전체 반복
+            // 방 진입 직후 자동 저장에서도 주변 8칸 공개 정보가 빠지지 않게
+            // 저장 직전에 현재 방 기준 발견 상태를 한 번 동기화한다.
+            context.Dungeon.RevealAround(
+                context.Player.CurrentRoomId);
+
+            RunData data =
+                new RunData();
+
+            data.BasicInfo.RunId =
+                context.Metadata.RunId;
+
+            data.BasicInfo.StartedAtIso8601 =
+                context.Metadata.StartedAtIso8601;
+
+            data.BasicInfo.CurrentFloor =
+                context.Dungeon.CurrentFloor;
+
+            data.BasicInfo.CurrentRoomId =
+                context.Player.CurrentRoomId;
+
+            data.BasicInfo.CurrentGridPositionInRoom =
+                new Vector2Int(
+                    context.Player.CurrentGridPosition.X,
+                    context.Player.CurrentGridPosition.Z);
+
+            data.BasicInfo.DungeonSeed =
+                context.Dungeon.CurrentDungeonSeed;
+
+            if (context.Dungeon.CurrentLayoutSnapshot != null)
             {
-                data.Inventory.InventoryItemIds.Add(item.ItemId); // 26일차: 아이템 식별자만 저장 (정식 인벤토리 전 자리표시자 수준)
+                data.DungeonState.LayoutSnapshot =
+                    context.Dungeon.CurrentLayoutSnapshot;
             }
 
-            return data; // 완성된 저장 데이터 반환
+            foreach (string roomId
+                     in context.Dungeon.RevealedRoomIds)
+            {
+                data.DungeonState.RevealedRoomIds.Add(
+                    roomId);
+            }
+
+            data.DungeonState.RevealedRoomIds.Sort(
+                StringComparer.Ordinal);
+
+            if (context.Dungeon.TryGetGeneratedFloor(
+                    out GeneratedDungeon dungeon,
+                    out _)
+                && dungeon.Layout != null)
+            {
+                SaveGeneratedRooms(
+                    context,
+                    dungeon,
+                    data);
+            }
+            else
+            {
+                SaveLegacyRooms(
+                    context,
+                    data);
+            }
+
+            foreach (InventoryItemStack item
+                     in context.Inventory.Items)
+            {
+                data.Inventory.InventoryItemIds.Add(
+                    item.ItemId);
+            }
+
+            return data;
         }
 
-        // 저장 데이터의 기본 정보(층 번호, 현재 방·칸, 인벤토리)를 갓 시작한 RunContext에 되돌려준다.
-        public static void ApplyBasics(RunContext context, RunData savedRun) // 기본 정보 복원
+        public static void ApplyBasics(
+            RunContext context,
+            RunData savedRun)
         {
-            int savedFloor = savedRun.BasicInfo.CurrentFloor > 0 ? savedRun.BasicInfo.CurrentFloor : 1; // 저장된 층 번호 확인 (0 이하 방지)
-            context.Dungeon.SetFloor(savedFloor); // 층 번호 복원
-            context.Player.CurrentRoomId = savedRun.BasicInfo.CurrentRoomId; // 현재 방 식별자 복원
-
-            Vector2Int savedGridPosition = savedRun.BasicInfo.CurrentGridPositionInRoom; // 저장된 방 안 칸 좌표 조회
-            context.Player.CurrentGridPosition = new GridPosition(savedGridPosition.x, savedGridPosition.y); // 방 안 정확한 칸 복원
-
-            foreach (string itemId in savedRun.Inventory.InventoryItemIds) // 저장된 아이템 식별자 전체 반복
+            if (context == null)
             {
-                context.Inventory.Add(new InventoryItemStack(itemId, itemId)); // 인벤토리에 복원 (자리표시자 수준: 식별자와 표시 이름이 같음)
+                throw new ArgumentNullException(nameof(context));
             }
-        }
 
-        // DungeonScene이 로드되는 동안 각 방(RoomPassageController)이 자신의 저장 상태를 찾아갈 수 있도록 준비한다.
-        public static void BeginRestore(RunData savedRun) // 복원 대상 목록 준비
-        {
-            pendingRoomStates = new Dictionary<string, RoomRunState>(); // 새 복원 사전 생성
-
-            foreach (RoomRunState room in savedRun.DungeonState.Rooms) // 저장된 방 목록 반복
+            if (savedRun == null)
             {
-                if (!string.IsNullOrEmpty(room.RoomId)) // 방 식별자 존재 확인
+                throw new ArgumentNullException(nameof(savedRun));
+            }
+
+            int savedFloor =
+                savedRun.BasicInfo.CurrentFloor > 0
+                    ? savedRun.BasicInfo.CurrentFloor
+                    : 1;
+
+            context.Dungeon.SetFloor(savedFloor);
+
+            if (savedRun.DungeonState != null
+                && savedRun.DungeonState.LayoutSnapshot != null)
+            {
+                context.Dungeon.RestoreGeneratedFloor(
+                    savedRun.DungeonState.LayoutSnapshot,
+                    savedRun.BasicInfo.DungeonSeed);
+            }
+
+            List<string> revealedRoomIds =
+                new List<string>();
+
+            if (savedRun.DungeonState?.RevealedRoomIds != null)
+            {
+                revealedRoomIds.AddRange(
+                    savedRun.DungeonState.RevealedRoomIds);
+            }
+
+            // 구버전 저장 데이터가 RoomRunState.Discovered만 갖고 있어도
+            // 발견 정보를 복원할 수 있도록 함께 병합한다.
+            if (savedRun.DungeonState?.Rooms != null)
+            {
+                for (int i = 0;
+                     i < savedRun.DungeonState.Rooms.Count;
+                     i++)
                 {
-                    pendingRoomStates[room.RoomId] = room; // 식별자 기준으로 등록
+                    RoomRunState room =
+                        savedRun.DungeonState.Rooms[i];
+
+                    if (room != null
+                        && room.Discovered
+                        && !string.IsNullOrEmpty(room.RoomId))
+                    {
+                        revealedRoomIds.Add(
+                            room.RoomId);
+                    }
+                }
+            }
+
+            context.Dungeon.RestoreRevealedRooms(
+                revealedRoomIds);
+
+            context.Player.CurrentRoomId =
+                savedRun.BasicInfo.CurrentRoomId;
+
+            Vector2Int savedGridPosition =
+                savedRun.BasicInfo.CurrentGridPositionInRoom;
+
+            context.Player.CurrentGridPosition =
+                new GridPosition(
+                    savedGridPosition.x,
+                    savedGridPosition.y);
+
+            if (savedRun.Inventory?.InventoryItemIds != null)
+            {
+                foreach (string itemId
+                         in savedRun.Inventory.InventoryItemIds)
+                {
+                    context.Inventory.Add(
+                        new InventoryItemStack(
+                            itemId,
+                            itemId));
                 }
             }
         }
 
-        // 방 하나가 자신의 저장 상태를 조회한다. 여러 방이 반복해서 조회해도 안전하다(소비되지 않음).
-        public static bool TryGetRoomState(string roomId, out RoomRunState state) // 방별 저장 상태 조회
+        public static void BeginRestore(
+            RunData savedRun)
         {
-            if (pendingRoomStates != null && pendingRoomStates.TryGetValue(roomId, out state)) // 복원 사전에 등록되어 있는지 확인
+            pendingRoomStates =
+                new Dictionary<string, RoomRunState>();
+
+            if (savedRun?.DungeonState?.Rooms == null)
             {
-                return true; // 조회 성공 반환
+                return;
             }
 
-            state = null; // 결과 초기화
-            return false; // 조회 실패 반환
+            foreach (RoomRunState room
+                     in savedRun.DungeonState.Rooms)
+            {
+                if (room != null
+                    && !string.IsNullOrEmpty(room.RoomId))
+                {
+                    pendingRoomStates[room.RoomId] =
+                        room;
+                }
+            }
         }
 
-        // 새 게임을 시작하거나 런을 포기할 때 호출해서, 다음 씬 로드가 이전 복원 데이터를 잘못 주워가지 않게 한다.
-        public static void ClearPendingRestore() // 복원 대상 목록 비우기
+        public static bool TryGetRoomState(
+            string roomId,
+            out RoomRunState state)
         {
-            pendingRoomStates = null; // 복원 사전 해제
+            if (pendingRoomStates != null
+                && pendingRoomStates.TryGetValue(
+                    roomId,
+                    out state))
+            {
+                return true;
+            }
+
+            state = null;
+            return false;
+        }
+
+        public static void ClearPendingRestore()
+        {
+            pendingRoomStates = null;
+        }
+
+        private static void SaveGeneratedRooms(
+            RunContext context,
+            GeneratedDungeon dungeon,
+            RunData data)
+        {
+            List<RoomNode> rooms =
+                new List<RoomNode>(
+                    dungeon.Layout.AllRooms);
+
+            rooms.Sort(
+                (left, right) =>
+                    string.CompareOrdinal(
+                        left.RoomId,
+                        right.RoomId));
+
+            for (int i = 0; i < rooms.Count; i++)
+            {
+                RoomNode node =
+                    rooms[i];
+
+                context.Dungeon.TryGetRoom(
+                    node.RoomId,
+                    out RoomInstance roomInstance);
+
+                RoomRunState roomData =
+                    new RoomRunState
+                    {
+                        RoomId = node.RoomId,
+                        Coordinate =
+                            new Vector2Int(
+                                node.MacroCoordinate.X,
+                                node.MacroCoordinate.Z),
+                        Visited =
+                            roomInstance != null
+                            && roomInstance.Visited,
+                        Discovered =
+                            context.Dungeon.IsRoomRevealed(
+                                node.RoomId),
+                        Completed =
+                            roomInstance != null
+                            && roomInstance.Completed,
+                        ChestOpened =
+                            roomInstance != null
+                            && roomInstance.ChestOpened,
+                        IsStairs =
+                            dungeon.StairsRoom != null
+                            && dungeon.StairsRoom.RoomId
+                                == node.RoomId
+                    };
+
+                foreach (CardinalDirection direction
+                         in node.Connections.Keys)
+                {
+                    roomData.ConnectedDirections.Add(
+                        (int)direction);
+                }
+
+                roomData.ConnectedDirections.Sort();
+
+                roomData.StairsDiscovered =
+                    roomData.IsStairs
+                    && roomData.Discovered;
+
+                data.DungeonState.Rooms.Add(
+                    roomData);
+
+                if (node.RoomId
+                    == context.Player.CurrentRoomId)
+                {
+                    data.BasicInfo.CurrentRoomCoordinate =
+                        roomData.Coordinate;
+                }
+            }
+        }
+
+        private static void SaveLegacyRooms(
+            RunContext context,
+            RunData data)
+        {
+            foreach (RoomInstance room
+                     in context.Dungeon.AllRooms)
+            {
+                data.DungeonState.Rooms.Add(
+                    new RoomRunState
+                    {
+                        RoomId = room.RoomId,
+                        Visited = room.Visited,
+                        Discovered =
+                            context.Dungeon.IsRoomRevealed(
+                                room.RoomId),
+                        Completed = room.Completed,
+                        ChestOpened = room.ChestOpened
+                    });
+            }
         }
     }
 }

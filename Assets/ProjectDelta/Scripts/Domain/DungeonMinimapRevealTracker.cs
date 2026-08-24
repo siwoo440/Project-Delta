@@ -14,6 +14,40 @@ namespace ProjectDelta.Domain
         public IReadOnlyCollection<string> RevealedRoomIds =>
             revealedRoomIds;
 
+        public bool IsTracking(GeneratedDungeon dungeon)
+        {
+            return ReferenceEquals(
+                trackedDungeon,
+                dungeon);
+        }
+
+        // 39일차: 저장된 발견 RoomId를 현재 복원 던전에 다시 주입한다.
+        public void Restore(
+            GeneratedDungeon dungeon,
+            IEnumerable<string> savedRoomIds)
+        {
+            trackedDungeon = dungeon;
+            revealedRoomIds.Clear();
+
+            if (dungeon == null
+                || dungeon.Layout == null
+                || savedRoomIds == null)
+            {
+                return;
+            }
+
+            foreach (string roomId in savedRoomIds)
+            {
+                if (!string.IsNullOrEmpty(roomId)
+                    && dungeon.Layout.TryGetRoom(
+                        roomId,
+                        out _))
+                {
+                    revealedRoomIds.Add(roomId);
+                }
+            }
+        }
+
         public void Update(
             GeneratedDungeon dungeon,
             string currentRoomId)

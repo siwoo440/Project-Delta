@@ -38,6 +38,7 @@ namespace ProjectDelta.Presentation
         private RoomView spawnedRoomView; // 기존 자리표시자 호환
         private Transform generatedFloorRoot;
         private DungeonGenerationRunResult currentGeneration;
+        private bool awakeCompleted;
 
         private readonly Dictionary<string, RoomView> spawnedRooms =
             new Dictionary<string, RoomView>();
@@ -57,6 +58,8 @@ namespace ProjectDelta.Presentation
             {
                 RemovePreExistingSceneRooms(); // 기존 테스트 맵을 제거하고 생성 던전만 사용
             }
+
+            awakeCompleted = true;
         }
 
         private void Start()
@@ -69,6 +72,24 @@ namespace ProjectDelta.Presentation
             if (playerController == null)
             {
                 playerController = FindFirstObjectByType<PlayerGridMovementController>();
+            }
+
+            if (generatedFloorRoot != null)
+            {
+                return;
+            }
+
+            DungeonRunState state = GetDungeonState();
+
+            if (state.TryGetGeneratedFloor(
+                    out GeneratedDungeon restoredDungeon,
+                    out int restoredSeed))
+            {
+                RestoreAndPlaceCurrentFloor(
+                    restoredDungeon,
+                    restoredSeed,
+                    playerController);
+                return;
             }
 
             GenerateAndPlaceCurrentFloor(playerController, true);
@@ -122,9 +143,27 @@ namespace ProjectDelta.Presentation
 
             if (useProceduralGeneration)
             {
-                if (generatedFloorRoot == null)
+                if (!awakeCompleted || generatedFloorRoot != null)
                 {
-                    GenerateAndPlaceCurrentFloor(null, false);
+                    return;
+                }
+
+                DungeonRunState state = GetDungeonState();
+
+                if (state.TryGetGeneratedFloor(
+                        out GeneratedDungeon restoredDungeon,
+                        out int restoredSeed))
+                {
+                    RestoreAndPlaceCurrentFloor(
+                        restoredDungeon,
+                        restoredSeed,
+                        null);
+                }
+                else
+                {
+                    GenerateAndPlaceCurrentFloor(
+                        null,
+                        false);
                 }
 
                 return;
@@ -230,6 +269,10 @@ namespace ProjectDelta.Presentation
 
             PlaceRuntimeStairs(run.Dungeon);
 
+            GetDungeonState().SetGeneratedFloor(
+                run.Dungeon,
+                run.SuccessfulSeed);
+
             if (movePlayerToEntry && movementController != null)
             {
                 if (!spawnedRooms.TryGetValue(run.Dungeon.EntryRoom.RoomId, out RoomView entryRoomView))
@@ -257,6 +300,173 @@ namespace ProjectDelta.Presentation
                 this);
 
             return true;
+        }
+
+        private bool RestoreAndPlaceCurrentFloor(
+            GeneratedDungeon dungeon,
+            int savedSeed,
+            PlayerGridMovementController movementController)
+        {
+            if (dungeon == null)
+            {
+                Debug.LogError(
+                    "[Project Delta] 복원할 GeneratedDungeon이 없습니다.",
+                    this);
+                return false;
+            }
+
+            if (!BuildBindingLookup(out _))
+            {
+                Debug.LogError(
+                    "[Project Delta] 저장 던전 복원에 필요한 RoomDefinition/RoomView 바인딩이 올바르지 않습니다.",
+                    this);
+                return false;
+            }
+
+            ClearGeneratedFloor();
+
+            int floor =
+                GetDungeonState().CurrentFloor;
+
+            GameObject rootObject =
+                new GameObject(
+                    $"RestoredFloor_{floor}_Seed_{savedSeed}");
+
+            rootObject.transform.SetParent(
+                null,
+                false);
+
+            generatedFloorRoot =
+                rootObject.transform;
+
+            currentGeneration =
+                new DungeonGenerationRunResult(
+                    true,
+                    dungeon,
+                    savedSeed,
+                    savedSeed,
+                    Array.Empty<DungeonGenerationAttemptLog>(),
+                    null);
+
+            if (!InstantiateRooms(dungeon))
+            {
+                ClearGeneratedFloor();
+                return false;
+            }
+
+            if (!ConnectGeneratedDoors(dungeon))
+            {
+                ClearGeneratedFloor();
+                return false;
+            }
+
+            PlaceRuntimeStairs(dungeon);
+
+            if (movementController != null)
+            {
+                MovePlayerToSavedRoom(
+                    dungeon,
+                    movementController);
+            }
+
+            // 모든 RoomPassageController가 pending RoomRunState를 적용한 뒤 비운다.
+            // 다음 층에서 같은 RoomId가 재사용돼도 이전 층 상태가 섞이지 않는다.
+            DungeonSaveMapper.ClearPendingRestore();
+
+            Debug.Log(
+                $"[Project Delta] {floor}층 저장 던전 복원 완료 / Seed {savedSeed} / Rooms {dungeon.Layout.AllRooms.Count}",
+                this);
+
+            return true;
+        }
+
+        private void MovePlayerToSavedRoom(
+            GeneratedDungeon dungeon,
+            PlayerGridMovementController movementController)
+        {
+            if (movementController == null
+                || movementController.PlayerState == null)
+            {
+                return;
+            }
+
+            string savedRoomId =
+                movementController.PlayerState.CurrentRoomId;
+
+            GridPosition savedGridPosition =
+                movementController.PlayerState.CurrentGridPosition;
+
+            RoomView targetRoomView = null;
+
+            if (!string.IsNullOrEmpty(savedRoomId))
+            {
+                spawnedRooms.TryGetValue(
+                    savedRoomId,
+                    out targetRoomView);
+            }
+
+            if (targetRoomView == null
+                && dungeon.EntryRoom != null)
+            {
+                spawnedRooms.TryGetValue(
+                    dungeon.EntryRoom.RoomId,
+                    out targetRoomView);
+
+                savedGridPosition =
+                    GridPosition.Zero;
+            }
+
+            if (targetRoomView == null)
+            {
+                Debug.LogError(
+                    "[Project Delta] 저장된 현재 방 RoomView를 찾을 수 없습니다.",
+                    this);
+                return;
+            }
+
+            float restoredCellSize =
+                CalculateRestoredCellSize(
+                    targetRoomView);
+
+            Vector3 localPosition =
+                new Vector3(
+                    savedGridPosition.X * restoredCellSize,
+                    0f,
+                    savedGridPosition.Z * restoredCellSize);
+
+            Vector3 targetWorldPosition =
+                targetRoomView.transform.TransformPoint(
+                    localPosition);
+
+            targetWorldPosition.y =
+                movementController.transform.position.y;
+
+            // EnterRoom의 보간이 다른 방에서 시작하지 않도록 저장 위치에 먼저 배치한다.
+            movementController.transform.position =
+                targetWorldPosition;
+
+            movementController.EnterRoom(
+                targetRoomView,
+                savedGridPosition,
+                CardinalDirection.North);
+        }
+
+        private float CalculateRestoredCellSize(
+            RoomView roomView)
+        {
+            RoomDefinition definition =
+                roomView != null
+                && roomView.PassageController != null
+                    ? roomView.PassageController.RoomDefinition
+                    : null;
+
+            if (definition == null
+                || definition.Width <= 0)
+            {
+                return 2f;
+            }
+
+            return roomWorldSize / definition.Width;
         }
 
         private void RemovePreExistingSceneRooms()
