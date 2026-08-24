@@ -180,11 +180,12 @@ namespace ProjectDelta.Editor
                     hudRoot.transform,
                     font);
 
-            // 행동 버튼 자리 생성 (왼쪽 가운데 아래)
+            // 행동 버튼 자리 생성 (왼쪽 가운데 아래), 49일차: 공격 버튼만 따로 반환받는다
             Button[] actionButtons =
                 CreateActionButtonPanel(
                     hudRoot.transform,
-                    font);
+                    font,
+                    out Button attackButton);
 
             // 47~48일차 테스트 버튼 생성 (우측 상단)
             // 48일차부터 한 번 클릭에 참가자 한 명씩(Speed 순서대로) 진행한다.
@@ -237,6 +238,7 @@ namespace ProjectDelta.Editor
                 enemySlots,
                 playerSlot,
                 vitals,
+                attackButton,
                 actionButtons,
                 testNextTurnButton,
                 testWinButton,
@@ -484,6 +486,23 @@ namespace ProjectDelta.Editor
             BattleParticipantSlotView slotView =
                 slotObject.AddComponent<BattleParticipantSlotView>();
 
+            // 49일차: 슬롯 클릭으로 대상을 선택할 수 있도록 Button 추가
+            Image slotBackgroundImage =
+                slotObject.GetComponent<Image>();
+
+            Button slotButton =
+                slotObject.AddComponent<Button>();
+
+            slotButton.targetGraphic =
+                slotBackgroundImage;
+
+            // 색상은 BattleParticipantSlotView가 직접 관리하므로 Button 자체 트랜지션은 끈다
+            slotButton.transition =
+                Selectable.Transition.None;
+
+            slotButton.interactable =
+                false;
+
             // 슬롯 번호 텍스트 생성
             Text slotIndexText =
                 CreateText(
@@ -553,7 +572,9 @@ namespace ProjectDelta.Editor
                 portraitImage,
                 nameText,
                 healthFillImage,
-                healthText);
+                healthText,
+                slotButton,
+                slotBackgroundImage);
 
             return slotView;
         }
@@ -640,7 +661,7 @@ namespace ProjectDelta.Editor
                     TextAnchor.MiddleCenter,
                     font);
 
-            // 슬롯 뷰 참조 연결
+            // 슬롯 뷰 참조 연결 (플레이어 패널은 클릭 대상이 아니므로 Button 없이 연결)
             BindSlotView(
                 slotView,
                 panelObject,
@@ -648,7 +669,9 @@ namespace ProjectDelta.Editor
                 portraitImage,
                 nameText,
                 healthFillImage,
-                healthText);
+                healthText,
+                null,
+                panelObject.GetComponent<Image>());
 
             return slotView;
         }
@@ -771,9 +794,12 @@ namespace ProjectDelta.Editor
             return fillImage;
         }
 
+        // 49일차: 1번(공격) 버튼은 실제로 연결되므로 attackButton으로 따로 반환하고,
+        // 나머지 4개(행동·방어·아이템·도주)는 50~54일차에 연결할 자리로 반환한다.
         private static Button[] CreateActionButtonPanel(
             Transform parent,
-            Font font)
+            Font font,
+            out Button attackButton)
         {
             // 뒤 배경 없이 위치만 잡아주는 빈 컨테이너 (5개를 납작하게 한 줄로 배치)
             GameObject containerObject =
@@ -787,14 +813,14 @@ namespace ProjectDelta.Editor
             CreateText(
                 "TitleText",
                 parent,
-                "행동 버튼 자리 (49~54일차 연결 예정)",
+                "행동 버튼 자리 (50~54일차 연결 예정)",
                 new Vector2(-500f, -322f),
                 new Vector2(660f, 24f),
                 15,
                 TextAnchor.MiddleCenter,
                 font);
 
-            // 행동 버튼 라벨 (실제 Command는 49~54일차에 연결)
+            // 행동 버튼 라벨 (공격만 49일차에 연결, 나머지는 50~54일차에 연결)
             string[] labels =
             {
                 "공격",
@@ -812,7 +838,7 @@ namespace ProjectDelta.Editor
             float groupStartX =
                 -(labels.Length - 1) * buttonSpacing * 0.5f;
 
-            // 결과 배열 생성
+            // 전체 버튼 생성
             Button[] buttons =
                 new Button[labels.Length];
 
@@ -831,7 +857,21 @@ namespace ProjectDelta.Editor
                         font);
             }
 
-            return buttons;
+            // 1번(공격)을 분리해 반환
+            attackButton =
+                buttons[0];
+
+            // 나머지 4개(행동·방어·아이템·도주)만 남긴다
+            Button[] remainingButtons =
+                new Button[buttons.Length - 1];
+
+            for (int index = 1; index < buttons.Length; index++)
+            {
+                remainingButtons[index - 1] =
+                    buttons[index];
+            }
+
+            return remainingButtons;
         }
 
         // 배경 이미지 없이 자식 요소의 기준 위치만 잡아주는 빈 컨테이너.
@@ -1337,7 +1377,9 @@ namespace ProjectDelta.Editor
             Image portraitImage,
             Text nameText,
             Image healthFillImage,
-            Text healthText)
+            Text healthText,
+            Button clickButton,
+            Image backgroundImage)
         {
             // 직렬화 객체 생성
             SerializedObject serializedObject =
@@ -1374,6 +1416,16 @@ namespace ProjectDelta.Editor
                 "healthText").objectReferenceValue =
                 healthText;
 
+            // 49일차: 클릭 버튼 연결 (플레이어 패널은 null)
+            serializedObject.FindProperty(
+                "clickButton").objectReferenceValue =
+                clickButton;
+
+            // 49일차: 선택 상태 표시용 배경 이미지 연결
+            serializedObject.FindProperty(
+                "backgroundImage").objectReferenceValue =
+                backgroundImage;
+
             // 직렬화 변경 적용
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
 
@@ -1390,6 +1442,7 @@ namespace ProjectDelta.Editor
             BattleParticipantSlotView[] enemySlots,
             BattleParticipantSlotView playerSlot,
             PlayerVitalsWidgets vitals,
+            Button attackButton,
             Button[] actionButtons,
             Button testNextTurnButton,
             Button testWinButton,
@@ -1468,6 +1521,11 @@ namespace ProjectDelta.Editor
             serializedObject.FindProperty(
                 "staminaText").objectReferenceValue =
                 vitals.StaminaText;
+
+            // 49일차: 공격 버튼 연결
+            serializedObject.FindProperty(
+                "attackButton").objectReferenceValue =
+                attackButton;
 
             // 행동 버튼 배열 연결
             SerializedProperty actionButtonsProperty =

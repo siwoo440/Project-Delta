@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using ProjectDelta.Application;
 using ProjectDelta.Domain;
 using UnityEngine;
@@ -27,6 +29,10 @@ namespace ProjectDelta.Presentation
         // 47일차: Encounter 내부에서 진행되는 실제 Battle 생명주기.
         private readonly BattleSession battleSession =
             new BattleSession();
+
+        // 49일차: 전투 내부 공격 행동.
+        private readonly IBattleCommand attackCommand =
+            new AttackBattleCommand();
 
         // 47일차: 승패 계산 전까지 사용하는 최소 테스트 스탯.
         private const string TestPlayerInstanceId = "PLAYER";
@@ -88,6 +94,12 @@ namespace ProjectDelta.Presentation
 
         public bool IsBattleFinished =>
             battleSession.State == BattleState.Finished;
+
+        // 49일차: 현재 행동자가 지정한(재지정 가능한) 대상.
+        public BattleParticipant SelectedBattleTarget =>
+            battleSession.SelectedTarget;
+
+        public BattleCommandResult LastBattleCommandResult { get; private set; }
 
         private void Awake()
         {
@@ -343,8 +355,9 @@ namespace ProjectDelta.Presentation
                 this);
         }
 
-        // 48일차: 이번 턴의 다음 행동자 한 명을 AwaitingAction → ResolvingAction까지 진행하는 테스트용 버튼.
-        // 이번 턴의 마지막 행동자였다면 이어서 TurnEnd → 다음 TurnStart까지 자동으로 넘어간다.
+        // 49일차: 이번 턴의 다음 행동자를 AwaitingAction으로 불러온다.
+        // 실제 행동 확정(공격 등)은 별도이므로 여기서는 대상 선택을 기다리는 상태까지만 진행한다.
+        // Enemy 차례는 아직 AI가 없으므로 유일한 대상(Player)을 자동으로 미리 선택해 둔다.
         public bool TestAdvanceBattleTurn()
         {
             if (battleSession.Context == null
@@ -359,38 +372,111 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
-            if (!battleSession.TryBeginResolveAction())
-            {
-                return false;
-            }
-
             BattleParticipant actor =
                 battleSession.CurrentActor;
 
             Debug.Log(
-                $"[Project Delta] 48일차 Battle Actor 진행 / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
+                $"[Project Delta] 49일차 Battle AwaitingAction / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
+                this);
+
+            if (actor.Team == BattleTeam.Enemy)
+            {
+                IReadOnlyList<BattleParticipant> validTargets =
+                    BattleTargeting.GetValidTargets(
+                        battleSession.Context,
+                        actor);
+
+                if (validTargets.Count > 0)
+                {
+                    battleSession.TrySelectTarget(
+                        validTargets[0]);
+                }
+            }
+
+            return true;
+        }
+
+        // 49일차: AwaitingAction 상태에서 CurrentActor의 공격 대상을 지정·재지정한다.
+        public bool TrySelectBattleTarget(
+            BattleParticipant target)
+        {
+            return battleSession.TrySelectTarget(
+                target);
+        }
+
+        // 49일차: AwaitingAction 상태에서 CurrentActor가 선택할 수 있는 대상 목록.
+        public IReadOnlyList<BattleParticipant> GetValidBattleTargets()
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return Array.Empty<BattleParticipant>();
+            }
+
+            return BattleTargeting.GetValidTargets(
+                battleSession.Context,
+                battleSession.CurrentActor);
+        }
+
+        // 49일차: 지정된 대상으로 공격을 확정한다. 아직 데미지는 계산하지 않고(50일차 이후),
+        // 공격 선언이 유효하면 ResolvingAction으로 전환하고 이번 턴의 마지막 행동자였다면 다음 턴까지 진행한다.
+        public BattleCommandResult ConfirmAttack()
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleCommandResult result =
+                attackCommand.Execute(
+                    battleSession.Context,
+                    battleSession.CurrentActor,
+                    battleSession.SelectedTarget);
+
+            LastBattleCommandResult =
+                result;
+
+            if (!result.Accepted)
+            {
+                Debug.LogWarning(
+                    $"[Project Delta] 49일차 공격 확정 실패 / {result.Message}",
+                    this);
+
+                return result;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return result;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 49일차 Battle 공격 확정 / {result.Message}",
                 this);
 
             if (battleSession.HasPendingActorsThisTurn)
             {
-                return true;
+                return result;
             }
 
             if (!battleSession.TryEndTurn())
             {
-                return false;
+                return result;
             }
 
             if (!battleSession.TryStartTurn())
             {
-                return false;
+                return result;
             }
 
             Debug.Log(
-                $"[Project Delta] 48일차 Battle Turn {battleSession.TurnNumber} Start",
+                $"[Project Delta] 49일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
 
-            return true;
+            return result;
         }
 
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하고, 46일차 Encounter 결과 처리로 이어준다.

@@ -17,6 +17,8 @@ namespace ProjectDelta.Application
 
         public BattleParticipant CurrentActor { get; private set; } // 행동 대기·처리 중인 참가자
 
+        public BattleParticipant SelectedTarget { get; private set; } // 49일차: CurrentActor가 지정한 대상 (재선택 가능)
+
         public BattleResult Result { get; private set; } // Battle 최종 결과
 
         private Queue<BattleParticipant> pendingActorsThisTurn =
@@ -105,10 +107,37 @@ namespace ProjectDelta.Application
             CurrentActor =
                 pendingActorsThisTurn.Dequeue(); // 순서 큐에서 다음 행동자 선출
 
+            SelectedTarget =
+                null; // 새 행동자이므로 이전 대상 선택 초기화
+
             State =
                 BattleState.AwaitingAction; // AwaitingAction 상태 전환
 
             return true; // 전환 성공
+        }
+
+        // 49일차: AwaitingAction 상태에서만 대상을 지정·재지정할 수 있다.
+        public bool TrySelectTarget(
+            BattleParticipant target)
+        {
+            if (State != BattleState.AwaitingAction
+                || CurrentActor == null) // 대상 선택 가능한 상태 확인
+            {
+                return false; // 잘못된 전환 거부
+            }
+
+            if (!BattleTargeting.IsValidTarget(
+                    Context,
+                    CurrentActor,
+                    target)) // 유효 대상 여부 확인
+            {
+                return false; // 유효하지 않은 대상 거부
+            }
+
+            SelectedTarget =
+                target; // 대상 저장 (재호출 시 마지막 선택으로 교체)
+
+            return true; // 선택 성공
         }
 
         public bool TryBeginResolveAction()
@@ -158,6 +187,9 @@ namespace ProjectDelta.Application
             CurrentActor =
                 null; // 행동 대상 초기화
 
+            SelectedTarget =
+                null; // 대상 선택 초기화
+
             Result =
                 new BattleResult(
                     outcome,
@@ -185,6 +217,9 @@ namespace ProjectDelta.Application
             CurrentActor =
                 null; // 행동 대상 초기화
 
+            SelectedTarget =
+                null; // 대상 선택 초기화
+
             Result =
                 null; // 결과 제거
 
@@ -207,6 +242,9 @@ namespace ProjectDelta.Application
 
             CurrentActor =
                 null; // 행동 대상 강제 초기화
+
+            SelectedTarget =
+                null; // 대상 선택 강제 초기화
 
             Result =
                 null; // 결과 강제 제거

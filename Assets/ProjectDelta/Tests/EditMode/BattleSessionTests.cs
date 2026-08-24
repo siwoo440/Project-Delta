@@ -241,6 +241,82 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void TrySelectTarget_OnlyDuringAwaitingAction_WithValidTarget()
+        {
+            BattleSession session =
+                CreateTurnStartSession(); // TurnStart Session 준비
+
+            BattleParticipant enemy =
+                session.Context.Enemies[0];
+
+            Assert.IsFalse(
+                session.TrySelectTarget(
+                    enemy)); // TurnStart에서는 대상 선택 거부 확인
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // Player 행동자 선출 (동률 우선순위)
+
+            Assert.IsTrue(
+                session.TrySelectTarget(
+                    enemy)); // AwaitingAction에서는 선택 성공 확인
+
+            Assert.AreSame(
+                enemy,
+                session.SelectedTarget); // 선택된 대상 확인
+        }
+
+        [Test]
+        public void TrySelectTarget_CalledAgain_ReplacesPreviousSelection()
+        {
+            BattleSession session =
+                CreateTurnStartSession(); // TurnStart Session 준비
+
+            BattleParticipant enemy =
+                session.Context.Enemies[0];
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // Player 행동자 선출
+
+            Assert.IsTrue(
+                session.TrySelectTarget(
+                    enemy)); // 1차 선택
+
+            Assert.IsFalse(
+                session.TrySelectTarget(
+                    session.CurrentActor)); // 아군(자기 자신) 재선택 거부 확인
+
+            Assert.AreSame(
+                enemy,
+                session.SelectedTarget); // 잘못된 재선택은 기존 선택을 바꾸지 않음 확인
+        }
+
+        [Test]
+        public void TryEnterAwaitingAction_ForNextActor_ClearsPreviousSelectedTarget()
+        {
+            BattleSession session =
+                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy)
+
+            BattleParticipant enemy =
+                session.Context.Enemies[0];
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 1번째 행동자 (Player)
+
+            Assert.IsTrue(
+                session.TrySelectTarget(
+                    enemy)); // 대상 선택
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction()); // ResolvingAction 전환
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 2번째 행동자 (Enemy)로 전환
+
+            Assert.IsNull(
+                session.SelectedTarget); // 새 행동자로 넘어가며 이전 선택 초기화 확인
+        }
+
+        [Test]
         public void TryFinishBattle_FromAnyActiveState_SetsResultAndFinished()
         {
             BattleSession session =
