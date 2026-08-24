@@ -41,9 +41,11 @@ namespace ProjectDelta.Presentation
         {
             ResolveEncounterController();
 
+            // 47일차: 전투가 시작되면 행동 선택 패널을 숨기고 BattleHud로 화면을 넘긴다.
             bool shouldShow =
                 encounterController != null
-                && encounterController.CurrentState == EncounterState.Active;
+                && encounterController.CurrentState == EncounterState.Active
+                && !encounterController.HasBattle;
 
             SetPanelVisible(
                 shouldShow);
@@ -232,7 +234,8 @@ namespace ProjectDelta.Presentation
                 availability.CanSelect);
 
             SetTestEndButtonInteractable(
-                encounterController.HasSelectedEncounterAction);
+                encounterController.HasSelectedEncounterAction
+                && !encounterController.HasBattle);
 
             EncounterCommandResult lastResult =
                 encounterController.LastCommandResult;

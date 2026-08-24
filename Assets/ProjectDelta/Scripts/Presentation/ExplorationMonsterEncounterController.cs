@@ -24,6 +24,17 @@ namespace ProjectDelta.Presentation
         private readonly EncounterActionSelectionGate actionSelectionGate =
             new EncounterActionSelectionGate();
 
+        // 47일차: Encounter 내부에서 진행되는 실제 Battle 생명주기.
+        private readonly BattleSession battleSession =
+            new BattleSession();
+
+        // 47일차: 승패 계산 전까지 사용하는 최소 테스트 스탯.
+        private const string TestPlayerInstanceId = "PLAYER";
+        private const int TestPlayerMaxHp = 20;
+        private const int TestPlayerSpeed = 5;
+        private const int TestEnemyMaxHp = 10;
+        private const int TestEnemySpeed = 5;
+
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
         private bool ownsExplorationControlLock;
@@ -50,6 +61,29 @@ namespace ProjectDelta.Presentation
 
         public string SelectedEncounterCommandId =>
             actionSelectionGate.SelectedCommandId;
+
+        // 47일차: Battle 진행 상태를 UI에 노출한다.
+        public BattleState CurrentBattleState =>
+            battleSession.State;
+
+        public BattleContext CurrentBattleContext =>
+            battleSession.Context;
+
+        public int BattleTurnNumber =>
+            battleSession.TurnNumber;
+
+        public BattleResult LastBattleResult =>
+            battleSession.Result;
+
+        public bool IsBattleActive =>
+            battleSession.IsActive;
+
+        // 47일차: 종료 직후(Finished)에도 전투 화면을 유지하기 위해 Idle이 아닌 상태를 함께 본다.
+        public bool HasBattle =>
+            battleSession.State != BattleState.Idle;
+
+        public bool IsBattleFinished =>
+            battleSession.State == BattleState.Finished;
 
         private void Awake()
         {
@@ -84,6 +118,7 @@ namespace ProjectDelta.Presentation
             RestoreExplorationControl();
 
             session.ForceReset();
+            battleSession.ForceReset();
             actionSelectionGate.Reset();
             activeMonster = null;
             LastCommandResult = null;
@@ -163,6 +198,7 @@ namespace ProjectDelta.Presentation
                 null;
 
             actionSelectionGate.Reset();
+            battleSession.ForceReset();
 
             LockExplorationControl();
 
@@ -214,6 +250,12 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            if (actionSelectionGate.SelectedCommandId == battleCommand.Id)
+            {
+                // 47일차부터 전투 선택은 BattleSession 결과(TestWinBattle)로만 Encounter를 종료한다.
+                return;
+            }
+
             if (!EncounterResultResolver.TryCreateTestResult(
                     session.Context,
                     actionSelectionGate.SelectedCommandId,
@@ -226,6 +268,201 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            FinalizeActiveEncounter(
+                result);
+        }
+
+        // 47일차: Battle 선택이 확정되면 최소 테스트 참가자로 BattleContext를 만들고 Battle을 시작한다.
+        private void BeginTestBattle()
+        {
+            if (session.State != EncounterState.Active
+                || session.Context == null
+                || battleSession.State != BattleState.Idle)
+            {
+                return;
+            }
+
+            BattleParticipant player =
+                new BattleParticipant(
+                    TestPlayerInstanceId,
+                    TestPlayerInstanceId,
+                    BattleTeam.Player,
+                    TestPlayerMaxHp,
+                    TestPlayerSpeed);
+
+            // 47일차: 적 슬롯 4칸 레이아웃을 확인하기 위해 접촉한 몬스터를 1번 슬롯에 두고
+            // 같은 정의로 4명을 채운다. 실제 적 구성은 EncounterDefinition 연동 시 교체한다.
+            BattleParticipant[] enemies =
+                new BattleParticipant[BattleContext.MaxEnemySlots];
+
+            for (int slotIndex = 0; slotIndex < enemies.Length; slotIndex++)
+            {
+                enemies[slotIndex] =
+                    new BattleParticipant(
+                        $"{session.Context.MonsterDefinitionId}#{slotIndex + 1}",
+                        session.Context.MonsterDefinitionId,
+                        BattleTeam.Enemy,
+                        TestEnemyMaxHp,
+                        TestEnemySpeed);
+            }
+
+            BattleContext context =
+                new BattleContext(
+                    player,
+                    enemies);
+
+            if (!battleSession.TryBeginBattle(
+                    context))
+            {
+                Debug.LogError(
+                    "[Project Delta] 47일차 BattleContext 생성에 실패했습니다.",
+                    this);
+
+                return;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 47일차 Battle Starting / Player {TestPlayerMaxHp}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {TestEnemyMaxHp}HP",
+                this);
+
+            if (!battleSession.TryStartTurn())
+            {
+                Debug.LogError(
+                    "[Project Delta] 47일차 Battle Starting → TurnStart 전환에 실패했습니다.",
+                    this);
+
+                return;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 47일차 Battle Turn {battleSession.TurnNumber} Start",
+                this);
+        }
+
+        // 47일차: TurnStart → AwaitingAction → ResolvingAction → TurnEnd → 다음 TurnStart를 한 번에 진행하는 테스트용 진행 버튼.
+        public bool TestAdvanceBattleTurn()
+        {
+            if (battleSession.State != BattleState.TurnStart
+                || battleSession.Context == null)
+            {
+                return false;
+            }
+
+            BattleParticipant actor =
+                battleSession.Context.Player;
+
+            if (!battleSession.TryEnterAwaitingAction(
+                    actor))
+            {
+                return false;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return false;
+            }
+
+            if (!battleSession.TryEndTurn())
+            {
+                return false;
+            }
+
+            if (!battleSession.TryStartTurn())
+            {
+                return false;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 47일차 Battle Turn {battleSession.TurnNumber} Start",
+                this);
+
+            return true;
+        }
+
+        // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하고, 46일차 Encounter 결과 처리로 이어준다.
+        public void TestWinBattle()
+        {
+            if (!battleSession.IsActive)
+            {
+                return;
+            }
+
+            if (!battleSession.TryFinishBattle(
+                    BattleOutcome.Victory))
+            {
+                return;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 47일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount}",
+                this);
+
+            if (!EncounterResultResolver.TryCreateTestResult(
+                    session.Context,
+                    actionSelectionGate.SelectedCommandId,
+                    out EncounterResult result))
+            {
+                Debug.LogError(
+                    "[Project Delta] Battle 승리 결과를 Encounter 결과로 변환하지 못했습니다.",
+                    this);
+
+                return;
+            }
+
+            FinalizeActiveEncounter(
+                result);
+
+            battleSession.TryReset();
+        }
+
+        // 47일차: 실제 승패 계산 전까지 Battle을 패배로 강제 종료한다.
+        // 패배를 Encounter 결과(EncounterOutcome)에 연결하는 것은 51·58일차에서 다룬다.
+        public void TestLoseBattle()
+        {
+            if (!battleSession.IsActive)
+            {
+                return;
+            }
+
+            if (!battleSession.TryFinishBattle(
+                    BattleOutcome.Defeat))
+            {
+                return;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 47일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount} (패배 처리는 51일차 이후 연결)",
+                this);
+        }
+
+        // 47일차: 패배 테스트로 종료된 전투를 닫고 Encounter 행동 선택으로 되돌린다.
+        // 실제 패배 결과 처리(게임 오버·탐험 복귀)는 51·58일차에서 연결한다.
+        public void TestDismissFinishedBattle()
+        {
+            if (battleSession.State != BattleState.Finished)
+            {
+                return;
+            }
+
+            if (!battleSession.TryReset())
+            {
+                battleSession.ForceReset();
+            }
+
+            // 전투가 결과 없이 닫혔으므로 행동을 다시 선택할 수 있게 되돌린다.
+            actionSelectionGate.Reset();
+
+            LastCommandResult =
+                null;
+
+            Debug.Log(
+                "[Project Delta] 47일차 Battle 닫기 / Encounter 행동 선택으로 복귀",
+                this);
+        }
+
+        private void FinalizeActiveEncounter(
+            EncounterResult result)
+        {
             if (!session.TryBeginResolve())
             {
                 return;
@@ -371,6 +608,11 @@ namespace ProjectDelta.Presentation
 
                     return rejected;
                 }
+
+                if (result.CommandId == battleCommand.Id)
+                {
+                    BeginTestBattle();
+                }
             }
 
             LastCommandResult =
@@ -395,6 +637,7 @@ namespace ProjectDelta.Presentation
 
             RestoreExplorationControl();
             session.ForceReset();
+            battleSession.ForceReset();
         }
 
         private void LockExplorationControl()
