@@ -102,9 +102,6 @@ namespace ProjectDelta.Presentation
         public bool HasBattle =>
             battleSession.State != BattleState.Idle;
 
-        public bool IsBattleFinished =>
-            battleSession.State == BattleState.Finished;
-
         // 49일차: 현재 행동자가 지정한(재지정 가능한) 대상.
         public BattleParticipant SelectedBattleTarget =>
             battleSession.SelectedTarget;
@@ -521,6 +518,17 @@ namespace ProjectDelta.Presentation
                 $"[Project Delta] 50일차 Battle 공격 판정 / {resolutionMessage}",
                 this);
 
+            // 51일차: 공격이 끝날 때마다 전멸 여부를 확인해, 결정됐으면 여기서 전투를 끝낸다.
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome outcome))
+            {
+                FinishBattle(
+                    outcome);
+
+                return resolvedResult;
+            }
+
             if (battleSession.HasPendingActorsThisTurn)
             {
                 return resolvedResult;
@@ -543,7 +551,8 @@ namespace ProjectDelta.Presentation
             return resolvedResult;
         }
 
-        // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하고, 46일차 Encounter 결과 처리로 이어준다.
+        // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.
+        // 51일차부터는 ConfirmAttack()의 자동 판정도 이 메서드가 감싼 FinishBattle()을 그대로 탄다.
         public void TestWinBattle()
         {
             if (!battleSession.IsActive)
@@ -551,36 +560,11 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            if (!battleSession.TryFinishBattle(
-                    BattleOutcome.Victory))
-            {
-                return;
-            }
-
-            Debug.Log(
-                $"[Project Delta] 47일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount}",
-                this);
-
-            if (!EncounterResultResolver.TryCreateTestResult(
-                    session.Context,
-                    actionSelectionGate.SelectedCommandId,
-                    out EncounterResult result))
-            {
-                Debug.LogError(
-                    "[Project Delta] Battle 승리 결과를 Encounter 결과로 변환하지 못했습니다.",
-                    this);
-
-                return;
-            }
-
-            FinalizeActiveEncounter(
-                result);
-
-            battleSession.TryReset();
+            FinishBattle(
+                BattleOutcome.Victory);
         }
 
-        // 47일차: 실제 승패 계산 전까지 Battle을 패배로 강제 종료한다.
-        // 패배를 Encounter 결과(EncounterOutcome)에 연결하는 것은 51·58일차에서 다룬다.
+        // 47일차: 실제 승패 계산 전까지 Battle을 패배로 강제 종료하는 테스트용 버튼.
         public void TestLoseBattle()
         {
             if (!battleSession.IsActive)
@@ -588,40 +572,54 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            if (!battleSession.TryFinishBattle(
-                    BattleOutcome.Defeat))
-            {
-                return;
-            }
-
-            Debug.Log(
-                $"[Project Delta] 47일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount} (패배 처리는 51일차 이후 연결)",
-                this);
+            FinishBattle(
+                BattleOutcome.Defeat);
         }
 
-        // 47일차: 패배 테스트로 종료된 전투를 닫고 Encounter 행동 선택으로 되돌린다.
-        // 실제 패배 결과 처리(게임 오버·탐험 복귀)는 51·58일차에서 연결한다.
-        public void TestDismissFinishedBattle()
+        // 51일차: 승리·패배를 실제로 마무리한다.
+        // 승리 → 46일차 Encounter 결과 처리(방 완료·저장)로 이어진다.
+        // 패배 → 게임 오버 연출 없이 일단 타이틀(메인 메뉴)로 돌아간다.
+        //         보상·재도전 같은 더 나은 패배 경험은 58일차에서 다룬다.
+        private void FinishBattle(
+            BattleOutcome outcome)
         {
-            if (battleSession.State != BattleState.Finished)
+            if (!battleSession.TryFinishBattle(
+                    outcome))
             {
                 return;
             }
 
-            if (!battleSession.TryReset())
+            Debug.Log(
+                $"[Project Delta] 51일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount}",
+                this);
+
+            if (outcome == BattleOutcome.Victory)
             {
-                battleSession.ForceReset();
+                if (!EncounterResultResolver.TryCreateTestResult(
+                        session.Context,
+                        actionSelectionGate.SelectedCommandId,
+                        out EncounterResult result))
+                {
+                    Debug.LogError(
+                        "[Project Delta] Battle 승리 결과를 Encounter 결과로 변환하지 못했습니다.",
+                        this);
+
+                    return;
+                }
+
+                FinalizeActiveEncounter(
+                    result);
+
+                battleSession.TryReset();
+
+                return;
             }
 
-            // 전투가 결과 없이 닫혔으므로 행동을 다시 선택할 수 있게 되돌린다.
-            actionSelectionGate.Reset();
-
-            LastCommandResult =
-                null;
-
             Debug.Log(
-                "[Project Delta] 47일차 Battle 닫기 / Encounter 행동 선택으로 복귀",
+                "[Project Delta] 51일차 Battle Defeat / 메인 메뉴로 복귀",
                 this);
+
+            ApplicationFlow.Current?.ReturnToTitle();
         }
 
         private void FinalizeActiveEncounter(

@@ -99,13 +99,33 @@ namespace ProjectDelta.Application
                 return false; // 잘못된 전환 거부
             }
 
-            if (pendingActorsThisTurn.Count == 0) // 이번 턴에 남은 행동자 확인
+            // 51일차: 자기 차례가 오기 전에 죽은 참가자는 건너뛴다 (전투 이탈).
+            // 큐에 넣을 때는 살아있었어도, 같은 턴 안에서 먼저 행동한 다른 참가자에게 죽을 수 있다.
+            BattleParticipant nextActor =
+                null;
+
+            while (pendingActorsThisTurn.Count > 0)
+            {
+                BattleParticipant candidate =
+                    pendingActorsThisTurn.Dequeue(); // 순서 큐에서 다음 후보 선출
+
+                if (candidate != null
+                    && candidate.IsAlive) // 후보 생존 여부 확인
+                {
+                    nextActor =
+                        candidate;
+
+                    break; // 살아있는 행동자를 찾으면 즉시 중단
+                }
+            }
+
+            if (nextActor == null) // 남은 행동자가 모두 사망했는지 확인
             {
                 return false; // 더 진행할 행동자가 없으면 거부 (TryEndTurn을 사용해야 함)
             }
 
             CurrentActor =
-                pendingActorsThisTurn.Dequeue(); // 순서 큐에서 다음 행동자 선출
+                nextActor; // 선출된 행동자 저장
 
             SelectedTarget =
                 null; // 새 행동자이므로 이전 대상 선택 초기화

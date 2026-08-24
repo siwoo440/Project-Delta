@@ -45,7 +45,6 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Button testNextTurnButton;
         [SerializeField] private Button testWinButton;
         [SerializeField] private Button testLoseButton;
-        [SerializeField] private Button testDismissButton;
 
         private void Awake()
         {
@@ -114,12 +113,6 @@ namespace ProjectDelta.Presentation
                     OnTestLoseClicked);
             }
 
-            if (testDismissButton != null)
-            {
-                testDismissButton.onClick.AddListener(
-                    OnTestDismissClicked);
-            }
-
             // 49일차: 행동 버튼 자리의 1번(공격)만 실제로 연결한다. 나머지는 50~54일차에 연결한다.
             if (attackButton != null)
             {
@@ -175,12 +168,6 @@ namespace ProjectDelta.Presentation
                     OnTestLoseClicked);
             }
 
-            if (testDismissButton != null)
-            {
-                testDismissButton.onClick.RemoveListener(
-                    OnTestDismissClicked);
-            }
-
             if (attackButton != null)
             {
                 attackButton.onClick.RemoveListener(
@@ -216,16 +203,6 @@ namespace ProjectDelta.Presentation
             }
 
             encounterController.TestLoseBattle();
-        }
-
-        private void OnTestDismissClicked()
-        {
-            if (encounterController == null)
-            {
-                return;
-            }
-
-            encounterController.TestDismissFinishedBattle();
         }
 
         // 49일차: 적 슬롯을 클릭하면 해당 참가자를 공격 대상으로 지정(재지정)한다.
@@ -520,13 +497,6 @@ namespace ProjectDelta.Presentation
             {
                 testLoseButton.interactable =
                     isBattleActive;
-            }
-
-            // 종료된 전투를 닫을 때만 사용한다.
-            if (testDismissButton != null)
-            {
-                testDismissButton.interactable =
-                    encounterController.IsBattleFinished;
             }
         }
 

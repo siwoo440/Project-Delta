@@ -175,6 +175,89 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void TryEnterAwaitingAction_SkipsActorThatDiedMidTurn_AndContinuesToNextAlive()
+        {
+            // Speed 내림차순: ENEMY_FAST(20) → PLAYER(5) → ENEMY_SLOW(1)
+            BattleParticipant player =
+                CreatePlayer();
+
+            BattleParticipant fastEnemy =
+                new BattleParticipant(
+                    "ENEMY_FAST",
+                    "ENEMY_FAST",
+                    BattleTeam.Enemy,
+                    10,
+                    20,
+                    4,
+                    2,
+                    80,
+                    5,
+                    0);
+
+            BattleParticipant slowEnemy =
+                new BattleParticipant(
+                    "ENEMY_SLOW",
+                    "ENEMY_SLOW",
+                    BattleTeam.Enemy,
+                    10,
+                    1,
+                    4,
+                    2,
+                    80,
+                    5,
+                    0);
+
+            BattleContext context =
+                new BattleContext(
+                    player,
+                    new[] { fastEnemy, slowEnemy });
+
+            BattleSession session =
+                new BattleSession();
+
+            Assert.IsTrue(
+                session.TryBeginBattle(
+                    context));
+
+            Assert.IsTrue(
+                session.TryStartTurn());
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 1번째: ENEMY_FAST
+
+            Assert.AreEqual(
+                "ENEMY_FAST",
+                session.CurrentActor.InstanceId);
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            // ENEMY_FAST의 행동으로 아직 순서가 오지 않은 ENEMY_SLOW가 죽었다고 가정 (전투 이탈 상황 재현)
+            slowEnemy.ApplyDamage(
+                999);
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 2번째: PLAYER (ENEMY_SLOW는 아직 큐에 남아있음)
+
+            Assert.AreEqual(
+                "PLAYER",
+                session.CurrentActor.InstanceId);
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            // 마지막 남은 ENEMY_SLOW는 이미 죽어있으므로 건너뛰고 큐가 소진된다
+            Assert.IsFalse(
+                session.TryEnterAwaitingAction()); // 죽은 참가자만 남아 진행 실패 확인
+
+            Assert.IsFalse(
+                session.HasPendingActorsThisTurn); // 큐 소진 확인
+
+            Assert.IsTrue(
+                session.TryEndTurn()); // 남은 행동자가 없으므로 TurnEnd 허용 확인
+        }
+
+        [Test]
         public void TryEndTurn_WithPendingActors_Rejected()
         {
             BattleSession session =

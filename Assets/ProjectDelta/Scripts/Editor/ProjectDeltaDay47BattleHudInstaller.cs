@@ -216,15 +216,6 @@ namespace ProjectDelta.Editor
                     new Vector2(190f, 56f),
                     font);
 
-            Button testDismissButton =
-                CreateButton(
-                    "TestDismissButton",
-                    hudRoot.transform,
-                    "전투 닫기",
-                    new Vector2(750f, 480f),
-                    new Vector2(190f, 56f),
-                    font);
-
             // HUD 컨트롤러 가져오기
             BattleHudController hudController =
                 canvasObject.GetComponent<BattleHudController>();
@@ -242,8 +233,7 @@ namespace ProjectDelta.Editor
                 actionButtons,
                 testNextTurnButton,
                 testWinButton,
-                testLoseButton,
-                testDismissButton);
+                testLoseButton);
 
             // 에디터에서 레이아웃 확인 가능 상태 유지
             hudRoot.SetActive(
@@ -1446,8 +1436,7 @@ namespace ProjectDelta.Editor
             Button[] actionButtons,
             Button testNextTurnButton,
             Button testWinButton,
-            Button testLoseButton,
-            Button testDismissButton)
+            Button testLoseButton)
         {
             // 직렬화 객체 생성
             SerializedObject serializedObject =
@@ -1559,11 +1548,6 @@ namespace ProjectDelta.Editor
             serializedObject.FindProperty(
                 "testLoseButton").objectReferenceValue =
                 testLoseButton;
-
-            // 전투 닫기 버튼 연결
-            serializedObject.FindProperty(
-                "testDismissButton").objectReferenceValue =
-                testDismissButton;
 
             // 직렬화 변경 적용
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
