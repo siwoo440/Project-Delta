@@ -18,8 +18,17 @@ namespace ProjectDelta.Presentation
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
 
-        public bool IsEncounterActive => session.IsActive;
-        public string ActiveMonsterDefinitionId => session.MonsterDefinitionId;
+        public bool IsEncounterActive =>
+            session.State != EncounterState.Idle;
+
+        public EncounterState CurrentState =>
+            session.State;
+
+        public EncounterContext CurrentContext =>
+            session.Context;
+
+        public string ActiveMonsterDefinitionId =>
+            session.MonsterDefinitionId;
 
         private void Awake()
         {
@@ -51,17 +60,9 @@ namespace ProjectDelta.Presentation
 
         private void OnDisable()
         {
-            if (movementController != null)
-            {
-                movementController.IsInputLocked = false;
-            }
+            RestoreExplorationControl();
 
-            if (lookController != null)
-            {
-                lookController.SetCursorFreeForUi(false);
-            }
-
-            session.Complete();
+            session.ForceReset();
             activeMonster = null;
             wasMoving = false;
         }
@@ -87,7 +88,7 @@ namespace ProjectDelta.Presentation
 
         public bool TryBeginEncounterAtCurrentPosition()
         {
-            if (session.IsActive
+            if (session.State != EncounterState.Idle
                 || movementController == null
                 || movementController.PlayerState == null)
             {
@@ -130,16 +131,24 @@ namespace ProjectDelta.Presentation
             activeMonster =
                 monster;
 
-            movementController.IsInputLocked =
-                true;
+            LockExplorationControl();
 
-            if (lookController != null)
+            Debug.Log(
+                $"[Project Delta] 43일차 Encounter Starting / Room {monster.RoomId} / Grid {monster.GridPosition} / Monster {monster.MonsterDefinitionId}",
+                this);
+
+            if (!session.TryActivate())
             {
-                lookController.SetCursorFreeForUi(true);
+                Debug.LogError(
+                    "[Project Delta] Encounter Starting → Active 전환에 실패했습니다.",
+                    this);
+
+                AbortEncounter();
+                return false;
             }
 
             Debug.Log(
-                $"[Project Delta] 42일차 Encounter 접촉 / Room {monster.RoomId} / Grid {monster.GridPosition} / Monster {monster.MonsterDefinitionId}",
+                $"[Project Delta] 43일차 Encounter Active / Monster {monster.MonsterDefinitionId}",
                 this);
 
             return true;
@@ -147,21 +156,83 @@ namespace ProjectDelta.Presentation
 
         public void CompleteTestEncounter()
         {
-            if (!session.IsActive)
+            if (session.State != EncounterState.Active)
             {
                 return;
             }
+
+            if (!session.TryBeginResolve())
+            {
+                return;
+            }
+
+            Debug.Log(
+                "[Project Delta] 43일차 Encounter Resolving",
+                this);
 
             if (activeMonster != null)
             {
                 activeMonster.gameObject.SetActive(false);
             }
 
+            if (!session.TryFinish())
+            {
+                Debug.LogError(
+                    "[Project Delta] Encounter Resolving → Finished 전환에 실패했습니다.",
+                    this);
+
+                AbortEncounter();
+                return;
+            }
+
+            Debug.Log(
+                "[Project Delta] 43일차 Encounter Finished",
+                this);
+
             activeMonster =
                 null;
 
-            session.Complete();
+            RestoreExplorationControl();
 
+            if (!session.TryReset())
+            {
+                Debug.LogError(
+                    "[Project Delta] Encounter Finished → Idle 전환에 실패했습니다.",
+                    this);
+
+                session.ForceReset();
+            }
+
+            Debug.Log(
+                "[Project Delta] 43일차 Encounter Idle 복귀 / 탐험 재개",
+                this);
+        }
+
+        private void AbortEncounter()
+        {
+            activeMonster =
+                null;
+
+            RestoreExplorationControl();
+            session.ForceReset();
+        }
+
+        private void LockExplorationControl()
+        {
+            if (movementController != null)
+            {
+                movementController.IsInputLocked =
+                    true;
+            }
+
+            if (lookController != null)
+            {
+                lookController.SetCursorFreeForUi(true);
+            }
+        }
+
+        private void RestoreExplorationControl()
+        {
             if (movementController != null)
             {
                 movementController.IsInputLocked =
@@ -172,15 +243,11 @@ namespace ProjectDelta.Presentation
             {
                 lookController.SetCursorFreeForUi(false);
             }
-
-            Debug.Log(
-                "[Project Delta] 42일차 테스트 Encounter 종료 / 탐험 복귀",
-                this);
         }
 
         private void OnGUI()
         {
-            if (!session.IsActive)
+            if (session.State != EncounterState.Active)
             {
                 return;
             }
@@ -189,7 +256,7 @@ namespace ProjectDelta.Presentation
                 420f;
 
             float height =
-                190f;
+                220f;
 
             Rect panelRect =
                 new Rect(
@@ -205,7 +272,15 @@ namespace ProjectDelta.Presentation
             GUI.Label(
                 new Rect(
                     panelRect.x + 24f,
-                    panelRect.y + 50f,
+                    panelRect.y + 48f,
+                    panelRect.width - 48f,
+                    28f),
+                $"State : {session.State}");
+
+            GUI.Label(
+                new Rect(
+                    panelRect.x + 24f,
+                    panelRect.y + 80f,
                     panelRect.width - 48f,
                     28f),
                 $"Monster : {session.MonsterDefinitionId}");
@@ -213,15 +288,15 @@ namespace ProjectDelta.Presentation
             GUI.Label(
                 new Rect(
                     panelRect.x + 24f,
-                    panelRect.y + 82f,
+                    panelRect.y + 112f,
                     panelRect.width - 48f,
                     28f),
-                "전투 인카운터가 시작되었습니다.");
+                "전투 인카운터가 진행 중입니다.");
 
             Rect closeButtonRect =
                 new Rect(
                     panelRect.x + (panelRect.width - 140f) * 0.5f,
-                    panelRect.y + 128f,
+                    panelRect.y + 158f,
                     140f,
                     36f);
 

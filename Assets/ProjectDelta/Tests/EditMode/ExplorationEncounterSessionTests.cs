@@ -7,7 +7,24 @@ namespace ProjectDelta.Tests.EditMode
     public sealed class ExplorationEncounterSessionTests
     {
         [Test]
-        public void TryBegin_SameRoomAndSamePosition_StartsEncounter()
+        public void NewSession_StartsIdleWithoutContext()
+        {
+            ExplorationEncounterSession session =
+                new ExplorationEncounterSession();
+
+            Assert.AreEqual(
+                EncounterState.Idle,
+                session.State);
+
+            Assert.IsFalse(
+                session.IsActive);
+
+            Assert.IsNull(
+                session.Context);
+        }
+
+        [Test]
+        public void TryBegin_SameRoomAndPosition_MovesIdleToStartingAndCreatesContext()
         {
             ExplorationEncounterSession session =
                 new ExplorationEncounterSession();
@@ -21,57 +38,41 @@ namespace ProjectDelta.Tests.EditMode
                     "MON_TEST");
 
             Assert.IsTrue(started);
-            Assert.IsTrue(session.IsActive);
-            Assert.AreEqual("MON_TEST", session.MonsterDefinitionId);
+
+            Assert.AreEqual(
+                EncounterState.Starting,
+                session.State);
+
+            Assert.IsTrue(
+                session.IsActive);
+
+            Assert.IsNotNull(
+                session.Context);
+
+            Assert.AreEqual(
+                "ROOM_A",
+                session.Context.RoomId);
+
+            Assert.AreEqual(
+                "MON_TEST",
+                session.Context.MonsterDefinitionId);
+
+            Assert.AreEqual(
+                new GridPosition(1, 0),
+                session.Context.MonsterGridPosition);
         }
 
         [Test]
-        public void TryBegin_SameRoomDifferentPosition_DoesNotStart()
+        public void TryBegin_DifferentRoomOrPosition_StaysIdle()
         {
             ExplorationEncounterSession session =
                 new ExplorationEncounterSession();
 
-            bool started =
-                session.TryBegin(
-                    "ROOM_A",
-                    new GridPosition(1, 0),
-                    "ROOM_A",
-                    new GridPosition(0, 0),
-                    "MON_TEST");
-
-            Assert.IsFalse(started);
-            Assert.IsFalse(session.IsActive);
-        }
-
-        [Test]
-        public void TryBegin_DifferentRoomSamePosition_DoesNotStart()
-        {
-            ExplorationEncounterSession session =
-                new ExplorationEncounterSession();
-
-            bool started =
+            Assert.IsFalse(
                 session.TryBegin(
                     "ROOM_A",
                     GridPosition.Zero,
                     "ROOM_B",
-                    GridPosition.Zero,
-                    "MON_TEST");
-
-            Assert.IsFalse(started);
-            Assert.IsFalse(session.IsActive);
-        }
-
-        [Test]
-        public void TryBegin_WhileAlreadyActive_DoesNotStartDuplicateEncounter()
-        {
-            ExplorationEncounterSession session =
-                new ExplorationEncounterSession();
-
-            Assert.IsTrue(
-                session.TryBegin(
-                    "ROOM_A",
-                    GridPosition.Zero,
-                    "ROOM_A",
                     GridPosition.Zero,
                     "MON_TEST"));
 
@@ -80,40 +81,143 @@ namespace ProjectDelta.Tests.EditMode
                     "ROOM_A",
                     GridPosition.Zero,
                     "ROOM_A",
-                    GridPosition.Zero,
+                    new GridPosition(1, 0),
                     "MON_TEST"));
+
+            Assert.AreEqual(
+                EncounterState.Idle,
+                session.State);
         }
 
         [Test]
-        public void Complete_ClearsSessionAndAllowsAnotherEncounter()
+        public void TryActivate_OnlyAllowsStartingToActive()
         {
             ExplorationEncounterSession session =
-                new ExplorationEncounterSession();
+                CreateStartingSession();
 
             Assert.IsTrue(
-                session.TryBegin(
-                    "ROOM_A",
-                    GridPosition.Zero,
-                    "ROOM_A",
-                    GridPosition.Zero,
-                    "MON_A"));
+                session.TryActivate());
 
-            session.Complete();
+            Assert.AreEqual(
+                EncounterState.Active,
+                session.State);
 
-            Assert.IsFalse(session.IsActive);
-            Assert.IsNull(session.MonsterDefinitionId);
-
-            Assert.IsTrue(
-                session.TryBegin(
-                    "ROOM_B",
-                    new GridPosition(1, 1),
-                    "ROOM_B",
-                    new GridPosition(1, 1),
-                    "MON_B"));
+            Assert.IsFalse(
+                session.TryActivate());
         }
 
         [Test]
-        public void TryBegin_MissingRoomOrMonsterId_DoesNotStart()
+        public void TryBeginResolve_OnlyAllowsActiveToResolving()
+        {
+            ExplorationEncounterSession session =
+                CreateStartingSession();
+
+            Assert.IsFalse(
+                session.TryBeginResolve());
+
+            Assert.IsTrue(
+                session.TryActivate());
+
+            Assert.IsTrue(
+                session.TryBeginResolve());
+
+            Assert.AreEqual(
+                EncounterState.Resolving,
+                session.State);
+        }
+
+        [Test]
+        public void TryFinish_OnlyAllowsResolvingToFinished()
+        {
+            ExplorationEncounterSession session =
+                CreateActiveSession();
+
+            Assert.IsFalse(
+                session.TryFinish());
+
+            Assert.IsTrue(
+                session.TryBeginResolve());
+
+            Assert.IsTrue(
+                session.TryFinish());
+
+            Assert.AreEqual(
+                EncounterState.Finished,
+                session.State);
+        }
+
+        [Test]
+        public void TryReset_OnlyAllowsFinishedToIdleAndClearsContext()
+        {
+            ExplorationEncounterSession session =
+                CreateActiveSession();
+
+            Assert.IsFalse(
+                session.TryReset());
+
+            Assert.IsTrue(
+                session.TryBeginResolve());
+
+            Assert.IsTrue(
+                session.TryFinish());
+
+            Assert.IsTrue(
+                session.TryReset());
+
+            Assert.AreEqual(
+                EncounterState.Idle,
+                session.State);
+
+            Assert.IsNull(
+                session.Context);
+
+            Assert.IsNull(
+                session.MonsterDefinitionId);
+
+            Assert.IsFalse(
+                session.IsActive);
+        }
+
+        [Test]
+        public void TryBegin_WhileLifecycleIsNotIdle_BlocksDuplicateEncounter()
+        {
+            ExplorationEncounterSession session =
+                CreateStartingSession();
+
+            Assert.IsFalse(
+                session.TryBegin(
+                    "ROOM_A",
+                    GridPosition.Zero,
+                    "ROOM_A",
+                    GridPosition.Zero,
+                    "MON_TEST"));
+
+            Assert.AreEqual(
+                EncounterState.Starting,
+                session.State);
+        }
+
+        [Test]
+        public void ForceReset_ReturnsAnyStateToIdleForControllerShutdown()
+        {
+            ExplorationEncounterSession session =
+                CreateActiveSession();
+
+            session.ForceReset();
+
+            Assert.AreEqual(
+                EncounterState.Idle,
+                session.State);
+
+            Assert.IsNull(
+                session.Context);
+
+            Assert.IsFalse(
+                session.IsActive);
+        }
+
+        [Test]
+        public void TryBegin_MissingRequiredId_StaysIdle()
         {
             ExplorationEncounterSession session =
                 new ExplorationEncounterSession();
@@ -134,7 +238,36 @@ namespace ProjectDelta.Tests.EditMode
                     GridPosition.Zero,
                     null));
 
-            Assert.IsFalse(session.IsActive);
+            Assert.AreEqual(
+                EncounterState.Idle,
+                session.State);
+        }
+
+        private static ExplorationEncounterSession CreateStartingSession()
+        {
+            ExplorationEncounterSession session =
+                new ExplorationEncounterSession();
+
+            Assert.IsTrue(
+                session.TryBegin(
+                    "ROOM_A",
+                    GridPosition.Zero,
+                    "ROOM_A",
+                    GridPosition.Zero,
+                    "MON_TEST"));
+
+            return session;
+        }
+
+        private static ExplorationEncounterSession CreateActiveSession()
+        {
+            ExplorationEncounterSession session =
+                CreateStartingSession();
+
+            Assert.IsTrue(
+                session.TryActivate());
+
+            return session;
         }
     }
 }

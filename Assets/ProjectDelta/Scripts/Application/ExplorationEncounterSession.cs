@@ -2,12 +2,21 @@ using ProjectDelta.Domain;
 
 namespace ProjectDelta.Application
 {
-    // 42일차: 탐험 중 플레이어와 몬스터의 논리 좌표가 겹쳤을 때
-    // 테스트 Encounter가 한 번만 시작되도록 최소 세션 상태를 관리한다.
+    // 43일차: 탐험 Encounter 생명주기를 명시적인 상태 머신으로 관리한다.
     public sealed class ExplorationEncounterSession
     {
-        public bool IsActive { get; private set; }
-        public string MonsterDefinitionId { get; private set; }
+        public EncounterState State { get; private set; } =
+            EncounterState.Idle;
+
+        public EncounterContext Context { get; private set; }
+
+        public bool IsActive =>
+            State != EncounterState.Idle;
+
+        public string MonsterDefinitionId =>
+            Context != null
+                ? Context.MonsterDefinitionId
+                : null;
 
         public bool TryBegin(
             string playerRoomId,
@@ -16,7 +25,7 @@ namespace ProjectDelta.Application
             GridPosition monsterPosition,
             string monsterDefinitionId)
         {
-            if (IsActive)
+            if (State != EncounterState.Idle)
             {
                 return false;
             }
@@ -34,15 +43,81 @@ namespace ProjectDelta.Application
                 return false;
             }
 
-            IsActive = true;
-            MonsterDefinitionId = monsterDefinitionId;
+            Context =
+                new EncounterContext(
+                    monsterRoomId,
+                    monsterDefinitionId,
+                    monsterPosition);
+
+            State =
+                EncounterState.Starting;
+
             return true;
         }
 
-        public void Complete()
+        public bool TryActivate()
         {
-            IsActive = false;
-            MonsterDefinitionId = null;
+            if (State != EncounterState.Starting)
+            {
+                return false;
+            }
+
+            State =
+                EncounterState.Active;
+
+            return true;
+        }
+
+        public bool TryBeginResolve()
+        {
+            if (State != EncounterState.Active)
+            {
+                return false;
+            }
+
+            State =
+                EncounterState.Resolving;
+
+            return true;
+        }
+
+        public bool TryFinish()
+        {
+            if (State != EncounterState.Resolving)
+            {
+                return false;
+            }
+
+            State =
+                EncounterState.Finished;
+
+            return true;
+        }
+
+        public bool TryReset()
+        {
+            if (State != EncounterState.Finished)
+            {
+                return false;
+            }
+
+            Context =
+                null;
+
+            State =
+                EncounterState.Idle;
+
+            return true;
+        }
+
+        // 씬 비활성화·오브젝트 종료 같은 비정상 중단 시 잠금 상태를 남기지 않기 위한 안전 초기화.
+        public void ForceReset()
+        {
+            Context =
+                null;
+
+            State =
+                EncounterState.Idle;
         }
     }
 }
