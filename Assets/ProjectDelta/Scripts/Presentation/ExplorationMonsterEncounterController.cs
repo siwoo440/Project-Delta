@@ -15,6 +15,12 @@ namespace ProjectDelta.Presentation
         private readonly ExplorationEncounterSession session =
             new ExplorationEncounterSession();
 
+        private readonly IEncounterCommand battleCommand =
+            new BattleEncounterCommand();
+
+        private readonly IEncounterCommand escapeCommand =
+            new EscapeEncounterCommand();
+
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
 
@@ -29,6 +35,8 @@ namespace ProjectDelta.Presentation
 
         public string ActiveMonsterDefinitionId =>
             session.MonsterDefinitionId;
+
+        public EncounterCommandResult LastCommandResult { get; private set; }
 
         private void Awake()
         {
@@ -64,6 +72,7 @@ namespace ProjectDelta.Presentation
 
             session.ForceReset();
             activeMonster = null;
+            LastCommandResult = null;
             wasMoving = false;
         }
 
@@ -131,10 +140,13 @@ namespace ProjectDelta.Presentation
             activeMonster =
                 monster;
 
+            LastCommandResult =
+                null;
+
             LockExplorationControl();
 
             Debug.Log(
-                $"[Project Delta] 43일차 Encounter Starting / Room {monster.RoomId} / Grid {monster.GridPosition} / Monster {monster.MonsterDefinitionId}",
+                $"[Project Delta] 44일차 Encounter Starting / Room {monster.RoomId} / Grid {monster.GridPosition} / Monster {monster.MonsterDefinitionId}",
                 this);
 
             if (!session.TryActivate())
@@ -148,10 +160,22 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                $"[Project Delta] 43일차 Encounter Active / Monster {monster.MonsterDefinitionId}",
+                $"[Project Delta] 44일차 Encounter Active / Monster {monster.MonsterDefinitionId}",
                 this);
 
             return true;
+        }
+
+        public EncounterCommandResult SelectBattleCommand()
+        {
+            return ExecuteEncounterCommand(
+                battleCommand);
+        }
+
+        public EncounterCommandResult SelectEscapeCommand()
+        {
+            return ExecuteEncounterCommand(
+                escapeCommand);
         }
 
         public void CompleteTestEncounter()
@@ -167,7 +191,7 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                "[Project Delta] 43일차 Encounter Resolving",
+                "[Project Delta] 44일차 Encounter Resolving",
                 this);
 
             if (activeMonster != null)
@@ -186,10 +210,13 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                "[Project Delta] 43일차 Encounter Finished",
+                "[Project Delta] 44일차 Encounter Finished",
                 this);
 
             activeMonster =
+                null;
+
+            LastCommandResult =
                 null;
 
             RestoreExplorationControl();
@@ -204,13 +231,52 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                "[Project Delta] 43일차 Encounter Idle 복귀 / 탐험 재개",
+                "[Project Delta] 44일차 Encounter Idle 복귀 / 탐험 재개",
                 this);
+        }
+
+        private EncounterCommandResult ExecuteEncounterCommand(
+            IEncounterCommand command)
+        {
+            if (command == null)
+            {
+                return null;
+            }
+
+            if (session.State != EncounterState.Active
+                || session.Context == null)
+            {
+                EncounterCommandResult rejected =
+                    EncounterCommandResult.Reject(
+                        command.Id,
+                        "현재 행동을 선택할 수 있는 Encounter가 없습니다.");
+
+                LastCommandResult =
+                    rejected;
+
+                return rejected;
+            }
+
+            EncounterCommandResult result =
+                command.Execute(
+                    session.Context);
+
+            LastCommandResult =
+                result;
+
+            Debug.Log(
+                $"[Project Delta] 44일차 Encounter Command / Id {result.CommandId} / Accepted {result.Accepted} / {result.Message}",
+                this);
+
+            return result;
         }
 
         private void AbortEncounter()
         {
             activeMonster =
+                null;
+
+            LastCommandResult =
                 null;
 
             RestoreExplorationControl();
@@ -242,69 +308,6 @@ namespace ProjectDelta.Presentation
             if (lookController != null)
             {
                 lookController.SetCursorFreeForUi(false);
-            }
-        }
-
-        private void OnGUI()
-        {
-            if (session.State != EncounterState.Active)
-            {
-                return;
-            }
-
-            float width =
-                420f;
-
-            float height =
-                220f;
-
-            Rect panelRect =
-                new Rect(
-                    (Screen.width - width) * 0.5f,
-                    (Screen.height - height) * 0.5f,
-                    width,
-                    height);
-
-            GUI.Box(
-                panelRect,
-                "ENCOUNTER");
-
-            GUI.Label(
-                new Rect(
-                    panelRect.x + 24f,
-                    panelRect.y + 48f,
-                    panelRect.width - 48f,
-                    28f),
-                $"State : {session.State}");
-
-            GUI.Label(
-                new Rect(
-                    panelRect.x + 24f,
-                    panelRect.y + 80f,
-                    panelRect.width - 48f,
-                    28f),
-                $"Monster : {session.MonsterDefinitionId}");
-
-            GUI.Label(
-                new Rect(
-                    panelRect.x + 24f,
-                    panelRect.y + 112f,
-                    panelRect.width - 48f,
-                    28f),
-                "전투 인카운터가 진행 중입니다.");
-
-            Rect closeButtonRect =
-                new Rect(
-                    panelRect.x + (panelRect.width - 140f) * 0.5f,
-                    panelRect.y + 158f,
-                    140f,
-                    36f);
-
-            if (GUI.Button(
-                    closeButtonRect,
-                    "테스트 종료"))
-            {
-                CompleteTestEncounter();
             }
         }
     }

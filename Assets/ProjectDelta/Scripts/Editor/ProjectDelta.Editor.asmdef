@@ -6,7 +6,9 @@
         "ProjectDelta.Infrastructure",
         "ProjectDelta.Data",
         "ProjectDelta.Domain",
-        "ProjectDelta.Presentation"
+        "ProjectDelta.Presentation",
+        "Unity.InputSystem",
+        "UnityEngine.UI"
     ],
     "includePlatforms": [
         "Editor"

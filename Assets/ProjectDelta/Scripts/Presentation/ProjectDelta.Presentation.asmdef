@@ -5,7 +5,8 @@
         "ProjectDelta.Application",
         "ProjectDelta.Data",
         "ProjectDelta.Domain",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "UnityEngine.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
