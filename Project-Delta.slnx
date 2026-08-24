@@ -1,7 +1,7 @@
 ﻿<Solution>
+  <Project Path="ProjectDelta.Domain.csproj" />
   <Project Path="ProjectDelta.Infrastructure.csproj" />
   <Project Path="ProjectDelta.Data.csproj" />
-  <Project Path="ProjectDelta.Domain.csproj" />
   <Project Path="ProjectDelta.Presentation.csproj" />
   <Project Path="ProjectDelta.Tests.EditMode.csproj" />
   <Project Path="ProjectDelta.Application.csproj" />

@@ -1,324 +1,340 @@
-using ProjectDelta.Application; // Encounter 애플리케이션 로직 사용
-using UnityEngine; // Unity 기본 기능 사용
-using UnityEngine.UI; // uGUI 사용
+using ProjectDelta.Application;
+using UnityEngine;
+using UnityEngine.UI;
 
-namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
+namespace ProjectDelta.Presentation
 {
-    [DisallowMultipleComponent] // 중복 컴포넌트 방지
+    [DisallowMultipleComponent]
     public sealed class EncounterPanelController : MonoBehaviour
     {
         [Header("Encounter")]
-        [SerializeField] private ExplorationMonsterEncounterController encounterController; // Encounter 컨트롤러
-        [SerializeField] private GameObject panelRoot; // 인카운터 패널 루트
+        [SerializeField] private ExplorationMonsterEncounterController encounterController;
+        [SerializeField] private GameObject panelRoot;
 
         [Header("Target Info")]
-        [SerializeField] private Text stateText; // 상태 텍스트
-        [SerializeField] private Text monsterIdText; // 몬스터 ID 텍스트
-        [SerializeField] private Text roomIdText; // 방 ID 텍스트
-        [SerializeField] private Text gridPositionText; // GridPosition 텍스트
-        [SerializeField] private Text resultText; // 행동 결과·선택 불가 사유 텍스트
+        [SerializeField] private Text stateText;
+        [SerializeField] private Text monsterIdText;
+        [SerializeField] private Text roomIdText;
+        [SerializeField] private Text gridPositionText;
+        [SerializeField] private Text resultText;
 
         [Header("Actions")]
-        [SerializeField] private Button battleButton; // 전투 버튼
-        [SerializeField] private Button escapeButton; // 회피 버튼
-        [SerializeField] private Button testEndButton; // 테스트 종료 버튼
+        [SerializeField] private Button battleButton;
+        [SerializeField] private Button escapeButton;
+        [SerializeField] private Button testEndButton;
 
-        private bool wasVisible; // 이전 프레임 패널 표시 여부
+        private bool wasVisible;
 
         private void Awake()
         {
-            ResolveEncounterController(); // Encounter 컨트롤러 자동 연결
-            BindButtons(); // 버튼 이벤트 연결
-            SetPanelVisible(false); // 시작 시 패널 숨김
+            ResolveEncounterController();
+            BindButtons();
+            SetPanelVisible(false);
         }
 
         private void OnDestroy()
         {
-            UnbindButtons(); // 버튼 이벤트 해제
+            UnbindButtons();
         }
 
         private void Update()
         {
-            ResolveEncounterController(); // 누락 참조 재검색
+            ResolveEncounterController();
 
             bool shouldShow =
                 encounterController != null
-                && encounterController.CurrentState == EncounterState.Active; // Active 상태 표시 조건
+                && encounterController.CurrentState == EncounterState.Active;
 
             SetPanelVisible(
-                shouldShow); // 패널 표시 상태 반영
+                shouldShow);
 
-            if (!shouldShow) // 패널 숨김 상태 확인
+            if (!shouldShow)
             {
                 wasVisible =
-                    false; // 다음 표시 시 초기화 준비
+                    false;
 
-                return; // UI 갱신 중단
+                return;
             }
 
-            if (!wasVisible) // 새 Encounter 패널 표시 확인
+            if (!wasVisible)
             {
                 wasVisible =
-                    true; // 표시 상태 저장
+                    true;
 
                 SetResultText(
-                    string.Empty); // 이전 결과 문구 초기화
+                    string.Empty);
             }
 
-            RefreshTargetInfo(); // 대상 정보 갱신
-            RefreshActionState(); // 행동 버튼과 사유 갱신
+            RefreshTargetInfo();
+            RefreshActionState();
         }
 
         private void ResolveEncounterController()
         {
-            if (encounterController != null) // 기존 참조 확인
+            if (encounterController != null)
             {
-                return; // 재검색 생략
+                return;
             }
 
             encounterController =
-                FindFirstObjectByType<ExplorationMonsterEncounterController>(); // 씬에서 자동 검색
+                FindFirstObjectByType<ExplorationMonsterEncounterController>();
         }
 
         private void BindButtons()
         {
-            if (battleButton != null) // 전투 버튼 확인
+            if (battleButton != null)
             {
                 battleButton.onClick.AddListener(
-                    OnBattleClicked); // 전투 클릭 연결
+                    OnBattleClicked);
             }
 
-            if (escapeButton != null) // 회피 버튼 확인
+            if (escapeButton != null)
             {
                 escapeButton.onClick.AddListener(
-                    OnEscapeClicked); // 회피 클릭 연결
+                    OnEscapeClicked);
             }
 
-            if (testEndButton != null) // 테스트 종료 버튼 확인
+            if (testEndButton != null)
             {
                 testEndButton.onClick.AddListener(
-                    OnTestEndClicked); // 테스트 종료 클릭 연결
+                    OnTestEndClicked);
             }
         }
 
         private void UnbindButtons()
         {
-            if (battleButton != null) // 전투 버튼 확인
+            if (battleButton != null)
             {
                 battleButton.onClick.RemoveListener(
-                    OnBattleClicked); // 전투 클릭 해제
+                    OnBattleClicked);
             }
 
-            if (escapeButton != null) // 회피 버튼 확인
+            if (escapeButton != null)
             {
                 escapeButton.onClick.RemoveListener(
-                    OnEscapeClicked); // 회피 클릭 해제
+                    OnEscapeClicked);
             }
 
-            if (testEndButton != null) // 테스트 종료 버튼 확인
+            if (testEndButton != null)
             {
                 testEndButton.onClick.RemoveListener(
-                    OnTestEndClicked); // 테스트 종료 클릭 해제
+                    OnTestEndClicked);
             }
         }
 
         private void OnBattleClicked()
         {
-            if (encounterController == null) // Encounter 컨트롤러 확인
+            if (encounterController == null)
             {
-                return; // 클릭 처리 중단
+                return;
             }
 
             ShowCommandResult(
-                encounterController.SelectBattleCommand()); // 전투 행동 실행 결과 표시
+                encounterController.SelectBattleCommand());
         }
 
         private void OnEscapeClicked()
         {
-            if (encounterController == null) // Encounter 컨트롤러 확인
+            if (encounterController == null)
             {
-                return; // 클릭 처리 중단
+                return;
             }
 
             ShowCommandResult(
-                encounterController.SelectEscapeCommand()); // 회피 행동 실행 결과 표시
+                encounterController.SelectEscapeCommand());
         }
 
         private void OnTestEndClicked()
         {
-            if (encounterController == null) // Encounter 컨트롤러 확인
+            if (encounterController == null)
             {
-                return; // 클릭 처리 중단
+                return;
             }
 
-            encounterController.CompleteTestEncounter(); // 테스트 Encounter 종료
+            encounterController.CompleteTestEncounter();
         }
 
         private void RefreshTargetInfo()
         {
-            if (encounterController == null) // Encounter 컨트롤러 확인
+            if (encounterController == null)
             {
-                return; // 정보 갱신 중단
+                return;
             }
 
             EncounterContext context =
-                encounterController.CurrentContext; // 현재 Context 읽기
+                encounterController.CurrentContext;
 
-            if (stateText != null) // 상태 텍스트 확인
+            if (stateText != null)
             {
                 stateText.text =
-                    $"State : {encounterController.CurrentState}"; // 현재 상태 표시
+                    $"State : {encounterController.CurrentState}";
             }
 
-            if (context == null) // Context 누락 확인
+            if (context == null)
             {
-                if (monsterIdText != null) // 몬스터 텍스트 확인
+                if (monsterIdText != null)
                 {
                     monsterIdText.text =
-                        "Monster : -"; // 몬스터 정보 초기화
+                        "Monster : -";
                 }
 
-                if (roomIdText != null) // 방 텍스트 확인
+                if (roomIdText != null)
                 {
                     roomIdText.text =
-                        "Room : -"; // 방 정보 초기화
+                        "Room : -";
                 }
 
-                if (gridPositionText != null) // Grid 텍스트 확인
+                if (gridPositionText != null)
                 {
                     gridPositionText.text =
-                        "Grid : -"; // Grid 정보 초기화
+                        "Grid : -";
                 }
 
-                return; // 대상 정보 갱신 종료
+                return;
             }
 
-            if (monsterIdText != null) // 몬스터 텍스트 확인
+            if (monsterIdText != null)
             {
                 monsterIdText.text =
-                    $"Monster : {context.MonsterDefinitionId}"; // 몬스터 ID 표시
+                    $"Monster : {context.MonsterDefinitionId}";
             }
 
-            if (roomIdText != null) // 방 텍스트 확인
+            if (roomIdText != null)
             {
                 roomIdText.text =
-                    $"Room : {context.RoomId}"; // 방 ID 표시
+                    $"Room : {context.RoomId}";
             }
 
-            if (gridPositionText != null) // Grid 텍스트 확인
+            if (gridPositionText != null)
             {
                 gridPositionText.text =
-                    $"Grid : {context.MonsterGridPosition}"; // 몬스터 GridPosition 표시
+                    $"Grid : {context.MonsterGridPosition}";
             }
         }
 
         private void RefreshActionState()
         {
-            if (encounterController == null) // Encounter 컨트롤러 확인
+            if (encounterController == null)
             {
                 SetActionButtonsInteractable(
-                    false); // 행동 버튼 비활성
+                    false);
 
-                return; // 상태 갱신 중단
+                SetTestEndButtonInteractable(
+                    false);
+
+                return;
             }
 
             EncounterActionAvailability availability =
-                encounterController.GetActionAvailability(); // 행동 선택 가능 여부 계산
+                encounterController.GetActionAvailability();
 
             SetActionButtonsInteractable(
-                availability.CanSelect); // 전투·회피 버튼 활성 상태 반영
+                availability.CanSelect);
+
+            SetTestEndButtonInteractable(
+                encounterController.HasSelectedEncounterAction);
 
             EncounterCommandResult lastResult =
-                encounterController.LastCommandResult; // 마지막 Command 결과 읽기
+                encounterController.LastCommandResult;
 
-            if (lastResult != null) // 행동 실행 결과 확인
+            if (lastResult != null)
             {
                 string prefix =
                     lastResult.Accepted
                         ? "선택"
-                        : "실패"; // 결과 접두어 결정
+                        : "실패";
 
                 if (!availability.CanSelect
                     && !string.IsNullOrEmpty(availability.Reason)
-                    && lastResult.Message != availability.Reason) // 행동 결과와 다른 선택 불가 사유 확인
+                    && lastResult.Message != availability.Reason)
                 {
                     SetResultText(
-                        $"{prefix} : {lastResult.Message}\n{availability.Reason}"); // 결과와 선택 불가 사유 함께 표시
+                        $"{prefix} : {lastResult.Message}\n{availability.Reason}");
                 }
                 else
                 {
                     SetResultText(
-                        $"{prefix} : {lastResult.Message}"); // 일반 결과 표시
+                        $"{prefix} : {lastResult.Message}");
                 }
 
-                return; // 결과 표시 완료
+                return;
             }
 
-            if (!availability.CanSelect) // 선택 불가 상태 확인
+            if (!availability.CanSelect)
             {
                 SetResultText(
-                    availability.Reason); // 선택 불가 사유 표시
+                    availability.Reason);
             }
         }
 
         private void ShowCommandResult(
             EncounterCommandResult result)
         {
-            if (result == null) // 결과 누락 확인
+            if (result == null)
             {
                 SetResultText(
-                    string.Empty); // 결과 문구 초기화
+                    string.Empty);
 
-                return; // 표시 처리 종료
+                return;
             }
 
             string prefix =
                 result.Accepted
                     ? "선택"
-                    : "실패"; // 결과 접두어 결정
+                    : "실패";
 
             SetResultText(
-                $"{prefix} : {result.Message}"); // 행동 결과 표시
+                $"{prefix} : {result.Message}");
         }
 
         private void SetActionButtonsInteractable(
             bool interactable)
         {
-            if (battleButton != null) // 전투 버튼 확인
+            if (battleButton != null)
             {
                 battleButton.interactable =
-                    interactable; // 전투 버튼 활성 상태 적용
+                    interactable;
             }
 
-            if (escapeButton != null) // 회피 버튼 확인
+            if (escapeButton != null)
             {
                 escapeButton.interactable =
-                    interactable; // 회피 버튼 활성 상태 적용
+                    interactable;
+            }
+        }
+
+        private void SetTestEndButtonInteractable(
+            bool interactable)
+        {
+            if (testEndButton != null)
+            {
+                testEndButton.interactable =
+                    interactable;
             }
         }
 
         private void SetResultText(
             string message)
         {
-            if (resultText != null) // 결과 텍스트 확인
+            if (resultText != null)
             {
                 resultText.text =
-                    message; // 결과·사유 문구 반영
+                    message;
             }
         }
 
         private void SetPanelVisible(
             bool visible)
         {
-            if (panelRoot == null) // 패널 루트 확인
+            if (panelRoot == null)
             {
-                return; // 표시 처리 중단
+                return;
             }
 
-            if (panelRoot.activeSelf != visible) // 표시 상태 변경 여부 확인
+            if (panelRoot.activeSelf != visible)
             {
                 panelRoot.SetActive(
-                    visible); // 패널 표시 상태 변경
+                    visible);
             }
         }
     }
