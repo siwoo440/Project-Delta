@@ -622,6 +622,7 @@ GameObject:
   - component: {fileID: 500000010}
   - component: {fileID: 500000011}
   - component: {fileID: 600000016}
+  - component: {fileID: 1454137234}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -700,6 +701,21 @@ MonoBehaviour:
   viewTransform: {fileID: 330585546}
   movementController: {fileID: 1454137231}
   passageController: {fileID: 0}
+--- !u!114 &1454137234
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454137229}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 372ba268f81640009ba02b5d37dd2848, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.ExplorationMonsterEncounterController
+  movementController: {fileID: 1454137231}
+  lookController: {fileID: 1454137232}
+  floorController: {fileID: 500000005}
 --- !u!1 &1966719119
 GameObject:
   m_ObjectHideFlags: 0
