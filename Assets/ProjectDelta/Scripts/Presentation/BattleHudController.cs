@@ -194,10 +194,25 @@ namespace ProjectDelta.Presentation
                 encounterController.LastBattleResult;
 
             // 종료된 전투는 상태 대신 결과를 보여준다.
+            if (result != null)
+            {
+                battleStateText.text =
+                    $"Battle : {encounterController.CurrentBattleState} / Turn {result.TurnCount} / Outcome {result.Outcome}";
+
+                return;
+            }
+
+            // 48일차: 가장 최근에 행동한(또는 행동 중인) 참가자를 함께 보여준다.
+            BattleParticipant actor =
+                encounterController.CurrentBattleActor;
+
+            string actorText =
+                actor != null
+                    ? $" / Actor {actor.InstanceId} (Speed {actor.Speed})"
+                    : string.Empty;
+
             battleStateText.text =
-                result != null
-                    ? $"Battle : {encounterController.CurrentBattleState} / Turn {result.TurnCount} / Outcome {result.Outcome}"
-                    : $"Battle : {encounterController.CurrentBattleState} / Turn {encounterController.BattleTurnNumber}";
+                $"Battle : {encounterController.CurrentBattleState} / Turn {encounterController.BattleTurnNumber}{actorText}";
         }
 
         private void RefreshParticipants()
@@ -362,8 +377,10 @@ namespace ProjectDelta.Presentation
 
             if (testNextTurnButton != null)
             {
+                // 48일차: 이번 턴에 아직 행동할 참가자가 남아있을 때(TurnStart 또는 ResolvingAction)만 진행 가능.
                 testNextTurnButton.interactable =
-                    encounterController.CurrentBattleState == BattleState.TurnStart;
+                    encounterController.CurrentBattleState == BattleState.TurnStart
+                    || encounterController.CurrentBattleState == BattleState.ResolvingAction;
             }
 
             if (testWinButton != null)

@@ -186,12 +186,13 @@ namespace ProjectDelta.Editor
                     hudRoot.transform,
                     font);
 
-            // 47일차 테스트 버튼 생성 (우측 상단)
+            // 47~48일차 테스트 버튼 생성 (우측 상단)
+            // 48일차부터 한 번 클릭에 참가자 한 명씩(Speed 순서대로) 진행한다.
             Button testNextTurnButton =
                 CreateButton(
                     "TestNextTurnButton",
                     hudRoot.transform,
-                    "Test Next Turn",
+                    "Test Advance",
                     new Vector2(120f, 480f),
                     new Vector2(190f, 56f),
                     font);

@@ -75,6 +75,10 @@ namespace ProjectDelta.Presentation
         public BattleResult LastBattleResult =>
             battleSession.Result;
 
+        // 48일차: 가장 최근에 행동을 진행한(또는 진행 중인) 참가자.
+        public BattleParticipant CurrentBattleActor =>
+            battleSession.CurrentActor;
+
         public bool IsBattleActive =>
             battleSession.IsActive;
 
@@ -339,20 +343,18 @@ namespace ProjectDelta.Presentation
                 this);
         }
 
-        // 47일차: TurnStart → AwaitingAction → ResolvingAction → TurnEnd → 다음 TurnStart를 한 번에 진행하는 테스트용 진행 버튼.
+        // 48일차: 이번 턴의 다음 행동자 한 명을 AwaitingAction → ResolvingAction까지 진행하는 테스트용 버튼.
+        // 이번 턴의 마지막 행동자였다면 이어서 TurnEnd → 다음 TurnStart까지 자동으로 넘어간다.
         public bool TestAdvanceBattleTurn()
         {
-            if (battleSession.State != BattleState.TurnStart
-                || battleSession.Context == null)
+            if (battleSession.Context == null
+                || (battleSession.State != BattleState.TurnStart
+                    && battleSession.State != BattleState.ResolvingAction))
             {
                 return false;
             }
 
-            BattleParticipant actor =
-                battleSession.Context.Player;
-
-            if (!battleSession.TryEnterAwaitingAction(
-                    actor))
+            if (!battleSession.TryEnterAwaitingAction())
             {
                 return false;
             }
@@ -360,6 +362,18 @@ namespace ProjectDelta.Presentation
             if (!battleSession.TryBeginResolveAction())
             {
                 return false;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            Debug.Log(
+                $"[Project Delta] 48일차 Battle Actor 진행 / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
+                this);
+
+            if (battleSession.HasPendingActorsThisTurn)
+            {
+                return true;
             }
 
             if (!battleSession.TryEndTurn())
@@ -373,7 +387,7 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                $"[Project Delta] 47일차 Battle Turn {battleSession.TurnNumber} Start",
+                $"[Project Delta] 48일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
 
             return true;
