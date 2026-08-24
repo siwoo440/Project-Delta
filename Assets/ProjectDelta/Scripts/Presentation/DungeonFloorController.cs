@@ -49,12 +49,16 @@ namespace ProjectDelta.Presentation
         private readonly Dictionary<string, RoomView> spawnedRooms =
             new Dictionary<string, RoomView>();
 
+        private readonly Dictionary<string, ExplorationMonsterMarker> spawnedMonsters =
+            new Dictionary<string, ExplorationMonsterMarker>();
+
         private readonly Dictionary<string, DungeonRoomPrefabBinding> bindingsByDefinition =
             new Dictionary<string, DungeonRoomPrefabBinding>();
 
         public GeneratedDungeon CurrentDungeon => currentGeneration?.Dungeon;
         public int CurrentSuccessfulSeed => currentGeneration != null ? currentGeneration.SuccessfulSeed : 0;
         public IReadOnlyDictionary<string, RoomView> SpawnedRooms => spawnedRooms;
+        public IReadOnlyDictionary<string, ExplorationMonsterMarker> SpawnedMonsters => spawnedMonsters;
         public DungeonEncounterLayout CurrentEncounterLayout => currentEncounterLayout;
 
         private void Awake()
@@ -819,11 +823,245 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 40일차 Encounter 배치 완료 / Seed {seed} / MonsterRooms {currentEncounterLayout.Count}",
                 this);
+
+            SpawnEncounterMonsters(
+                dungeon,
+                seed);
+        }
+
+        private void SpawnEncounterMonsters(
+            GeneratedDungeon dungeon,
+            int seed)
+        {
+            spawnedMonsters.Clear();
+
+            if (dungeon == null
+                || currentEncounterLayout == null
+                || currentEncounterLayout.Count == 0)
+            {
+                return;
+            }
+
+            MonsterSpawnPositionService spawnPositionService =
+                new MonsterSpawnPositionService();
+
+            foreach (RoomEncounterAssignment assignment
+                     in currentEncounterLayout.Assignments)
+            {
+                if (assignment == null
+                    || assignment.ContentType != RoomContentType.Monster)
+                {
+                    continue;
+                }
+
+                if (!spawnedRooms.TryGetValue(
+                        assignment.RoomId,
+                        out RoomView roomView)
+                    || roomView == null
+                    || roomView.PassageController == null)
+                {
+                    Debug.LogWarning(
+                        $"[Project Delta] 41일차 Monster RoomView를 찾을 수 없습니다. RoomId={assignment.RoomId}",
+                        this);
+                    continue;
+                }
+
+                RoomDefinition definition =
+                    roomView.PassageController.RoomDefinition;
+
+                if (definition == null)
+                {
+                    Debug.LogWarning(
+                        $"[Project Delta] 41일차 Monster 방의 RoomDefinition이 없습니다. RoomId={assignment.RoomId}",
+                        roomView);
+                    continue;
+                }
+
+                if (!dungeon.Layout.TryGetRoom(
+                        assignment.RoomId,
+                        out RoomNode roomNode))
+                {
+                    continue;
+                }
+
+                List<RoomExit> connectedExits =
+                    CollectConnectedExits(
+                        roomNode);
+
+                List<GridPosition> occupiedPositions =
+                    CollectOccupiedContentPositions(
+                        roomView);
+
+                if (!spawnPositionService.TryChoosePosition(
+                        definition.MinX,
+                        definition.MaxX,
+                        definition.MinZ,
+                        definition.MaxZ,
+                        connectedExits,
+                        occupiedPositions,
+                        seed,
+                        assignment.RoomId,
+                        assignment.MonsterDefinitionId,
+                        out GridPosition spawnPosition))
+                {
+                    Debug.LogWarning(
+                        $"[Project Delta] 41일차 Monster 스폰 가능한 칸이 없습니다. RoomId={assignment.RoomId}",
+                        roomView);
+                    continue;
+                }
+
+                ExplorationMonsterMarker monster =
+                    CreateRuntimeMonster(
+                        roomView,
+                        definition,
+                        assignment,
+                        spawnPosition);
+
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                spawnedMonsters[assignment.RoomId] =
+                    monster;
+
+                roomView.RefreshMarkers();
+            }
+
+            Debug.Log(
+                $"[Project Delta] 41일차 정지형 테스트 몬스터 배치 완료 / Spawned {spawnedMonsters.Count}",
+                this);
+        }
+
+        private static List<RoomExit> CollectConnectedExits(
+            RoomNode roomNode)
+        {
+            List<RoomExit> exits =
+                new List<RoomExit>();
+
+            if (roomNode == null)
+            {
+                return exits;
+            }
+
+            foreach (RoomConnectionEdge edge
+                     in roomNode.Connections.Values)
+            {
+                if (edge != null
+                    && edge.LocalExit.HasValue)
+                {
+                    exits.Add(
+                        edge.LocalExit.Value);
+                }
+            }
+
+            return exits;
+        }
+
+        private static List<GridPosition> CollectOccupiedContentPositions(
+            RoomView roomView)
+        {
+            List<GridPosition> occupied =
+                new List<GridPosition>();
+
+            if (roomView == null)
+            {
+                return occupied;
+            }
+
+            foreach (RoomContentMarker marker
+                     in roomView.GetComponentsInChildren<RoomContentMarker>(true))
+            {
+                if (marker != null)
+                {
+                    occupied.Add(
+                        marker.GridPosition);
+                }
+            }
+
+            return occupied;
+        }
+
+        private ExplorationMonsterMarker CreateRuntimeMonster(
+            RoomView roomView,
+            RoomDefinition definition,
+            RoomEncounterAssignment assignment,
+            GridPosition spawnPosition)
+        {
+            if (roomView == null
+                || definition == null
+                || assignment == null)
+            {
+                return null;
+            }
+
+            float cellSizeX =
+                definition.Width > 0
+                    ? roomWorldSize / definition.Width
+                    : 2f;
+
+            float cellSizeZ =
+                definition.Height > 0
+                    ? roomWorldSize / definition.Height
+                    : 2f;
+
+            GameObject monsterObject =
+                GameObject.CreatePrimitive(
+                    PrimitiveType.Capsule);
+
+            monsterObject.name =
+                $"Monster_{assignment.MonsterDefinitionId}_{assignment.RoomId}";
+
+            monsterObject.transform.SetParent(
+                roomView.transform,
+                false);
+
+            monsterObject.transform.localPosition =
+                new Vector3(
+                    spawnPosition.X * cellSizeX,
+                    0.75f,
+                    spawnPosition.Z * cellSizeZ);
+
+            monsterObject.transform.localRotation =
+                Quaternion.identity;
+
+            monsterObject.transform.localScale =
+                new Vector3(
+                    0.65f,
+                    0.75f,
+                    0.65f);
+
+            Collider monsterCollider =
+                monsterObject.GetComponent<Collider>();
+
+            if (monsterCollider != null)
+            {
+                // 42일차의 GridPosition 접촉 판정을 위해 플레이어 이동을 물리적으로 막지 않는다.
+                monsterCollider.isTrigger = true;
+            }
+
+            ExplorationMonsterMarker monsterMarker =
+                monsterObject.AddComponent<ExplorationMonsterMarker>();
+
+            monsterMarker.Configure(
+                assignment.RoomId,
+                assignment.MonsterDefinitionId,
+                spawnPosition);
+
+            RoomContentMarker contentMarker =
+                monsterObject.AddComponent<RoomContentMarker>();
+
+            contentMarker.Configure(
+                RoomContentType.Monster,
+                spawnPosition);
+
+            return monsterMarker;
         }
 
         private void ClearGeneratedFloor()
         {
             spawnedRooms.Clear();
+            spawnedMonsters.Clear();
             currentGeneration = null;
             currentEncounterLayout =
                 new DungeonEncounterLayout();
