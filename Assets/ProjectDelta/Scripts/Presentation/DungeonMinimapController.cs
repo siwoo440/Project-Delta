@@ -1,13 +1,12 @@
+using System.Collections.Generic;
 using ProjectDelta.Domain;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace ProjectDelta.Presentation
 {
-    // 37일차: GeneratedDungeon의 방 그래프를 화면 우측 상단 미니맵으로 표시한다.
-    // 현재 방 주변 8칸에서 한 번 발견한 방만 지도에 남긴다.
-    // M키로 같은 그래프를 화면 중앙의 큰 지도 패널로 열고 닫을 수 있다.
-    // 38일차 연결선/확대축소/탐험률 기능과 39일차 저장 기능은 여기서 다루지 않는다.
+    // 37일차 미니맵을 유지하고 38일차 전체 지도 기능을 확장한다.
+    // 미발견 방은 전체 지도에서도 계속 숨기며 발견된 영역만 중앙 정렬한다.
     public sealed class DungeonMinimapController : MonoBehaviour
     {
         [SerializeField] private PlayerGridMovementController movementController;
@@ -18,10 +17,20 @@ namespace ProjectDelta.Presentation
         [SerializeField] private float roomMarkerSize = 24f;
         [SerializeField] private float playerIconSize = 15f;
 
-        // 이전 미니맵 컨트롤러에서 사용하던 필드명을 유지해 기존 Scene 직렬화 값도 재사용한다.
+        // 기존 Scene 직렬화 값과 호환하기 위해 37일차 필드명을 유지한다.
         [SerializeField] private float fullMapScale = 5f;
         [SerializeField] private float fullMapMaxScreenRatio = 0.92f;
         [SerializeField] private float fullMapContentScale = 1.5f;
+
+        [Header("38일차 전체 지도")]
+        [SerializeField] private float fullMapMinZoom = 0.6f;
+        [SerializeField] private float fullMapMaxZoom = 2f;
+        [SerializeField] private float fullMapZoomStep = 0.2f;
+        [SerializeField] private float fullMapConnectionThickness = 4f;
+        [SerializeField] private float fullMapPadding = 28f;
+        [SerializeField] private float fullMapInfoHeight = 76f;
+        [SerializeField] private float fullMapBottomHeight = 34f;
+        [SerializeField] private int totalFloorCount = 5;
 
         private readonly DungeonMinimapRevealTracker revealTracker =
             new DungeonMinimapRevealTracker();
@@ -29,6 +38,7 @@ namespace ProjectDelta.Presentation
         private DungeonFloorController floorController;
         private Texture2D playerIconTexture;
         private bool isFullMapOpen;
+        private float fullMapZoom = 1f;
 
         private static readonly Color PanelColor =
             new Color(0f, 0f, 0f, 0.58f);
@@ -41,6 +51,9 @@ namespace ProjectDelta.Presentation
 
         private static readonly Color CurrentRoomColor =
             new Color(1f, 0.78f, 0.25f, 1f);
+
+        private static readonly Color ConnectionColor =
+            new Color(0.58f, 0.58f, 0.58f, 0.9f);
 
         private void Awake()
         {
@@ -70,6 +83,12 @@ namespace ProjectDelta.Presentation
 
             playerIconTexture =
                 CreatePlayerIconTexture(32);
+
+            fullMapZoom =
+                Mathf.Clamp(
+                    1f,
+                    fullMapMinZoom,
+                    fullMapMaxZoom);
         }
 
         private void Update()
@@ -85,11 +104,39 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            if (isFullMapOpen
-                && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (!isFullMapOpen)
+            {
+                return;
+            }
+
+            if (Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 isFullMapOpen = false;
+                return;
             }
+
+            if (Mouse.current == null)
+            {
+                return;
+            }
+
+            float scrollY =
+                Mouse.current.scroll.ReadValue().y;
+
+            if (Mathf.Abs(scrollY) <= 0.01f)
+            {
+                return;
+            }
+
+            float direction =
+                Mathf.Sign(scrollY);
+
+            fullMapZoom =
+                Mathf.Clamp(
+                    fullMapZoom
+                    + (direction * fullMapZoomStep),
+                    fullMapMinZoom,
+                    fullMapMaxZoom);
         }
 
         private void OnDestroy()
@@ -144,18 +191,26 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            // 현재 방 주변 8칸에서 실제로 존재하는 방을 발견 상태로 누적한다.
-            // 다른 방으로 이동해도 이미 발견한 방은 현재 층이 끝날 때까지 유지된다.
             revealTracker.Update(
                 dungeon,
                 currentRoomId);
 
             if (isFullMapOpen)
             {
-                DrawFullMap(snapshot);
+                DrawFullMap(
+                    snapshot,
+                    dungeon,
+                    runState);
+
                 return;
             }
 
+            DrawMiniMap(snapshot);
+        }
+
+        private void DrawMiniMap(
+            DungeonMinimapSnapshot snapshot)
+        {
             Rect panelRect = new Rect(
                 Screen.width - margin - mapSize,
                 margin,
@@ -164,7 +219,7 @@ namespace ProjectDelta.Presentation
 
             DrawPanelBackground(panelRect);
 
-            DrawGraphMap(
+            DrawCurrentCenteredMap(
                 panelRect,
                 snapshot,
                 roomSpacing,
@@ -173,7 +228,9 @@ namespace ProjectDelta.Presentation
         }
 
         private void DrawFullMap(
-            DungeonMinimapSnapshot snapshot)
+            DungeonMinimapSnapshot snapshot,
+            GeneratedDungeon dungeon,
+            DungeonRunState runState)
         {
             DrawFullScreenDim();
 
@@ -196,15 +253,141 @@ namespace ProjectDelta.Presentation
 
             DrawPanelBackground(panelRect);
 
-            DrawGraphMap(
+            DrawFullMapInfo(
                 panelRect,
                 snapshot,
-                roomSpacing * fullMapContentScale,
-                roomMarkerSize * fullMapContentScale,
-                playerIconSize * fullMapContentScale);
+                dungeon,
+                runState);
+
+            Rect graphRect =
+                new Rect(
+                    panelRect.x + fullMapPadding,
+                    panelRect.y + fullMapInfoHeight,
+                    panelRect.width
+                    - (fullMapPadding * 2f),
+                    panelRect.height
+                    - fullMapInfoHeight
+                    - fullMapBottomHeight
+                    - fullMapPadding);
+
+            DrawBoundsCenteredMap(
+                graphRect,
+                snapshot,
+                dungeon);
+
+            DrawFullMapHint(panelRect);
         }
 
-        private void DrawGraphMap(
+        private void DrawFullMapInfo(
+            Rect panelRect,
+            DungeonMinimapSnapshot snapshot,
+            GeneratedDungeon dungeon,
+            DungeonRunState runState)
+        {
+            DungeonMapProgress progress =
+                DungeonMapAnalytics.CalculateProgress(
+                    snapshot);
+
+            int currentFloor =
+                runState != null
+                    ? runState.CurrentFloor
+                    : 1;
+
+            int displayTotalFloorCount =
+                Mathf.Max(
+                    currentFloor,
+                    Mathf.Max(1, totalFloorCount));
+
+            string stairsDistanceText = "?";
+
+            if (dungeon.StairsRoom != null
+                && revealTracker.IsRevealed(
+                    dungeon.StairsRoom.RoomId)
+                && DungeonMapAnalytics.TryGetShortestDistance(
+                    dungeon,
+                    snapshot.CurrentRoomId,
+                    dungeon.StairsRoom.RoomId,
+                    out int stairsDistance))
+            {
+                stairsDistanceText =
+                    stairsDistance + "방";
+            }
+
+            GUIStyle infoStyle =
+                new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 16,
+                    alignment = TextAnchor.MiddleLeft
+                };
+
+            infoStyle.normal.textColor =
+                Color.white;
+
+            float left =
+                panelRect.x + fullMapPadding;
+
+            float width =
+                panelRect.width
+                - (fullMapPadding * 2f);
+
+            GUI.Label(
+                new Rect(
+                    left,
+                    panelRect.y + 8f,
+                    width,
+                    22f),
+                $"층 진행도 : {currentFloor} / {displayTotalFloorCount}",
+                infoStyle);
+
+            GUI.Label(
+                new Rect(
+                    left,
+                    panelRect.y + 30f,
+                    width,
+                    22f),
+                $"탐험률 : {progress.ExploredRoomCount} / {progress.TotalRoomCount}  ({progress.ExplorationPercent:0}%)",
+                infoStyle);
+
+            GUI.Label(
+                new Rect(
+                    left,
+                    panelRect.y + 52f,
+                    width,
+                    22f),
+                $"계단 거리 : {stairsDistanceText}",
+                infoStyle);
+        }
+
+        private void DrawFullMapHint(
+            Rect panelRect)
+        {
+            GUIStyle hintStyle =
+                new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 13,
+                    alignment = TextAnchor.MiddleCenter
+                };
+
+            hintStyle.normal.textColor =
+                new Color(
+                    0.82f,
+                    0.82f,
+                    0.82f,
+                    1f);
+
+            GUI.Label(
+                new Rect(
+                    panelRect.x + fullMapPadding,
+                    panelRect.yMax
+                    - fullMapBottomHeight,
+                    panelRect.width
+                    - (fullMapPadding * 2f),
+                    fullMapBottomHeight - 4f),
+                $"마우스 휠 : 확대/축소   |   줌 {fullMapZoom:0.0}x   |   M / Esc : 닫기",
+                hintStyle);
+        }
+
+        private void DrawCurrentCenteredMap(
             Rect panelRect,
             DungeonMinimapSnapshot snapshot,
             float preferredSpacing,
@@ -218,7 +401,7 @@ namespace ProjectDelta.Presentation
                 panelRect.height * 0.5f;
 
             float spacing =
-                CalculateFittedSpacing(
+                CalculateCurrentCenteredSpacing(
                     snapshot,
                     panelRect.width,
                     preferredSpacing,
@@ -269,7 +452,149 @@ namespace ProjectDelta.Presentation
             GUI.EndGroup();
         }
 
-        private float CalculateFittedSpacing(
+        private void DrawBoundsCenteredMap(
+            Rect graphRect,
+            DungeonMinimapSnapshot snapshot,
+            GeneratedDungeon dungeon)
+        {
+            DungeonMapBounds bounds =
+                DungeonMapAnalytics
+                    .CalculateRevealedBounds(
+                        snapshot,
+                        revealTracker.RevealedRoomIds);
+
+            if (!bounds.HasRooms)
+            {
+                return;
+            }
+
+            float baseMarkerSize =
+                roomMarkerSize
+                * fullMapContentScale;
+
+            float baseIconSize =
+                playerIconSize
+                * fullMapContentScale;
+
+            float preferredSpacing =
+                roomSpacing
+                * fullMapContentScale;
+
+            float baseSpacing =
+                CalculateBoundsCenteredSpacing(
+                    bounds,
+                    graphRect.width,
+                    graphRect.height,
+                    preferredSpacing,
+                    baseMarkerSize);
+
+            float spacing =
+                baseSpacing * fullMapZoom;
+
+            float markerSize =
+                baseMarkerSize * fullMapZoom;
+
+            float iconSize =
+                baseIconSize * fullMapZoom;
+
+            float connectionThickness =
+                Mathf.Max(
+                    1f,
+                    fullMapConnectionThickness
+                    * fullMapZoom);
+
+            Vector2 pixelCenter =
+                new Vector2(
+                    graphRect.width * 0.5f,
+                    graphRect.height * 0.5f);
+
+            GUI.BeginGroup(graphRect);
+
+            IReadOnlyList<DungeonMapConnection> connections =
+                DungeonMapAnalytics.GetVisibleConnections(
+                    dungeon,
+                    revealTracker.RevealedRoomIds);
+
+            for (int i = 0;
+                 i < connections.Count;
+                 i++)
+            {
+                DungeonMapConnection connection =
+                    connections[i];
+
+                if (!snapshot.TryGetRoom(
+                        connection.FromRoomId,
+                        out DungeonMinimapRoomEntry fromRoom)
+                    || !snapshot.TryGetRoom(
+                        connection.ToRoomId,
+                        out DungeonMinimapRoomEntry toRoom))
+                {
+                    continue;
+                }
+
+                Vector2 fromPoint =
+                    GetBoundsCenteredPoint(
+                        fromRoom.MacroCoordinate,
+                        bounds,
+                        pixelCenter,
+                        spacing);
+
+                Vector2 toPoint =
+                    GetBoundsCenteredPoint(
+                        toRoom.MacroCoordinate,
+                        bounds,
+                        pixelCenter,
+                        spacing);
+
+                DrawConnectionLine(
+                    fromPoint,
+                    toPoint,
+                    connectionThickness);
+            }
+
+            for (int i = 0;
+                 i < snapshot.Rooms.Count;
+                 i++)
+            {
+                DungeonMinimapRoomEntry room =
+                    snapshot.Rooms[i];
+
+                if (!revealTracker.IsRevealed(
+                        room.RoomId))
+                {
+                    continue;
+                }
+
+                Vector2 markerCenter =
+                    GetBoundsCenteredPoint(
+                        room.MacroCoordinate,
+                        bounds,
+                        pixelCenter,
+                        spacing);
+
+                DrawRoomMarker(
+                    markerCenter,
+                    room.State,
+                    markerSize,
+                    graphRect.width,
+                    graphRect.height);
+            }
+
+            Vector2 playerPoint =
+                GetBoundsCenteredPoint(
+                    snapshot.CurrentMacroCoordinate,
+                    bounds,
+                    pixelCenter,
+                    spacing);
+
+            DrawPlayerDirection(
+                playerPoint,
+                iconSize);
+
+            GUI.EndGroup();
+        }
+
+        private float CalculateCurrentCenteredSpacing(
             DungeonMinimapSnapshot snapshot,
             float panelWidth,
             float preferredSpacing,
@@ -296,10 +621,11 @@ namespace ProjectDelta.Presentation
                             room.MacroCoordinate,
                             snapshot.CurrentMacroCoordinate);
 
-                maxDistance = Mathf.Max(
-                    maxDistance,
-                    Mathf.Abs(relative.X),
-                    Mathf.Abs(relative.Z));
+                maxDistance =
+                    Mathf.Max(
+                        maxDistance,
+                        Mathf.Abs(relative.X),
+                        Mathf.Abs(relative.Z));
             }
 
             float usableHalfSize =
@@ -314,6 +640,113 @@ namespace ProjectDelta.Presentation
             return Mathf.Min(
                 preferredSpacing,
                 fitSpacing);
+        }
+
+        private static float CalculateBoundsCenteredSpacing(
+            DungeonMapBounds bounds,
+            float panelWidth,
+            float panelHeight,
+            float preferredSpacing,
+            float markerSize)
+        {
+            int spanX =
+                Mathf.Max(
+                    1,
+                    bounds.MaxX - bounds.MinX);
+
+            int spanZ =
+                Mathf.Max(
+                    1,
+                    bounds.MaxZ - bounds.MinZ);
+
+            float usableWidth =
+                Mathf.Max(
+                    1f,
+                    panelWidth - (markerSize * 2f));
+
+            float usableHeight =
+                Mathf.Max(
+                    1f,
+                    panelHeight - (markerSize * 2f));
+
+            float fitX =
+                usableWidth / spanX;
+
+            float fitZ =
+                usableHeight / spanZ;
+
+            return Mathf.Min(
+                preferredSpacing,
+                fitX,
+                fitZ);
+        }
+
+        private static Vector2 GetBoundsCenteredPoint(
+            GridPosition coordinate,
+            DungeonMapBounds bounds,
+            Vector2 pixelCenter,
+            float spacing)
+        {
+            return new Vector2(
+                pixelCenter.x
+                + ((coordinate.X - bounds.CenterX) * spacing),
+                pixelCenter.y
+                - ((coordinate.Z - bounds.CenterZ) * spacing));
+        }
+
+        private static void DrawConnectionLine(
+            Vector2 from,
+            Vector2 to,
+            float thickness)
+        {
+            Color previousColor =
+                GUI.color;
+
+            GUI.color =
+                ConnectionColor;
+
+            if (Mathf.Abs(from.x - to.x)
+                >= Mathf.Abs(from.y - to.y))
+            {
+                float x =
+                    Mathf.Min(
+                        from.x,
+                        to.x);
+
+                float width =
+                    Mathf.Abs(
+                        from.x - to.x);
+
+                GUI.DrawTexture(
+                    new Rect(
+                        x,
+                        from.y - (thickness * 0.5f),
+                        width,
+                        thickness),
+                    Texture2D.whiteTexture);
+            }
+            else
+            {
+                float y =
+                    Mathf.Min(
+                        from.y,
+                        to.y);
+
+                float height =
+                    Mathf.Abs(
+                        from.y - to.y);
+
+                GUI.DrawTexture(
+                    new Rect(
+                        from.x - (thickness * 0.5f),
+                        y,
+                        thickness,
+                        height),
+                    Texture2D.whiteTexture);
+            }
+
+            GUI.color =
+                previousColor;
         }
 
         private static void DrawRoomMarker(
@@ -424,7 +857,8 @@ namespace ProjectDelta.Presentation
                 angle,
                 center);
 
-            GUI.color = Color.white;
+            GUI.color =
+                Color.white;
 
             GUI.DrawTexture(
                 iconRect,
