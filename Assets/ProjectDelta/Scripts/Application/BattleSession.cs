@@ -127,6 +127,10 @@ namespace ProjectDelta.Application
             CurrentActor =
                 nextActor; // 선출된 행동자 저장
 
+            // 52일차: 방어는 "자기 다음 차례가 돌아올 때까지" 유지된다. 그 차례가 바로 지금이므로 해제한다.
+            CurrentActor.SetDefending(
+                false);
+
             SelectedTarget =
                 null; // 새 행동자이므로 이전 대상 선택 초기화
 

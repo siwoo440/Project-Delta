@@ -153,6 +153,71 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void CalculateDamage_DefendingTarget_ReducesDamageByReductionPercent()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    penetration: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    penetration: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            defender.SetDefending(
+                true);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender);
+
+            // 10 - 0 = 10, 방어로 50% 감소 → 5
+            Assert.AreEqual(
+                5,
+                damage);
+        }
+
+        [Test]
+        public void CalculateDamage_DefendingTarget_StillNeverGoesBelowMinimum()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 1,
+                    penetration: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    penetration: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            defender.SetDefending(
+                true);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender);
+
+            Assert.AreEqual(
+                BattleDamageCalculator.MinDamage,
+                damage); // 방어로 더 줄어도 최소 피해는 유지 확인
+        }
+
+        [Test]
         public void Resolve_RollBelowHitChance_ReturnsHitWithDamage()
         {
             BattleParticipant attacker =

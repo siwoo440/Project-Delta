@@ -33,11 +33,13 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Image staminaFillImage;
         [SerializeField] private Text staminaText;
 
-        // 49일차: 공격 버튼만 실제로 연결한다.
+        // 49일차: 공격, 52일차: 방어 버튼을 실제로 연결한다.
         [Header("Action Buttons")]
         [SerializeField] private Button attackButton;
+        [SerializeField] private Button defendButton;
 
-        // 50~54일차에 실제 Command가 연결될 나머지 행동 버튼 자리 (행동·방어·아이템·도주).
+        // 이후 일차에 실제 Command가 연결될 나머지 행동 버튼 자리 (행동·아이템·도주·유혹).
+        // 유혹은 기획서에 있는 행동으로, 자리만 먼저 만들어두고 이후 일차에서 구현한다.
         [SerializeField] private Button[] actionButtons =
             new Button[0];
 
@@ -113,11 +115,17 @@ namespace ProjectDelta.Presentation
                     OnTestLoseClicked);
             }
 
-            // 49일차: 행동 버튼 자리의 1번(공격)만 실제로 연결한다. 나머지는 50~54일차에 연결한다.
+            // 49일차: 공격, 52일차: 방어 버튼을 연결한다. 나머지는 이후 일차에 연결한다.
             if (attackButton != null)
             {
                 attackButton.onClick.AddListener(
                     OnAttackButtonClicked);
+            }
+
+            if (defendButton != null)
+            {
+                defendButton.onClick.AddListener(
+                    OnDefendButtonClicked);
             }
         }
 
@@ -172,6 +180,12 @@ namespace ProjectDelta.Presentation
             {
                 attackButton.onClick.RemoveListener(
                     OnAttackButtonClicked);
+            }
+
+            if (defendButton != null)
+            {
+                defendButton.onClick.RemoveListener(
+                    OnDefendButtonClicked);
             }
         }
 
@@ -238,6 +252,16 @@ namespace ProjectDelta.Presentation
             }
 
             encounterController.ConfirmAttack();
+        }
+
+        private void OnDefendButtonClicked()
+        {
+            if (encounterController == null)
+            {
+                return;
+            }
+
+            encounterController.ConfirmDefend();
         }
 
         private void RefreshBattleState()
@@ -474,6 +498,13 @@ namespace ProjectDelta.Presentation
                 attackButton.interactable =
                     encounterController.CurrentBattleState == BattleState.AwaitingAction
                     && encounterController.SelectedBattleTarget != null;
+            }
+
+            // 52일차: 방어는 대상 선택이 필요 없어 AwaitingAction이기만 하면 바로 확정할 수 있다.
+            if (defendButton != null)
+            {
+                defendButton.interactable =
+                    encounterController.CurrentBattleState == BattleState.AwaitingAction;
             }
 
             bool isBattleActive =

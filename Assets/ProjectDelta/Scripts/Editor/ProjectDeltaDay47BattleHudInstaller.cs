@@ -180,12 +180,13 @@ namespace ProjectDelta.Editor
                     hudRoot.transform,
                     font);
 
-            // 행동 버튼 자리 생성 (왼쪽 가운데 아래), 49일차: 공격 버튼만 따로 반환받는다
+            // 행동 버튼 자리 생성 (왼쪽 가운데 아래), 공격·방어 버튼은 따로 반환받는다
             Button[] actionButtons =
                 CreateActionButtonPanel(
                     hudRoot.transform,
                     font,
-                    out Button attackButton);
+                    out Button attackButton,
+                    out Button defendButton);
 
             // 47~48일차 테스트 버튼 생성 (우측 상단)
             // 48일차부터 한 번 클릭에 참가자 한 명씩(Speed 순서대로) 진행한다.
@@ -230,6 +231,7 @@ namespace ProjectDelta.Editor
                 playerSlot,
                 vitals,
                 attackButton,
+                defendButton,
                 actionButtons,
                 testNextTurnButton,
                 testWinButton,
@@ -554,6 +556,13 @@ namespace ProjectDelta.Editor
                     TextAnchor.MiddleCenter,
                     font);
 
+            // 52일차: 방어 중 배지 생성 (기본 비활성, 슬롯 번호 오른쪽)
+            GameObject defendBadge =
+                CreateDefendBadge(
+                    slotObject.transform,
+                    new Vector2(95f, 185f),
+                    font);
+
             // 슬롯 뷰 참조 연결
             BindSlotView(
                 slotView,
@@ -564,9 +573,41 @@ namespace ProjectDelta.Editor
                 healthFillImage,
                 healthText,
                 slotButton,
-                slotBackgroundImage);
+                slotBackgroundImage,
+                defendBadge);
 
             return slotView;
+        }
+
+        // 52일차: 방어 중 표시 배지 (기본 비활성 상태로 생성).
+        private static GameObject CreateDefendBadge(
+            Transform parent,
+            Vector2 anchoredPosition,
+            Font font)
+        {
+            Text badgeText =
+                CreateText(
+                    "DefendBadge",
+                    parent,
+                    "방어중",
+                    anchoredPosition,
+                    new Vector2(90f, 32f),
+                    15,
+                    TextAnchor.MiddleCenter,
+                    font);
+
+            // 방어 강조색
+            badgeText.color =
+                new Color(
+                    0.45f,
+                    0.75f,
+                    1f,
+                    1f);
+
+            badgeText.gameObject.SetActive(
+                false);
+
+            return badgeText.gameObject;
         }
 
         private static BattleParticipantSlotView CreatePlayerStatusPanel(
@@ -651,6 +692,13 @@ namespace ProjectDelta.Editor
                     TextAnchor.MiddleCenter,
                     font);
 
+            // 52일차: 방어 중 배지 생성 (기본 비활성, 제목 오른쪽)
+            GameObject defendBadge =
+                CreateDefendBadge(
+                    panelObject.transform,
+                    new Vector2(150f, 320f),
+                    font);
+
             // 슬롯 뷰 참조 연결 (플레이어 패널은 클릭 대상이 아니므로 Button 없이 연결)
             BindSlotView(
                 slotView,
@@ -661,7 +709,8 @@ namespace ProjectDelta.Editor
                 healthFillImage,
                 healthText,
                 null,
-                panelObject.GetComponent<Image>());
+                panelObject.GetComponent<Image>(),
+                defendBadge);
 
             return slotView;
         }
@@ -786,12 +835,16 @@ namespace ProjectDelta.Editor
 
         // 49일차: 1번(공격) 버튼은 실제로 연결되므로 attackButton으로 따로 반환하고,
         // 나머지 4개(행동·방어·아이템·도주)는 50~54일차에 연결할 자리로 반환한다.
+        // 49일차: 1번(공격), 52일차: 3번(방어) 버튼은 실제로 연결되므로 따로 반환하고,
+        // 나머지(행동·아이템·도주·유혹)는 이후 일차에 연결할 자리로 반환한다.
+        // 유혹은 기획서에 있는 행동으로, 자리만 먼저 만들어두고 이후 일차에서 실제로 연결한다.
         private static Button[] CreateActionButtonPanel(
             Transform parent,
             Font font,
-            out Button attackButton)
+            out Button attackButton,
+            out Button defendButton)
         {
-            // 뒤 배경 없이 위치만 잡아주는 빈 컨테이너 (5개를 납작하게 한 줄로 배치)
+            // 뒤 배경 없이 위치만 잡아주는 빈 컨테이너 (6개를 납작하게 한 줄로 배치)
             GameObject containerObject =
                 CreateContainer(
                     "ActionButtonPanel",
@@ -803,27 +856,28 @@ namespace ProjectDelta.Editor
             CreateText(
                 "TitleText",
                 parent,
-                "행동 버튼 자리 (50~54일차 연결 예정)",
+                "행동 버튼 자리 (이후 일차 연결 예정)",
                 new Vector2(-500f, -322f),
                 new Vector2(660f, 24f),
                 15,
                 TextAnchor.MiddleCenter,
                 font);
 
-            // 행동 버튼 라벨 (공격만 49일차에 연결, 나머지는 50~54일차에 연결)
+            // 행동 버튼 라벨 (공격·방어는 연결됨, 나머지는 이후 일차에 연결)
             string[] labels =
             {
                 "공격",
                 "행동",
                 "방어",
                 "아이템",
-                "도주"
+                "도주",
+                "유혹"
             };
 
-            // 버튼 하나당 너비·간격 계산 (5칸을 700폭 안에 납작하게 균등 배치)
-            const float buttonWidth = 128f;
+            // 버튼 하나당 너비·간격 계산 (6칸을 700폭 안에 납작하게 균등 배치)
+            const float buttonWidth = 108f;
             const float buttonHeight = 56f;
-            const float buttonSpacing = buttonWidth + 10f;
+            const float buttonSpacing = buttonWidth + 8f;
 
             float groupStartX =
                 -(labels.Length - 1) * buttonSpacing * 0.5f;
@@ -847,18 +901,32 @@ namespace ProjectDelta.Editor
                         font);
             }
 
-            // 1번(공격)을 분리해 반환
+            // 1번(공격) · 3번(방어)을 분리해 반환
             attackButton =
                 buttons[0];
 
-            // 나머지 4개(행동·방어·아이템·도주)만 남긴다
-            Button[] remainingButtons =
-                new Button[buttons.Length - 1];
+            defendButton =
+                buttons[2];
 
-            for (int index = 1; index < buttons.Length; index++)
+            // 나머지(행동·아이템·도주·유혹)만 남긴다
+            Button[] remainingButtons =
+                new Button[buttons.Length - 2];
+
+            int remainingIndex =
+                0;
+
+            for (int index = 0; index < buttons.Length; index++)
             {
-                remainingButtons[index - 1] =
+                if (index == 0
+                    || index == 2)
+                {
+                    continue; // 공격·방어는 이미 따로 반환했으므로 제외
+                }
+
+                remainingButtons[remainingIndex] =
                     buttons[index];
+
+                remainingIndex++;
             }
 
             return remainingButtons;
@@ -1369,7 +1437,8 @@ namespace ProjectDelta.Editor
             Image healthFillImage,
             Text healthText,
             Button clickButton,
-            Image backgroundImage)
+            Image backgroundImage,
+            GameObject defendBadge)
         {
             // 직렬화 객체 생성
             SerializedObject serializedObject =
@@ -1416,6 +1485,11 @@ namespace ProjectDelta.Editor
                 "backgroundImage").objectReferenceValue =
                 backgroundImage;
 
+            // 52일차: 방어 중 배지 연결
+            serializedObject.FindProperty(
+                "defendBadge").objectReferenceValue =
+                defendBadge;
+
             // 직렬화 변경 적용
             serializedObject.ApplyModifiedPropertiesWithoutUndo();
 
@@ -1433,6 +1507,7 @@ namespace ProjectDelta.Editor
             BattleParticipantSlotView playerSlot,
             PlayerVitalsWidgets vitals,
             Button attackButton,
+            Button defendButton,
             Button[] actionButtons,
             Button testNextTurnButton,
             Button testWinButton,
@@ -1515,6 +1590,11 @@ namespace ProjectDelta.Editor
             serializedObject.FindProperty(
                 "attackButton").objectReferenceValue =
                 attackButton;
+
+            // 52일차: 방어 버튼 연결
+            serializedObject.FindProperty(
+                "defendButton").objectReferenceValue =
+                defendButton;
 
             // 행동 버튼 배열 연결
             SerializedProperty actionButtonsProperty =

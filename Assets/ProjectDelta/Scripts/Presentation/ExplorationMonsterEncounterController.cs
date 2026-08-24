@@ -34,6 +34,10 @@ namespace ProjectDelta.Presentation
         private readonly IBattleCommand attackCommand =
             new AttackBattleCommand();
 
+        // 52일차: 전투 내부 방어 행동.
+        private readonly IBattleCommand defendCommand =
+            new DefendBattleCommand();
+
         // 47일차: 승패 계산 전까지 사용하는 최소 테스트 스탯.
         private const string TestPlayerInstanceId = "PLAYER";
         private const int TestPlayerMaxHp = 20;
@@ -549,6 +553,69 @@ namespace ProjectDelta.Presentation
                 this);
 
             return resolvedResult;
+        }
+
+        // 52일차: 방어를 확정한다. 공격과 달리 대상 선택이 필요 없어 확정하자마자 곧바로 해결한다.
+        // 방어는 HP를 바꾸지 않으므로 승패 자동 판정(51일차)은 확인하지 않는다.
+        public BattleCommandResult ConfirmDefend()
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleCommandResult result =
+                defendCommand.Execute(
+                    battleSession.Context,
+                    actor,
+                    null);
+
+            LastBattleCommandResult =
+                result;
+
+            if (!result.Accepted)
+            {
+                Debug.LogWarning(
+                    $"[Project Delta] 52일차 방어 확정 실패 / {result.Message}",
+                    this);
+
+                return result;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return result;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 52일차 Battle 방어 확정 / {result.Message}",
+                this);
+
+            if (battleSession.HasPendingActorsThisTurn)
+            {
+                return result;
+            }
+
+            if (!battleSession.TryEndTurn())
+            {
+                return result;
+            }
+
+            if (!battleSession.TryStartTurn())
+            {
+                return result;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 52일차 Battle Turn {battleSession.TurnNumber} Start",
+                this);
+
+            return result;
         }
 
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.

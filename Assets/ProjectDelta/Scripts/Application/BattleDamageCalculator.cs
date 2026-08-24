@@ -9,6 +9,7 @@ namespace ProjectDelta.Application
         public const int MaxHitChancePercent = 100; // 명중률 상한
 
         public const int MinDamage = 1; // 방어력이 아무리 높아도 최소 피해 보장
+        public const int DefendDamageReductionPercent = 50; // 52일차: 방어 중이면 최종 피해를 이 비율만큼 줄임
 
         // 명중률(%) = 기본 명중률 + 공격자 명중 - 방어자 회피, 5~100% 사이로 고정.
         public static int CalculateHitChancePercent(
@@ -36,8 +37,20 @@ namespace ProjectDelta.Application
                 + attacker.Penetration
                 - defender.Defense;
 
-            return rawDamage > MinDamage
-                ? rawDamage
+            int damage =
+                rawDamage > MinDamage
+                    ? rawDamage
+                    : MinDamage;
+
+            // 52일차: 대상이 방어 중이면 최종 피해를 한 번 더 비율만큼 줄인다.
+            if (defender.IsDefending)
+            {
+                damage =
+                    damage * (100 - DefendDamageReductionPercent) / 100;
+            }
+
+            return damage > MinDamage
+                ? damage
                 : MinDamage;
         }
 

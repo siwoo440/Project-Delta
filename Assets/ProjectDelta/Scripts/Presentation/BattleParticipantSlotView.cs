@@ -19,6 +19,7 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Text healthText;
         [SerializeField] private Button clickButton;
         [SerializeField] private Image backgroundImage;
+        [SerializeField] private GameObject defendBadge; // 52일차: 방어 중 표시
 
         [Header("Portrait")]
         [SerializeField] private Color aliveTint =
@@ -84,6 +85,9 @@ namespace ProjectDelta.Presentation
             ApplyHealth(
                 participant.CurrentHp,
                 participant.MaxHp);
+
+            ApplyDefendBadge(
+                participant.IsDefending);
         }
 
         public void Clear()
@@ -98,6 +102,9 @@ namespace ProjectDelta.Presentation
                 false);
 
             SetSelected(
+                false);
+
+            ApplyDefendBadge(
                 false);
         }
 
@@ -206,6 +213,22 @@ namespace ProjectDelta.Presentation
             {
                 healthText.text =
                     $"HP {currentHp} / {maxHp}";
+            }
+        }
+
+        // 52일차: 방어 중 배지를 참가자 상태에 맞춰 켜고 끈다.
+        private void ApplyDefendBadge(
+            bool isDefending)
+        {
+            if (defendBadge == null)
+            {
+                return;
+            }
+
+            if (defendBadge.activeSelf != isDefending)
+            {
+                defendBadge.SetActive(
+                    isDefending);
             }
         }
 

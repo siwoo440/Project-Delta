@@ -324,6 +324,50 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void TryEnterAwaitingAction_ClearsActorsOwnDefendingStateWhenTheirTurnComesAgain()
+        {
+            BattleSession session =
+                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy, 동률로 Player 우선)
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 1번째: Player
+
+            BattleParticipant player =
+                session.CurrentActor;
+
+            player.SetDefending(
+                true); // 방어 선택
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 2번째: Enemy
+
+            Assert.IsTrue(
+                player.IsDefending); // 아직 Player 차례가 안 돌아왔으므로 방어 유지 확인
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEndTurn());
+
+            Assert.IsTrue(
+                session.TryStartTurn()); // 다음 턴
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // Player 차례가 다시 돌아옴
+
+            Assert.AreSame(
+                player,
+                session.CurrentActor);
+
+            Assert.IsFalse(
+                player.IsDefending); // 자기 차례가 돌아오며 방어 해제 확인
+        }
+
+        [Test]
         public void TrySelectTarget_OnlyDuringAwaitingAction_WithValidTarget()
         {
             BattleSession session =

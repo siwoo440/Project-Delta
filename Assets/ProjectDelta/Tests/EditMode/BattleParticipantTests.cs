@@ -91,6 +91,29 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 participant.CurrentHp); // 20 - 5 - 6 = 9 확인
         }
 
+        [Test]
+        public void SetDefending_TogglesIsDefending()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            Assert.IsFalse(
+                participant.IsDefending); // 기본값 false 확인
+
+            participant.SetDefending(
+                true);
+
+            Assert.IsTrue(
+                participant.IsDefending);
+
+            participant.SetDefending(
+                false);
+
+            Assert.IsFalse(
+                participant.IsDefending);
+        }
+
         private static BattleParticipant CreateParticipant(
             int maxHp)
         {

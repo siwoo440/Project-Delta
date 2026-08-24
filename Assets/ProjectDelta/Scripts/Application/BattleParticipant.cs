@@ -21,6 +21,9 @@ namespace ProjectDelta.Application
         public bool IsAlive =>
             CurrentHp > 0;
 
+        // 52일차: 방어를 선택하면 true가 되고, 자기 다음 차례가 돌아오면 세션이 해제한다.
+        public bool IsDefending { get; private set; }
+
         public BattleParticipant(
             string instanceId,
             string definitionId,
@@ -86,6 +89,14 @@ namespace ProjectDelta.Application
                 appliedDamage;
 
             return appliedDamage;
+        }
+
+        // 52일차: 방어 Command와 BattleSession(자기 다음 차례 시작 시 해제)만 이 값을 바꾼다.
+        public void SetDefending(
+            bool isDefending)
+        {
+            IsDefending =
+                isDefending;
         }
     }
 }
