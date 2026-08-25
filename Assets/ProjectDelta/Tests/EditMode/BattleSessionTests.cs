@@ -547,6 +547,49 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.HasPendingActorsThisRound); // 행동 순서 큐 정리 확인
         }
 
+        [Test]
+        public void TryEndRound_AppliesStatusEffectDamageAndDecrementsDuration()
+        {
+            // 60일차: 라운드 파이프라인에 끼워 넣은 "지속 피해와 회복 적용 → 상태 지속 시간
+            // 감소" 단계가 TryEndRound()에서 실제로 호출되는지 확인한다.
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy)
+
+            BattleParticipant player =
+                session.Context.Player;
+
+            player.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_POISON",
+                    "MON_TEST",
+                    2,
+                    1,
+                    -5)); // 중독: 라운드 종료 시 5 피해, 남은 2라운드
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 1번째 행동자
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 2번째 행동자
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEndRound());
+
+            Assert.AreEqual(
+                15,
+                player.CurrentHp); // 20 - 5(중독) 확인
+
+            Assert.AreEqual(
+                1,
+                player.StatusEffects[0].RemainingRounds); // 2 → 1로 감소, 아직 만료 아님
+        }
+
         private static BattleParticipant CreatePlayer()
         {
             return new BattleParticipant(

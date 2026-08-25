@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace ProjectDelta.Application
 {
@@ -6,6 +7,9 @@ namespace ProjectDelta.Application
     // 53일차: 전투 능력치를 공격·방어·속도·명중·회피·매력·저항 7종으로 정정했다.
     // 54일차: 마나·정력 자원을 도입했다 (기획서 4.2 · 10.2). 소모 API는 스킬 Command가 생기는
     // 66~67일차에서 연결한다.
+    // 60~61일차: 상태 이상 목록(StatusEffectInstance)을 도입했다. 아직 이걸 실제로 부여하는
+    // 스킬이 없어 지금은 항상 빈 목록이지만, 라운드 파이프라인(BattleRoundStatusProcessor)이
+    // 이 목록을 순회할 수 있는 자리를 만들어둔다.
     public sealed class BattleParticipant
     {
         public string InstanceId { get; }
@@ -30,6 +34,13 @@ namespace ProjectDelta.Application
 
         // 52일차: 방어를 선택하면 true가 되고, 자기 다음 차례가 돌아오면 세션이 해제한다.
         public bool IsDefending { get; private set; }
+
+        // 61일차: 이 참가자에게 적용된 상태 이상 목록.
+        private readonly List<StatusEffectInstance> statusEffects =
+            new List<StatusEffectInstance>();
+
+        public IReadOnlyList<StatusEffectInstance> StatusEffects =>
+            statusEffects;
 
         public BattleParticipant(
             string instanceId,
@@ -125,12 +136,55 @@ namespace ProjectDelta.Application
             return appliedDamage;
         }
 
+        // 60일차: 지속 회복(재생 등)에 쓰는 첫 회복 API. ApplyDamage와 대칭으로, 최대 HP를
+        // 넘는 회복은 잘라내고 실제로 회복된 양을 반환한다.
+        public int Heal(
+            int amount)
+        {
+            if (amount <= 0)
+            {
+                return 0; // 0 이하 회복은 적용하지 않음
+            }
+
+            int appliedHeal =
+                Math.Min(
+                    amount,
+                    MaxHp - CurrentHp); // 최대 HP를 넘는 회복은 잘라냄
+
+            CurrentHp +=
+                appliedHeal;
+
+            return appliedHeal;
+        }
+
         // 52일차: 방어 Command와 BattleSession(자기 다음 차례 시작 시 해제)만 이 값을 바꾼다.
         public void SetDefending(
             bool isDefending)
         {
             IsDefending =
                 isDefending;
+        }
+
+        // 61일차: 상태 이상을 부여·해제한다. 중첩 규칙(NoStack/RefreshDuration/Stack) 판정은
+        // 64일차에서 다루므로, 지금은 목록에 더하고 빼는 것까지만 한다.
+        public void AddStatusEffect(
+            StatusEffectInstance statusEffect)
+        {
+            if (statusEffect == null)
+            {
+                return;
+            }
+
+            statusEffects.Add(
+                statusEffect);
+        }
+
+        // 60일차: 라운드 파이프라인의 "상태 지속 시간 감소" 단계에서, 이번 라운드에 만료된
+        // 상태를 걷어낼 때 쓴다.
+        public void RemoveExpiredStatusEffects()
+        {
+            statusEffects.RemoveAll(
+                statusEffect => statusEffect.IsExpired);
         }
     }
 }

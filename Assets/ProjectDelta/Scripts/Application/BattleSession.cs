@@ -79,10 +79,14 @@ namespace ProjectDelta.Application
             CurrentActor =
                 null; // 행동 대상 초기화
 
+            // 60일차: 기획서 4.2 라운드 구조 "라운드 시작 → 지속 시작 효과 적용 → 행동 순서 계산".
+            BattleRoundStatusProcessor.ApplyStartOfRoundEffects(
+                Context);
+
             pendingActorsThisRound =
                 new Queue<BattleParticipant>(
                     BattleTurnOrder.Build(
-                        Context)); // 이번 라운드 행동 순서 큐 생성 (Speed 내림차순)
+                        Context)); // 이번 라운드 행동 순서 큐 생성 (Speed 내림차순, 지속 시작 효과 반영 후)
 
             State =
                 BattleState.RoundStart; // RoundStart 상태 전환
@@ -191,6 +195,14 @@ namespace ProjectDelta.Application
             {
                 return false; // 아직 행동하지 않은 참가자가 있으면 거부
             }
+
+            // 60일차: 기획서 4.2 라운드 구조 "지속 피해와 회복 적용 → 상태 지속 시간 감소".
+            // 참가자별 행동이 모두 끝난 뒤, 전투 종료 판정 전에 적용한다.
+            BattleRoundStatusProcessor.ApplyEndOfRoundDamageAndHealing(
+                Context);
+
+            BattleRoundStatusProcessor.DecrementDurationsAndRemoveExpired(
+                Context);
 
             CurrentActor =
                 null; // 행동 대상 초기화

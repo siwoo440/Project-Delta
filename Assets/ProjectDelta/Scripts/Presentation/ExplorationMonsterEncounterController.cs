@@ -679,6 +679,18 @@ namespace ProjectDelta.Presentation
                 return resolvedResult;
             }
 
+            // 60일차: TryEndRound()가 방금 지속 피해·회복을 적용했으므로(기획서 4.2), 그
+            // 결과로 전투가 끝났을 수 있다 — 다음 라운드로 넘어가기 전에 다시 확인한다.
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolvedResult;
+            }
+
             if (!battleSession.TryStartRound())
             {
                 return resolvedResult;
@@ -770,6 +782,18 @@ namespace ProjectDelta.Presentation
 
             if (!battleSession.TryEndRound())
             {
+                return resolvedResult;
+            }
+
+            // 60일차: TryEndRound()가 방금 지속 피해·회복을 적용했으므로(기획서 4.2), 그
+            // 결과로 전투가 끝났을 수 있다 — 다음 라운드로 넘어가기 전에 다시 확인한다.
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
                 return resolvedResult;
             }
 

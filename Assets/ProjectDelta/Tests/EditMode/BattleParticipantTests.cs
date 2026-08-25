@@ -292,6 +292,156 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 participant.IsDefending);
         }
 
+        [Test]
+        public void Heal_IncreasesCurrentHpByAmount()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            participant.ApplyDamage(
+                15); // 20 → 5
+
+            int appliedHeal =
+                participant.Heal(
+                    3);
+
+            Assert.AreEqual(
+                3,
+                appliedHeal);
+
+            Assert.AreEqual(
+                8,
+                participant.CurrentHp);
+        }
+
+        [Test]
+        public void Heal_ExceedingMaxHp_ClampsAtMaxAndReturnsActualHeal()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            participant.ApplyDamage(
+                5); // 20 → 15
+
+            int appliedHeal =
+                participant.Heal(
+                    999);
+
+            Assert.AreEqual(
+                5,
+                appliedHeal); // 최대 HP까지만 회복
+
+            Assert.AreEqual(
+                20,
+                participant.CurrentHp);
+        }
+
+        [Test]
+        public void Heal_ZeroOrNegativeAmount_DoesNothing()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            participant.ApplyDamage(
+                10);
+
+            Assert.AreEqual(
+                0,
+                participant.Heal(
+                    0));
+
+            Assert.AreEqual(
+                0,
+                participant.Heal(
+                    -5));
+
+            Assert.AreEqual(
+                10,
+                participant.CurrentHp);
+        }
+
+        [Test]
+        public void StatusEffects_StartsEmpty()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            Assert.AreEqual(
+                0,
+                participant.StatusEffects.Count);
+        }
+
+        [Test]
+        public void AddStatusEffect_AddsToStatusEffectsList()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            StatusEffectInstance status =
+                new StatusEffectInstance(
+                    "STATUS_TEST",
+                    "MON_TEST",
+                    2,
+                    1,
+                    -5);
+
+            participant.AddStatusEffect(
+                status);
+
+            Assert.AreEqual(
+                1,
+                participant.StatusEffects.Count);
+
+            Assert.AreSame(
+                status,
+                participant.StatusEffects[0]);
+        }
+
+        [Test]
+        public void RemoveExpiredStatusEffects_RemovesOnlyExpiredEntries()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            StatusEffectInstance expired =
+                new StatusEffectInstance(
+                    "STATUS_EXPIRED",
+                    "MON_TEST",
+                    0,
+                    1,
+                    -5);
+
+            StatusEffectInstance active =
+                new StatusEffectInstance(
+                    "STATUS_ACTIVE",
+                    "MON_TEST",
+                    2,
+                    1,
+                    -5);
+
+            participant.AddStatusEffect(
+                expired);
+
+            participant.AddStatusEffect(
+                active);
+
+            participant.RemoveExpiredStatusEffects();
+
+            Assert.AreEqual(
+                1,
+                participant.StatusEffects.Count);
+
+            Assert.AreSame(
+                active,
+                participant.StatusEffects[0]);
+        }
+
         private static BattleParticipant CreateParticipant(
             int maxHp)
         {
