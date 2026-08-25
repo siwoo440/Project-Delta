@@ -530,6 +530,145 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 participant.StatusEffects.Count);
         }
 
+        [Test]
+        public void TrySpendMana_SufficientMana_DeductsAndReturnsTrue()
+        {
+            // 66일차: 스킬 자원 소모의 첫 API. 충분하면 전액 차감하고 성공한다.
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 50,
+                    maxStamina: 100);
+
+            bool succeeded =
+                participant.TrySpendMana(
+                    20);
+
+            Assert.IsTrue(
+                succeeded);
+
+            Assert.AreEqual(
+                30,
+                participant.CurrentMana);
+        }
+
+        [Test]
+        public void TrySpendMana_InsufficientMana_ReturnsFalseAndDoesNotChange()
+        {
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 10,
+                    maxStamina: 0);
+
+            bool succeeded =
+                participant.TrySpendMana(
+                    11);
+
+            Assert.IsFalse(
+                succeeded);
+
+            Assert.AreEqual(
+                10,
+                participant.CurrentMana); // 실패 시 변화 없음 확인
+        }
+
+        [Test]
+        public void TrySpendMana_ZeroOrNegativeAmount_AlwaysSucceedsWithoutChange()
+        {
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 10,
+                    maxStamina: 0);
+
+            Assert.IsTrue(
+                participant.TrySpendMana(
+                    0));
+
+            Assert.IsTrue(
+                participant.TrySpendMana(
+                    -5));
+
+            Assert.AreEqual(
+                10,
+                participant.CurrentMana);
+        }
+
+        [Test]
+        public void TrySpendMana_ExactRemainingAmount_SucceedsAndReachesZero()
+        {
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 10,
+                    maxStamina: 0);
+
+            Assert.IsTrue(
+                participant.TrySpendMana(
+                    10));
+
+            Assert.AreEqual(
+                0,
+                participant.CurrentMana);
+        }
+
+        [Test]
+        public void TrySpendStamina_SufficientStamina_DeductsAndReturnsTrue()
+        {
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 0,
+                    maxStamina: 40);
+
+            bool succeeded =
+                participant.TrySpendStamina(
+                    15);
+
+            Assert.IsTrue(
+                succeeded);
+
+            Assert.AreEqual(
+                25,
+                participant.CurrentStamina);
+        }
+
+        [Test]
+        public void TrySpendStamina_InsufficientStamina_ReturnsFalseAndDoesNotChange()
+        {
+            BattleParticipant participant =
+                CreateParticipantWithResources(
+                    maxMana: 0,
+                    maxStamina: 5);
+
+            bool succeeded =
+                participant.TrySpendStamina(
+                    6);
+
+            Assert.IsFalse(
+                succeeded);
+
+            Assert.AreEqual(
+                5,
+                participant.CurrentStamina);
+        }
+
+        private static BattleParticipant CreateParticipantWithResources(
+            int maxMana,
+            int maxStamina)
+        {
+            return new BattleParticipant(
+                "PLAYER",
+                "PLAYER",
+                BattleTeam.Player,
+                20,
+                5,
+                6,
+                3,
+                90,
+                10,
+                0,
+                0,
+                maxMana,
+                maxStamina);
+        }
+
         private static BattleParticipant CreateParticipant(
             int maxHp)
         {

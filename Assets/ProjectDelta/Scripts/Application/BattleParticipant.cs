@@ -158,6 +158,47 @@ namespace ProjectDelta.Application
             return appliedHeal;
         }
 
+        // 66일차: 스킬 사용 시 자원이 충분한지 확인하고 소모하는 첫 API. ApplyDamage와 달리
+        // 일부만 깎는 개념이 없어(자원이 모자라면 스킬 자체를 못 쓴다), 충분하면 전액 차감하고
+        // true를, 모자라면 아무것도 바꾸지 않고 false를 반환한다.
+        public bool TrySpendMana(
+            int amount)
+        {
+            if (amount <= 0)
+            {
+                return true; // 소모량이 없으면 항상 성공
+            }
+
+            if (amount > CurrentMana)
+            {
+                return false; // 마나 부족 - 사용 불가
+            }
+
+            CurrentMana -=
+                amount;
+
+            return true;
+        }
+
+        public bool TrySpendStamina(
+            int amount)
+        {
+            if (amount <= 0)
+            {
+                return true; // 소모량이 없으면 항상 성공
+            }
+
+            if (amount > CurrentStamina)
+            {
+                return false; // 정력 부족 - 사용 불가
+            }
+
+            CurrentStamina -=
+                amount;
+
+            return true;
+        }
+
         // 52일차: 방어 Command와 BattleSession(자기 다음 차례 시작 시 해제)만 이 값을 바꾼다.
         public void SetDefending(
             bool isDefending)
