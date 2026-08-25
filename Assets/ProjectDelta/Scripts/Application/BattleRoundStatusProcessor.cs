@@ -1,8 +1,8 @@
-using System;
-using System.Collections.Generic;
-using ProjectDelta.Data;
+using System; // 수학 기능 사용
+using System.Collections.Generic; // 컬렉션 기능 사용
+using ProjectDelta.Data; // 상태 효과 데이터 사용
 
-namespace ProjectDelta.Application
+namespace ProjectDelta.Application // 전투 응용 네임스페이스
 {
     // 60일차: 기획서 4.2 라운드 구조 중 상태 이상 관련 세 단계를 처리한다.
     //
@@ -12,94 +12,96 @@ namespace ProjectDelta.Application
     // 64일차: "지속 피해와 회복 적용" 단계를 AppliedValue의 부호가 아니라 StatusEffectKind
     // 기준으로 실행하도록 정리했다 (기획서 4.4). 기절·추가 행동은 라운드 틱 효과가 아니라
     // BattleSession의 행동 순서 처리가 직접 담당한다.
+    // 70일차: 지속 피해로 플레이어가 피해를 받았을 때 상태 부여자를 마지막 공격자로 추적한다.
     public static class BattleRoundStatusProcessor
     {
-        // "지속 시작 효과 적용" 단계. 라운드 시작 시(행동 순서 계산 전) 적용되는 효과는
-        // 아직 기획서에 구체적으로 정의돼 있지 않아 지금은 자리만 유지한다.
-        public static void ApplyStartOfRoundEffects(
-            BattleContext context)
+        public static void ApplyStartOfRoundEffects( // 라운드 시작 효과 처리
+            BattleContext context) // 현재 전투 정보 입력
         {
         }
 
-        // "지속 피해와 회복 적용" 단계. StatusEffectKind가 DamageOverTime·HealOverTime인
-        // 상태만 실행 대상이며, 나머지(Stun·ExtraAction·Neutral)는 여기서 아무 일도 하지
-        // 않는다. StackCount를 곱해 중첩 수를 실제 피해·회복량에 반영한다 (기획서 4.4).
-        public static void ApplyEndOfRoundDamageAndHealing(
-            BattleContext context)
+        public static void ApplyEndOfRoundDamageAndHealing( // 라운드 종료 지속 효과 처리
+            BattleContext context) // 현재 전투 정보 입력
         {
             foreach (BattleParticipant participant in GetAllParticipants(
-                         context))
+                         context)) // 전체 참가자 순회
             {
-                if (!participant.IsAlive)
+                if (!participant.IsAlive) // 생존 참가자 여부 확인
                 {
-                    continue; // 이미 죽은 참가자에게는 지속 효과를 적용하지 않는다
+                    continue;
                 }
 
-                foreach (StatusEffectInstance statusEffect in participant.StatusEffects)
+                foreach (StatusEffectInstance statusEffect in participant.StatusEffects) // 상태 효과 순회
                 {
                     int tickAmount =
                         Math.Abs(
                             statusEffect.AppliedValue)
                         * Math.Max(
                             1,
-                            statusEffect.StackCount); // 중첩 수만큼 지속 피해·회복량 배증
+                            statusEffect.StackCount); // 중첩 반영 틱 수치 계산
 
-                    switch (statusEffect.EffectKind)
+                    switch (statusEffect.EffectKind) // 상태 효과 종류 분기
                     {
                         case StatusEffectKind.DamageOverTime:
-                            participant.ApplyDamage(
-                                tickAmount);
+                            int appliedDamage =
+                                participant.ApplyDamage(
+                                    tickAmount); // 지속 피해 적용
+
+                            BattleDefeatService.RecordAppliedDamageBySourceId(
+                                context,
+                                participant,
+                                statusEffect.SourceInstanceId,
+                                appliedDamage); // 지속 피해 공격자 기록
                             break;
 
                         case StatusEffectKind.HealOverTime:
                             participant.Heal(
-                                tickAmount);
+                                tickAmount); // 지속 회복 적용
                             break;
 
                         default:
-                            break; // Stun·ExtraAction·Neutral은 라운드 종료 지속 피해·회복 대상이 아님
+                            break;
                     }
                 }
             }
         }
 
-        // "상태 지속 시간 감소" 단계. 감소 후 만료된 상태는 즉시 제거한다.
-        public static void DecrementDurationsAndRemoveExpired(
-            BattleContext context)
+        public static void DecrementDurationsAndRemoveExpired( // 상태 지속 시간 감소 처리
+            BattleContext context) // 현재 전투 정보 입력
         {
             foreach (BattleParticipant participant in GetAllParticipants(
-                         context))
+                         context)) // 전체 참가자 순회
             {
-                foreach (StatusEffectInstance statusEffect in participant.StatusEffects)
+                foreach (StatusEffectInstance statusEffect in participant.StatusEffects) // 상태 효과 순회
                 {
-                    statusEffect.DecrementRemainingRounds();
+                    statusEffect.DecrementRemainingRounds(); // 남은 라운드 감소
                 }
 
-                participant.RemoveExpiredStatusEffects();
+                participant.RemoveExpiredStatusEffects(); // 만료 상태 효과 제거
             }
         }
 
-        private static IEnumerable<BattleParticipant> GetAllParticipants(
-            BattleContext context)
+        private static IEnumerable<BattleParticipant> GetAllParticipants( // 전체 참가자 열거
+            BattleContext context) // 현재 전투 정보 입력
         {
-            if (context == null)
+            if (context == null) // 전투 정보 존재 확인
             {
                 yield break;
             }
 
-            if (context.Player != null)
+            if (context.Player != null) // 플레이어 존재 확인
             {
                 yield return context.Player;
             }
 
-            if (context.Enemies == null)
+            if (context.Enemies == null) // 적 목록 존재 확인
             {
                 yield break;
             }
 
-            foreach (BattleParticipant enemy in context.Enemies)
+            foreach (BattleParticipant enemy in context.Enemies) // 적 참가자 순회
             {
-                if (enemy != null)
+                if (enemy != null) // 유효 적 확인
                 {
                     yield return enemy;
                 }

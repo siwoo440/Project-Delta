@@ -395,6 +395,8 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
+
             Debug.Log(
                 $"[Project Delta] 54일차 Battle Starting / Player {finalStats.MaxHealth}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {testMonsterDefinition.MaxHp}HP",
                 this);
@@ -597,6 +599,11 @@ namespace ProjectDelta.Presentation
                 appliedDamage =
                     target.ApplyDamage(
                         damageResult.Damage);
+
+                BattleDefeatService.RecordAppliedDamage(
+                    actor,
+                    target,
+                    appliedDamage); // 70일차 마지막 실제 공격자 기록
 
                 resolutionMessage =
                     $"공격 적중 / {actor.InstanceId} → {target.InstanceId} / {appliedDamage} 데미지 (명중률 {damageResult.HitChancePercent}%)";
@@ -946,6 +953,11 @@ namespace ProjectDelta.Presentation
                     appliedDamage =
                         target.ApplyDamage(
                             damageResult.Damage);
+
+                    BattleDefeatService.RecordAppliedDamage(
+                        actor,
+                        target,
+                        appliedDamage); // 70일차 마지막 실제 공격자 기록
 
                     resolutionMessage =
                         $"스킬 적중 / {actor.InstanceId} → {target.InstanceId} / {skill.DisplayName} / {appliedDamage} 데미지 (명중률 {damageResult.HitChancePercent}%)";
@@ -1335,7 +1347,9 @@ namespace ProjectDelta.Presentation
                 "[Project Delta] 51일차 Battle Defeat / 메인 메뉴로 복귀",
                 this);
 
-            ApplicationFlow.Current?.ReturnToTitle();
+            BattleDefeatService.ReturnToTitleAfterDefeat(
+                battleSession.Context,
+                battleSession.RoundNumber); // 70일차 패배 기록 후 임시 타이틀 복귀
 
             return finishedResult;
         }
