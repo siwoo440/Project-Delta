@@ -106,6 +106,10 @@ namespace ProjectDelta.Presentation
 
         public BattleCommandResult LastBattleCommandResult { get; private set; }
 
+        // 55일차: 마지막 공격에서 실제로 적용된 피해 공식·편차 난수를 디버그 창(BattleDamageDebugOverlay)에
+        // 보여주기 위한 텍스트. 정식 UI가 아니라 디버그 전용이다.
+        public string LastDamageFormulaDebugText { get; private set; }
+
         private void Awake()
         {
             if (movementController == null)
@@ -495,16 +499,23 @@ namespace ProjectDelta.Presentation
 
             // 50일차: 명중 판정에 쓰는 난수(0~99)는 여기(Presentation)에서 만들어
             // BattleDamageCalculator(Application, 엔진 비의존)에 넘긴다.
-            int roll =
+            // 55일차: 피해 편차(95~105%, 11단계)에 쓰는 난수(0~10)도 같은 방식으로 넘긴다.
+            int hitRoll =
                 UnityEngine.Random.Range(
                     0,
                     100);
+
+            int varianceRoll =
+                UnityEngine.Random.Range(
+                    0,
+                    BattleDamageCalculator.DamageVarianceRollCount);
 
             BattleDamageResult damageResult =
                 BattleDamageCalculator.Resolve(
                     actor,
                     target,
-                    roll);
+                    hitRoll,
+                    varianceRoll);
 
             string resolutionMessage;
 
@@ -516,11 +527,21 @@ namespace ProjectDelta.Presentation
 
                 resolutionMessage =
                     $"공격 적중 / {actor.InstanceId} → {target.InstanceId} / {appliedDamage} 데미지 (명중률 {damageResult.HitChancePercent}%)";
+
+                // 55일차: varianceRoll(0~10)이 실제로 굴러가는지 눈으로 바로 확인하기 위한 디버그 텍스트.
+                LastDamageFormulaDebugText =
+                    $"{actor.InstanceId} → {target.InstanceId} / "
+                    + $"{actor.Attack} × 100 ÷ (100 + {target.Defense}) = {damageResult.BaseDamage} → "
+                    + $"× {damageResult.VariancePercent}% = {damageResult.Damage} (적용 {appliedDamage}) "
+                    + $"({damageResult.VariancePercent}%)";
             }
             else
             {
                 resolutionMessage =
                     $"공격 빗나감 / {actor.InstanceId} → {target.InstanceId} (명중률 {damageResult.HitChancePercent}%)";
+
+                LastDamageFormulaDebugText =
+                    $"{actor.InstanceId} → {target.InstanceId} / 빗나감 (명중률 {damageResult.HitChancePercent}%, 편차 미적용)";
             }
 
             BattleCommandResult resolvedResult =

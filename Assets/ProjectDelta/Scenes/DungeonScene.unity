@@ -5315,6 +5315,7 @@ GameObject:
   - component: {fileID: 500000011}
   - component: {fileID: 600000016}
   - component: {fileID: 1454137234}
+  - component: {fileID: 1454137235}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -5409,6 +5410,20 @@ MonoBehaviour:
   lookController: {fileID: 1454137232}
   floorController: {fileID: 500000005}
   testMonsterDefinition: {fileID: 11400000, guid: 133917812ecdfae49b319e5980fbb44e, type: 2}
+--- !u!114 &1454137235
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454137229}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf7a21e2b398489d834888f7997ef97c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.BattleDamageDebugOverlay
+  encounterController: {fileID: 1454137234}
+  isVisible: 1
 --- !u!1 &1463512776
 GameObject:
   m_ObjectHideFlags: 0
