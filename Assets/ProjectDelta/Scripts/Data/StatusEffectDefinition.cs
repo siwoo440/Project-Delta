@@ -30,6 +30,12 @@ namespace ProjectDelta.Data
         [Tooltip("이 상태가 라운드 파이프라인에서 실제로 어떤 효과를 실행하는지 (64일차, 기획서 4.4).")]
         [SerializeField] private StatusEffectKind effectKind;
 
+        [Header("Stat Modifier")]
+        [Tooltip("EffectKind가 StatModifier일 때 보정할 능력치 (65일차).")]
+        [SerializeField] private BattleStatType targetStat;
+        [Tooltip("EffectKind가 StatModifier일 때 적용할 보정치. 양수는 강화, 음수는 약화.")]
+        [SerializeField] private int statModifierValue;
+
         public string DisplayName
         {
             get
@@ -44,5 +50,7 @@ namespace ProjectDelta.Data
         public StatusTickTiming TickTiming => tickTiming;
         public int RoundEndValue => roundEndValue;
         public StatusEffectKind EffectKind => effectKind;
+        public BattleStatType TargetStat => targetStat;
+        public int StatModifierValue => statModifierValue;
     }
 }

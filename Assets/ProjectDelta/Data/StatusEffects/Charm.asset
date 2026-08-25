@@ -20,3 +20,5 @@ MonoBehaviour:
   tickTiming: 0
   roundEndValue: 0
   effectKind: 0
+  targetStat: 0
+  statModifierValue: 0

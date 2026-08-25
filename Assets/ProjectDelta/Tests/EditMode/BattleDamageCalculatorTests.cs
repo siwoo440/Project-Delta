@@ -1,5 +1,6 @@
 using NUnit.Framework; // NUnit 테스트 사용
 using ProjectDelta.Application; // Battle Damage Calculator 사용
+using ProjectDelta.Data; // StatusEffectKind·BattleStatType 사용
 
 namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 {
@@ -739,6 +740,120 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreEqual(
                 0,
                 result.Damage);
+        }
+
+        [Test]
+        public void CalculateBaseDamage_AttackerHasAttackUpBuff_UsesBoostedAttack()
+        {
+            // 65일차: 공격 상승(StatModifier)이 실제 피해 계산에 반영되는지 확인한다.
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            attacker.AddStatusEffect(
+                new StatusEffectInstance(
+                    "SE011",
+                    "PLAYER",
+                    2,
+                    1,
+                    5,
+                    StatusEffectKind.StatModifier,
+                    BattleStatType.Attack)); // 공격 상승 +5 → 유효 공격력 15
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            int baseDamage =
+                BattleDamageCalculator.CalculateBaseDamage(
+                    attacker,
+                    defender);
+
+            Assert.AreEqual(
+                15,
+                baseDamage); // 방어력 0 → 유효 공격력 그대로
+        }
+
+        [Test]
+        public void CalculateBaseDamage_DefenderHasDefenseUpBuff_ReducesDamage()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 20,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            defender.AddStatusEffect(
+                new StatusEffectInstance(
+                    "SE012",
+                    "PLAYER",
+                    2,
+                    1,
+                    100,
+                    StatusEffectKind.StatModifier,
+                    BattleStatType.Defense)); // 방어 상승 +100 → 유효 방어력 100
+
+            int baseDamage =
+                BattleDamageCalculator.CalculateBaseDamage(
+                    attacker,
+                    defender);
+
+            // 20 × 100 ÷ (100 + 100) = 10
+            Assert.AreEqual(
+                10,
+                baseDamage);
+        }
+
+        [Test]
+        public void CalculateHitChancePercent_DefenderHasEvasionUpBuff_LowersHitChance()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            defender.AddStatusEffect(
+                new StatusEffectInstance(
+                    "SE015",
+                    "PLAYER",
+                    2,
+                    1,
+                    20,
+                    StatusEffectKind.StatModifier,
+                    BattleStatType.Evasion)); // 회피 상승 +20 → 유효 회피 20
+
+            int hitChance =
+                BattleDamageCalculator.CalculateHitChancePercent(
+                    attacker,
+                    defender);
+
+            // 기본 70 - (유효 회피 20 × 50%) = 60
+            Assert.AreEqual(
+                60,
+                hitChance);
         }
 
         private static BattleParticipant CreateParticipant(

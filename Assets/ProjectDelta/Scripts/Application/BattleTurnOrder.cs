@@ -44,7 +44,8 @@ namespace ProjectDelta.Application
 
             return candidates
                 .OrderByDescending(
-                    participant => participant.Speed)
+                    participant => BattleStatModifierService.GetEffectiveSpeed(
+                        participant)) // 65일차: 속도 상승·둔화가 반영된 유효 Speed로 정렬
                 .ToList();
         }
     }

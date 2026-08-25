@@ -19,4 +19,6 @@ MonoBehaviour:
   maxStack: 1
   tickTiming: 0
   roundEndValue: 0
-  effectKind: 0
+  effectKind: 5
+  targetStat: 0
+  statModifierValue: -5

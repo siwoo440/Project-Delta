@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework; // NUnit 테스트 사용
 using ProjectDelta.Application; // Battle Turn Order 사용
+using ProjectDelta.Data; // StatusEffectKind·BattleStatType 사용
 
 namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 {
@@ -208,6 +209,85 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreEqual(
                 "PLAYER",
                 order[0].InstanceId);
+        }
+
+        [Test]
+        public void Build_SpeedUpBuff_CanOvertakeNaturallyFasterParticipant()
+        {
+            // 65일차: 속도 상승(StatModifier)이 실제 행동 순서 계산에 반영되는지 확인한다.
+            BattleParticipant slowPlayer =
+                CreateParticipant(
+                    "PLAYER",
+                    BattleTeam.Player,
+                    5); // 기본 Speed 5
+
+            slowPlayer.AddStatusEffect(
+                new StatusEffectInstance(
+                    "SE013",
+                    "PLAYER",
+                    2,
+                    1,
+                    10,
+                    StatusEffectKind.StatModifier,
+                    BattleStatType.Speed)); // 속도 상승 +10 → 유효 Speed 15
+
+            BattleParticipant fastEnemy =
+                CreateParticipant(
+                    "ENEMY_1",
+                    BattleTeam.Enemy,
+                    10); // Speed 10, 보정 없음
+
+            BattleContext context =
+                new BattleContext(
+                    slowPlayer,
+                    new[] { fastEnemy });
+
+            IReadOnlyList<BattleParticipant> order =
+                BattleTurnOrder.Build(
+                    context);
+
+            Assert.AreEqual(
+                "PLAYER",
+                order[0].InstanceId); // 유효 Speed 15 > 10이므로 역전되어야 함
+        }
+
+        [Test]
+        public void Build_SlowDebuff_CanFallBehindNaturallySlowerParticipant()
+        {
+            BattleParticipant fastPlayer =
+                CreateParticipant(
+                    "PLAYER",
+                    BattleTeam.Player,
+                    10); // 기본 Speed 10
+
+            fastPlayer.AddStatusEffect(
+                new StatusEffectInstance(
+                    "SE004",
+                    "ENEMY_1",
+                    2,
+                    1,
+                    -8,
+                    StatusEffectKind.StatModifier,
+                    BattleStatType.Speed)); // 둔화 -8 → 유효 Speed 2
+
+            BattleParticipant slowEnemy =
+                CreateParticipant(
+                    "ENEMY_1",
+                    BattleTeam.Enemy,
+                    5); // Speed 5, 보정 없음
+
+            BattleContext context =
+                new BattleContext(
+                    fastPlayer,
+                    new[] { slowEnemy });
+
+            IReadOnlyList<BattleParticipant> order =
+                BattleTurnOrder.Build(
+                    context);
+
+            Assert.AreEqual(
+                "ENEMY_1",
+                order[0].InstanceId); // 유효 Speed 2 < 5이므로 역전되어야 함
         }
 
         private static BattleParticipant CreateParticipant(

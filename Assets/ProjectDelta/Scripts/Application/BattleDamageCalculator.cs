@@ -7,6 +7,8 @@ namespace ProjectDelta.Application
     // 구분한다 (기획서 4.2).
     // 58일차: 치명타(기본 확률 0%, 무기·스킬·유물·상태 효과로만 발생)와 피해 유형별 방어
     // 수치(고정 피해는 방어 무시, 상태 이상은 저항)를 추가한다 (기획서 4.2).
+    // 65일차: 명중·피해·방어 감소 계산에 쓰는 공격력·방어력·명중·회피·저항은 참가자의 기본값이
+    // 아니라 BattleStatModifierService가 강화·약화 상태(StatModifier)를 반영해 계산한 값이다.
     // 실제 데미지 적용(51일차 사망 판정 포함)이나 Command 연결은 이 클래스의 책임이 아니다.
     public static class BattleDamageCalculator
     {
@@ -54,11 +56,13 @@ namespace ProjectDelta.Application
             BattleParticipant defender)
         {
             int weightedEvasion =
-                defender.Evasion * EvasionWeightPercent / 100;
+                BattleStatModifierService.GetEffectiveEvasion(
+                    defender) * EvasionWeightPercent / 100;
 
             int rawHitChance =
                 BaseSkillHitChancePercent
-                + attacker.Accuracy
+                + BattleStatModifierService.GetEffectiveAccuracy(
+                    attacker)
                 - weightedEvasion;
 
             return Clamp(
@@ -81,7 +85,11 @@ namespace ProjectDelta.Application
                     defender,
                     damageType);
 
-            return attacker.Attack * 100 / (100 + defenseValue);
+            int effectiveAttack =
+                BattleStatModifierService.GetEffectiveAttack(
+                    attacker);
+
+            return effectiveAttack * 100 / (100 + defenseValue);
         }
 
         private static int GetDefenseValue(
@@ -95,10 +103,12 @@ namespace ProjectDelta.Application
 
                 case DamageType.StatusEffect:
                 case DamageType.DamageOverTime:
-                    return defender.Resistance; // 상태 이상·지속 피해 - 저항 사용
+                    return BattleStatModifierService.GetEffectiveResistance(
+                        defender); // 상태 이상·지속 피해 - 저항 사용
 
                 default:
-                    return defender.Defense; // 일반 공격·직접 공격 스킬 - 방어력 사용
+                    return BattleStatModifierService.GetEffectiveDefense(
+                        defender); // 일반 공격·직접 공격 스킬 - 방어력 사용
             }
         }
 
@@ -136,9 +146,13 @@ namespace ProjectDelta.Application
         public static int CalculateDefendReductionPercent(
             BattleParticipant defender)
         {
+            int effectiveDefense =
+                BattleStatModifierService.GetEffectiveDefense(
+                    defender);
+
             int variablePercent =
-                defender.Defense * DefendVariableReductionScalePercent
-                / (defender.Defense + 100);
+                effectiveDefense * DefendVariableReductionScalePercent
+                / (effectiveDefense + 100);
 
             int reductionPercent =
                 DefendBaseReductionPercent

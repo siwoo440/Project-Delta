@@ -40,10 +40,12 @@ namespace ProjectDelta.Application // 상태 적용 서비스 네임스페이스
                 throw new ArgumentNullException(nameof(definition)); // 잘못된 호출 차단
             }
 
-            return TryApply(target, definition.Id, sourceInstanceId, durationRounds, appliedValue, definition.EffectKind, definition.StackRule, definition.MaxStack, effectBaseChance, attackerStatusModifier, skillEquipmentRelicModifier, randomSource); // 정의값을 공통 적용 경로로 전달
+            return TryApply(target, definition.Id, sourceInstanceId, durationRounds, appliedValue, definition.EffectKind, definition.StackRule, definition.MaxStack, effectBaseChance, attackerStatusModifier, skillEquipmentRelicModifier, randomSource, definition.TargetStat); // 정의값을 공통 적용 경로로 전달
         }
 
-        public static StatusEffectApplyResult TryApply(BattleParticipant target, string definitionId, string sourceInstanceId, int durationRounds, int appliedValue, StatusEffectKind effectKind, StatusStackRule stackRule, int maxStack, int effectBaseChance, int attackerStatusModifier, int skillEquipmentRelicModifier, IRandomSource randomSource) // 상태 적용 시도
+        // 65일차: targetStat은 StatModifier가 아닌 상태에서는 쓰이지 않으므로 기존 호출부
+        // 호환을 위해 마지막 선택 인자로 둔다.
+        public static StatusEffectApplyResult TryApply(BattleParticipant target, string definitionId, string sourceInstanceId, int durationRounds, int appliedValue, StatusEffectKind effectKind, StatusStackRule stackRule, int maxStack, int effectBaseChance, int attackerStatusModifier, int skillEquipmentRelicModifier, IRandomSource randomSource, BattleStatType targetStat = BattleStatType.Attack) // 상태 적용 시도
         {
             if (target == null) // 대상 누락 확인
             {
@@ -60,7 +62,8 @@ namespace ProjectDelta.Application // 상태 적용 서비스 네임스페이스
                 throw new ArgumentNullException(nameof(randomSource)); // 잘못된 호출 차단
             }
 
-            int finalSuccessChance = CalculateFinalSuccessChance(effectBaseChance, attackerStatusModifier, target.Resistance, skillEquipmentRelicModifier); // 대상 저항 포함 최종 성공률 계산
+            int targetResistance = BattleStatModifierService.GetEffectiveResistance(target); // 65일차: 저항 상승도 상태 성공률 방어에 반영
+            int finalSuccessChance = CalculateFinalSuccessChance(effectBaseChance, attackerStatusModifier, targetResistance, skillEquipmentRelicModifier); // 대상 저항 포함 최종 성공률 계산
             StatusSuccessLevel successLevel = GetSuccessLevel(finalSuccessChance); // UI용 성공 단계 계산
             int roll = randomSource.NextInt(1, 101); // 1~100 상태 성공 굴림
 
@@ -74,7 +77,7 @@ namespace ProjectDelta.Application // 상태 적용 서비스 네임스페이스
 
             if (existingStatus == null) // 최초 상태 적용 확인
             {
-                StatusEffectInstance newStatus = new StatusEffectInstance(definitionId, sourceInstanceId, normalizedDuration, 1, appliedValue, effectKind); // 새 상태 인스턴스 생성
+                StatusEffectInstance newStatus = new StatusEffectInstance(definitionId, sourceInstanceId, normalizedDuration, 1, appliedValue, effectKind, targetStat); // 새 상태 인스턴스 생성
                 target.AddStatusEffect(newStatus); // 대상 상태 목록에 추가
                 return new StatusEffectApplyResult(finalSuccessChance, successLevel, roll, true, newStatus.StackCount, newStatus.RemainingRounds); // 신규 적용 결과 반환
             }
