@@ -282,7 +282,7 @@ namespace ProjectDelta.Presentation
             if (result != null)
             {
                 battleStateText.text =
-                    $"Battle : {encounterController.CurrentBattleState} / Turn {result.TurnCount} / Outcome {result.Outcome}";
+                    $"Battle : {encounterController.CurrentBattleState} / Round {result.RoundCount} / Outcome {result.Outcome}";
 
                 return;
             }
@@ -297,16 +297,19 @@ namespace ProjectDelta.Presentation
                     : string.Empty;
 
             // 49일차: 대상 지정·공격 확정 결과 메시지를 함께 보여준다.
-            BattleCommandResult commandResult =
-                encounterController.LastBattleCommandResult;
+            // 59일차: 문자열 메시지 하나 대신 로그 목록(Logs)을 담는 BattleActionResult로 바뀌었다.
+            BattleActionResult actionResult =
+                encounterController.LastBattleActionResult;
 
             string commandText =
-                commandResult != null
-                    ? $"\n{commandResult.Message}"
+                actionResult != null
+                    && actionResult.Logs != null
+                    && actionResult.Logs.Count > 0
+                    ? $"\n{string.Join("\n", actionResult.Logs)}"
                     : string.Empty;
 
             battleStateText.text =
-                $"Battle : {encounterController.CurrentBattleState} / Turn {encounterController.BattleTurnNumber}{actorText}{commandText}";
+                $"Battle : {encounterController.CurrentBattleState} / Round {encounterController.BattleRoundNumber}{actorText}{commandText}";
         }
 
         private void RefreshParticipants()
@@ -559,9 +562,9 @@ namespace ProjectDelta.Presentation
 
             if (testNextTurnButton != null)
             {
-                // 48일차: 이번 턴에 아직 행동할 참가자가 남아있을 때(TurnStart 또는 ResolvingAction)만 진행 가능.
+                // 48일차: 이번 라운드에 아직 행동할 참가자가 남아있을 때(RoundStart 또는 ResolvingAction)만 진행 가능.
                 testNextTurnButton.interactable =
-                    encounterController.CurrentBattleState == BattleState.TurnStart
+                    encounterController.CurrentBattleState == BattleState.RoundStart
                     || encounterController.CurrentBattleState == BattleState.ResolvingAction;
             }
 

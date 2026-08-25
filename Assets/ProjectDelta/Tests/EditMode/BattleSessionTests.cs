@@ -23,10 +23,10 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 
             Assert.AreEqual(
                 0,
-                session.TurnNumber); // 턴 번호 0 확인
+                session.RoundNumber); // 라운드 번호 0 확인
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 남은 행동자 없음 확인
+                session.HasPendingActorsThisRound); // 남은 행동자 없음 확인
         }
 
         [Test]
@@ -86,35 +86,35 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
-        public void TryStartTurn_FromStarting_EntersTurnStartAndBuildsOrderQueue()
+        public void TryStartRound_FromStarting_EntersRoundStartAndBuildsOrderQueue()
         {
             BattleSession session =
                 CreateStartingSession(); // Starting Session 준비
 
             Assert.IsTrue(
-                session.TryStartTurn()); // TurnStart 전환
+                session.TryStartRound()); // RoundStart 전환
 
             Assert.AreEqual(
-                BattleState.TurnStart,
-                session.State); // TurnStart 상태 확인
+                BattleState.RoundStart,
+                session.State); // RoundStart 상태 확인
 
             Assert.AreEqual(
                 1,
-                session.TurnNumber); // 첫 턴 번호 확인
+                session.RoundNumber); // 첫 라운드 번호 확인
 
             Assert.IsTrue(
-                session.HasPendingActorsThisTurn); // 행동 순서 큐 생성 확인 (Player + Enemy)
+                session.HasPendingActorsThisRound); // 행동 순서 큐 생성 확인 (Player + Enemy)
 
             Assert.AreEqual(
                 2,
-                session.PendingActorsThisTurn.Count); // Player 1명 + Enemy 1명 확인
+                session.PendingActorsThisRound.Count); // Player 1명 + Enemy 1명 확인
         }
 
         [Test]
-        public void TryEnterAwaitingAction_OnlyFromTurnStartOrResolvingAction_PopsNextActor()
+        public void TryEnterAwaitingAction_OnlyFromRoundStartOrResolvingAction_PopsNextActor()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // AwaitingAction 전환 (첫 행동자)
@@ -133,14 +133,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 
             Assert.AreEqual(
                 1,
-                session.PendingActorsThisTurn.Count); // 남은 행동자 1명 확인
+                session.PendingActorsThisRound.Count); // 남은 행동자 1명 확인
         }
 
         [Test]
         public void TryEnterAwaitingAction_FromAwaitingAction_Rejected()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 첫 행동자 진행
@@ -153,7 +153,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TryEnterAwaitingAction_WithEmptyQueue_Rejected()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy 1명씩)
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy 1명씩)
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째 행동자 (Player)
@@ -168,14 +168,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryBeginResolveAction()); // ResolvingAction 전환
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 이번 턴 행동자 모두 소진 확인
+                session.HasPendingActorsThisRound); // 이번 라운드 행동자 모두 소진 확인
 
             Assert.IsFalse(
                 session.TryEnterAwaitingAction()); // 남은 행동자 없을 때 거부 확인
         }
 
         [Test]
-        public void TryEnterAwaitingAction_SkipsActorThatDiedMidTurn_AndContinuesToNextAlive()
+        public void TryEnterAwaitingAction_SkipsActorThatDiedMidRound_AndContinuesToNextAlive()
         {
             // Speed 내림차순: ENEMY_FAST(20) → PLAYER(5) → ENEMY_SLOW(1)
             BattleParticipant player =
@@ -220,7 +220,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     context));
 
             Assert.IsTrue(
-                session.TryStartTurn());
+                session.TryStartRound());
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째: ENEMY_FAST
@@ -251,17 +251,17 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryEnterAwaitingAction()); // 죽은 참가자만 남아 진행 실패 확인
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 큐 소진 확인
+                session.HasPendingActorsThisRound); // 큐 소진 확인
 
             Assert.IsTrue(
-                session.TryEndTurn()); // 남은 행동자가 없으므로 TurnEnd 허용 확인
+                session.TryEndRound()); // 남은 행동자가 없으므로 RoundEnd 허용 확인
         }
 
         [Test]
-        public void TryEndTurn_WithPendingActors_Rejected()
+        public void TryEndRound_WithPendingActors_Rejected()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy)
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy)
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째 행동자만 진행
@@ -270,17 +270,17 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryBeginResolveAction()); // ResolvingAction 전환
 
             Assert.IsTrue(
-                session.HasPendingActorsThisTurn); // 아직 Enemy가 남음
+                session.HasPendingActorsThisRound); // 아직 Enemy가 남음
 
             Assert.IsFalse(
-                session.TryEndTurn()); // 남은 행동자가 있으면 TurnEnd 거부 확인
+                session.TryEndRound()); // 남은 행동자가 있으면 RoundEnd 거부 확인
         }
 
         [Test]
-        public void TurnLifecycle_AllActorsActBeforeTurnEndsThenNextTurnRebuildsQueue()
+        public void RoundLifecycle_AllActorsActBeforeRoundEndsThenNextRoundRebuildsQueue()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy)
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy)
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째 행동자
@@ -289,7 +289,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryBeginResolveAction()); // ResolvingAction
 
             Assert.IsFalse(
-                session.TryEndTurn()); // 아직 2번째 행동자가 남아 거부
+                session.TryEndRound()); // 아직 2번째 행동자가 남아 거부
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 2번째 행동자로 직접 전환 (ResolvingAction → AwaitingAction)
@@ -302,32 +302,32 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryBeginResolveAction()); // ResolvingAction
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 전원 행동 완료 확인
+                session.HasPendingActorsThisRound); // 전원 행동 완료 확인
 
             Assert.IsTrue(
-                session.TryEndTurn()); // TurnEnd 전환
+                session.TryEndRound()); // RoundEnd 전환
 
             Assert.AreEqual(
-                BattleState.TurnEnd,
-                session.State); // TurnEnd 상태 확인
+                BattleState.RoundEnd,
+                session.State); // RoundEnd 상태 확인
 
             Assert.IsTrue(
-                session.TryStartTurn()); // 다음 턴 시작
+                session.TryStartRound()); // 다음 라운드 시작
 
             Assert.AreEqual(
                 2,
-                session.TurnNumber); // 두 번째 턴 확인
+                session.RoundNumber); // 두 번째 라운드 확인
 
             Assert.AreEqual(
                 2,
-                session.PendingActorsThisTurn.Count); // 다음 턴 순서 큐가 다시 채워짐 확인
+                session.PendingActorsThisRound.Count); // 다음 라운드 순서 큐가 다시 채워짐 확인
         }
 
         [Test]
-        public void TryEnterAwaitingAction_ClearsActorsOwnDefendingStateWhenTheirTurnComesAgain()
+        public void TryEnterAwaitingAction_ClearsActorsOwnDefendingStateWhenTheirRoundComesAgain()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy, 동률로 Player 우선)
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy, 동률로 Player 우선)
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째: Player
@@ -351,10 +351,10 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.TryBeginResolveAction());
 
             Assert.IsTrue(
-                session.TryEndTurn());
+                session.TryEndRound());
 
             Assert.IsTrue(
-                session.TryStartTurn()); // 다음 턴
+                session.TryStartRound()); // 다음 라운드
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // Player 차례가 다시 돌아옴
@@ -371,14 +371,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TrySelectTarget_OnlyDuringAwaitingAction_WithValidTarget()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             BattleParticipant enemy =
                 session.Context.Enemies[0];
 
             Assert.IsFalse(
                 session.TrySelectTarget(
-                    enemy)); // TurnStart에서는 대상 선택 거부 확인
+                    enemy)); // RoundStart에서는 대상 선택 거부 확인
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // Player 행동자 선출 (동률 우선순위)
@@ -396,7 +396,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TrySelectTarget_CalledAgain_ReplacesPreviousSelection()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             BattleParticipant enemy =
                 session.Context.Enemies[0];
@@ -421,7 +421,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TryEnterAwaitingAction_ForNextActor_ClearsPreviousSelectedTarget()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비 (Player + Enemy)
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy)
 
             BattleParticipant enemy =
                 session.Context.Enemies[0];
@@ -447,7 +447,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TryFinishBattle_FromAnyActiveState_SetsResultAndFinished()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             Assert.IsTrue(
                 session.TryFinishBattle(
@@ -466,7 +466,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 
             Assert.AreEqual(
                 1,
-                session.Result.TurnCount); // 종료 시점 턴 번호 확인
+                session.Result.RoundCount); // 종료 시점 라운드 번호 확인
         }
 
         [Test]
@@ -480,7 +480,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     BattleOutcome.Victory)); // Idle에서 거부 확인
 
             BattleSession finished =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             Assert.IsTrue(
                 finished.TryFinishBattle(
@@ -495,10 +495,10 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         public void TryReset_OnlyFromFinished_ClearsState()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             Assert.IsFalse(
-                session.TryReset()); // TurnStart에서 Reset 거부 확인
+                session.TryReset()); // RoundStart에서 Reset 거부 확인
 
             Assert.IsTrue(
                 session.TryFinishBattle(
@@ -519,17 +519,17 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 
             Assert.AreEqual(
                 0,
-                session.TurnNumber); // 턴 번호 초기화 확인
+                session.RoundNumber); // 라운드 번호 초기화 확인
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 행동 순서 큐 정리 확인
+                session.HasPendingActorsThisRound); // 행동 순서 큐 정리 확인
         }
 
         [Test]
         public void ForceReset_ReturnsAnyStateToIdle()
         {
             BattleSession session =
-                CreateTurnStartSession(); // TurnStart Session 준비
+                CreateRoundStartSession(); // RoundStart Session 준비
 
             session.ForceReset(); // 강제 초기화
 
@@ -544,7 +544,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 session.IsActive); // 비활성 상태 확인
 
             Assert.IsFalse(
-                session.HasPendingActorsThisTurn); // 행동 순서 큐 정리 확인
+                session.HasPendingActorsThisRound); // 행동 순서 큐 정리 확인
         }
 
         private static BattleParticipant CreatePlayer()
@@ -596,15 +596,15 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             return session; // Starting Session 반환
         }
 
-        private static BattleSession CreateTurnStartSession()
+        private static BattleSession CreateRoundStartSession()
         {
             BattleSession session =
                 CreateStartingSession(); // Starting Session 준비
 
             Assert.IsTrue(
-                session.TryStartTurn()); // TurnStart 전환
+                session.TryStartRound()); // RoundStart 전환
 
-            return session; // TurnStart Session 반환
+            return session; // RoundStart Session 반환
         }
     }
 }

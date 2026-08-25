@@ -4,8 +4,9 @@ namespace ProjectDelta.Application
 {
     // 47일차: Battle 생명주기를 명시적인 상태 머신으로 관리한다.
     // ExplorationEncounterSession과 동일하게 Try* 메서드로만 상태를 전환한다.
-    // 48일차: 한 턴 안에서 살아있는 참가자 전원이 Speed 순서대로 한 번씩 행동하도록
-    // TurnStart에서 순서 큐를 만들고, 큐가 빌 때까지 AwaitingAction↔ResolvingAction을 반복한다.
+    // 48일차: 한 라운드 안에서 살아있는 참가자 전원이 Speed 순서대로 한 번씩 행동하도록
+    // RoundStart에서 순서 큐를 만들고, 큐가 빌 때까지 AwaitingAction↔ResolvingAction을 반복한다.
+    // 59일차: 기획서 4.2·9.3이 쓰는 "라운드" 용어에 맞춰 Turn → Round로 정정했다.
     public sealed class BattleSession
     {
         public BattleState State { get; private set; } =
@@ -13,7 +14,7 @@ namespace ProjectDelta.Application
 
         public BattleContext Context { get; private set; } // 현재 Battle 참가자 구성
 
-        public int TurnNumber { get; private set; } // 현재 턴 번호
+        public int RoundNumber { get; private set; } // 현재 라운드 번호
 
         public BattleParticipant CurrentActor { get; private set; } // 행동 대기·처리 중인 참가자
 
@@ -21,14 +22,14 @@ namespace ProjectDelta.Application
 
         public BattleResult Result { get; private set; } // Battle 최종 결과
 
-        private Queue<BattleParticipant> pendingActorsThisTurn =
-            new Queue<BattleParticipant>(); // 이번 턴에 아직 행동하지 않은 참가자 순서 큐
+        private Queue<BattleParticipant> pendingActorsThisRound =
+            new Queue<BattleParticipant>(); // 이번 라운드에 아직 행동하지 않은 참가자 순서 큐
 
-        public IReadOnlyCollection<BattleParticipant> PendingActorsThisTurn =>
-            pendingActorsThisTurn; // 이번 턴에 남은 행동 순서 (읽기 전용)
+        public IReadOnlyCollection<BattleParticipant> PendingActorsThisRound =>
+            pendingActorsThisRound; // 이번 라운드에 남은 행동 순서 (읽기 전용)
 
-        public bool HasPendingActorsThisTurn =>
-            pendingActorsThisTurn.Count > 0; // 이번 턴에 더 행동할 참가자가 있는지 여부
+        public bool HasPendingActorsThisRound =>
+            pendingActorsThisRound.Count > 0; // 이번 라운드에 더 행동할 참가자가 있는지 여부
 
         public bool IsActive =>
             State != BattleState.Idle
@@ -53,8 +54,8 @@ namespace ProjectDelta.Application
             Context =
                 context; // Battle Context 저장
 
-            TurnNumber =
-                0; // 턴 번호 초기화
+            RoundNumber =
+                0; // 라운드 번호 초기화
 
             Result =
                 null; // 이전 결과 제거
@@ -65,49 +66,49 @@ namespace ProjectDelta.Application
             return true; // Battle 시작 성공
         }
 
-        public bool TryStartTurn()
+        public bool TryStartRound()
         {
             if (State != BattleState.Starting
-                && State != BattleState.TurnEnd) // 턴 시작 가능한 상태 확인
+                && State != BattleState.RoundEnd) // 라운드 시작 가능한 상태 확인
             {
                 return false; // 잘못된 전환 거부
             }
 
-            TurnNumber++; // 턴 번호 증가
+            RoundNumber++; // 라운드 번호 증가
 
             CurrentActor =
                 null; // 행동 대상 초기화
 
-            pendingActorsThisTurn =
+            pendingActorsThisRound =
                 new Queue<BattleParticipant>(
                     BattleTurnOrder.Build(
-                        Context)); // 이번 턴 행동 순서 큐 생성 (Speed 내림차순)
+                        Context)); // 이번 라운드 행동 순서 큐 생성 (Speed 내림차순)
 
             State =
-                BattleState.TurnStart; // TurnStart 상태 전환
+                BattleState.RoundStart; // RoundStart 상태 전환
 
             return true; // 전환 성공
         }
 
-        // 48일차: TurnStart(첫 행동자) 또는 ResolvingAction(다음 행동자)에서 호출한다.
+        // 48일차: RoundStart(첫 행동자) 또는 ResolvingAction(다음 행동자)에서 호출한다.
         // 순서 큐에서 다음 참가자를 직접 뽑아 오므로 더 이상 대상을 인자로 받지 않는다.
         public bool TryEnterAwaitingAction()
         {
-            if (State != BattleState.TurnStart
+            if (State != BattleState.RoundStart
                 && State != BattleState.ResolvingAction) // 다음 행동자로 넘어갈 수 있는 상태 확인
             {
                 return false; // 잘못된 전환 거부
             }
 
             // 51일차: 자기 차례가 오기 전에 죽은 참가자는 건너뛴다 (전투 이탈).
-            // 큐에 넣을 때는 살아있었어도, 같은 턴 안에서 먼저 행동한 다른 참가자에게 죽을 수 있다.
+            // 큐에 넣을 때는 살아있었어도, 같은 라운드 안에서 먼저 행동한 다른 참가자에게 죽을 수 있다.
             BattleParticipant nextActor =
                 null;
 
-            while (pendingActorsThisTurn.Count > 0)
+            while (pendingActorsThisRound.Count > 0)
             {
                 BattleParticipant candidate =
-                    pendingActorsThisTurn.Dequeue(); // 순서 큐에서 다음 후보 선출
+                    pendingActorsThisRound.Dequeue(); // 순서 큐에서 다음 후보 선출
 
                 if (candidate != null
                     && candidate.IsAlive) // 후보 생존 여부 확인
@@ -121,7 +122,7 @@ namespace ProjectDelta.Application
 
             if (nextActor == null) // 남은 행동자가 모두 사망했는지 확인
             {
-                return false; // 더 진행할 행동자가 없으면 거부 (TryEndTurn을 사용해야 함)
+                return false; // 더 진행할 행동자가 없으면 거부 (TryEndRound를 사용해야 함)
             }
 
             CurrentActor =
@@ -177,16 +178,16 @@ namespace ProjectDelta.Application
             return true; // 전환 성공
         }
 
-        // 48일차: 이번 턴에 남은 행동자가 없을 때만 허용한다.
+        // 48일차: 이번 라운드에 남은 행동자가 없을 때만 허용한다.
         // 아직 순서 큐에 참가자가 남아 있다면 TryEnterAwaitingAction()으로 다음 행동자를 진행해야 한다.
-        public bool TryEndTurn()
+        public bool TryEndRound()
         {
             if (State != BattleState.ResolvingAction) // ResolvingAction 상태 확인
             {
                 return false; // 잘못된 전환 거부
             }
 
-            if (pendingActorsThisTurn.Count > 0) // 이번 턴에 남은 행동자 확인
+            if (pendingActorsThisRound.Count > 0) // 이번 라운드에 남은 행동자 확인
             {
                 return false; // 아직 행동하지 않은 참가자가 있으면 거부
             }
@@ -195,7 +196,7 @@ namespace ProjectDelta.Application
                 null; // 행동 대상 초기화
 
             State =
-                BattleState.TurnEnd; // TurnEnd 상태 전환
+                BattleState.RoundEnd; // RoundEnd 상태 전환
 
             return true; // 전환 성공
         }
@@ -217,7 +218,7 @@ namespace ProjectDelta.Application
             Result =
                 new BattleResult(
                     outcome,
-                    TurnNumber); // 최종 결과 생성
+                    RoundNumber); // 최종 결과 생성
 
             State =
                 BattleState.Finished; // Finished 상태 전환
@@ -235,8 +236,8 @@ namespace ProjectDelta.Application
             Context =
                 null; // Battle Context 제거
 
-            TurnNumber =
-                0; // 턴 번호 초기화
+            RoundNumber =
+                0; // 라운드 번호 초기화
 
             CurrentActor =
                 null; // 행동 대상 초기화
@@ -247,7 +248,7 @@ namespace ProjectDelta.Application
             Result =
                 null; // 결과 제거
 
-            pendingActorsThisTurn.Clear(); // 남은 행동 순서 큐 정리
+            pendingActorsThisRound.Clear(); // 남은 행동 순서 큐 정리
 
             State =
                 BattleState.Idle; // Idle 상태 복귀
@@ -261,8 +262,8 @@ namespace ProjectDelta.Application
             Context =
                 null; // Battle Context 강제 제거
 
-            TurnNumber =
-                0; // 턴 번호 강제 초기화
+            RoundNumber =
+                0; // 라운드 번호 강제 초기화
 
             CurrentActor =
                 null; // 행동 대상 강제 초기화
@@ -273,7 +274,7 @@ namespace ProjectDelta.Application
             Result =
                 null; // 결과 강제 제거
 
-            pendingActorsThisTurn.Clear(); // 남은 행동 순서 큐 강제 정리
+            pendingActorsThisRound.Clear(); // 남은 행동 순서 큐 강제 정리
 
             State =
                 BattleState.Idle; // Idle 강제 복귀

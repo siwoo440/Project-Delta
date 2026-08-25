@@ -44,6 +44,11 @@ namespace ProjectDelta.Presentation
         private readonly IBattleCommand defendCommand =
             new DefendBattleCommand();
 
+        // 59일차: 기획서 9.3 "CombatRng - 명중·피해·상태 이상". 더 이상 UnityEngine.Random을
+        // 전투 핵심 판정에 직접 쓰지 않고 이 발생원 하나에서만 뽑는다.
+        private readonly IRandomSource combatRng =
+            new CombatRng();
+
         // 47일차: 승패 계산 전까지 사용하던 테스트 스탯. 54일차부터 플레이어의 체력·공격·방어·
         // 속도·매력·회피·저항은 PlayerRunState(기획서 6.1), 적은 MonsterDefinition에서 가져온다.
         // 명중은 능력치가 아니라 스킬별 기본값이라 56일차 명중 공식 정정 전까지는 임시 상수로 둔다.
@@ -84,8 +89,9 @@ namespace ProjectDelta.Presentation
         public BattleContext CurrentBattleContext =>
             battleSession.Context;
 
-        public int BattleTurnNumber =>
-            battleSession.TurnNumber;
+        // 59일차: 기획서 4.2 용어에 맞춰 Turn → Round로 정정했다.
+        public int BattleRoundNumber =>
+            battleSession.RoundNumber;
 
         public BattleResult LastBattleResult =>
             battleSession.Result;
@@ -105,7 +111,9 @@ namespace ProjectDelta.Presentation
         public BattleParticipant SelectedBattleTarget =>
             battleSession.SelectedTarget;
 
-        public BattleCommandResult LastBattleCommandResult { get; private set; }
+        // 59일차: 문자열 메시지 하나뿐이던 BattleCommandResult 대신, 변화 목록·로그·저장 필요
+        // 여부·전투 종료 결과를 담는 BattleActionResult로 바꿨다 (기획서 10.3).
+        public BattleActionResult LastBattleActionResult { get; private set; }
 
         // 55일차: 마지막 공격에서 실제로 적용된 피해 공식·편차 난수를 디버그 창(BattleDamageDebugOverlay)에
         // 보여주기 위한 텍스트. 정식 UI가 아니라 디버그 전용이다.
@@ -387,17 +395,17 @@ namespace ProjectDelta.Presentation
                 $"[Project Delta] 54일차 Battle Starting / Player {finalStats.MaxHealth}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {testMonsterDefinition.MaxHp}HP",
                 this);
 
-            if (!battleSession.TryStartTurn())
+            if (!battleSession.TryStartRound())
             {
                 Debug.LogError(
-                    "[Project Delta] 47일차 Battle Starting → TurnStart 전환에 실패했습니다.",
+                    "[Project Delta] 47일차 Battle Starting → RoundStart 전환에 실패했습니다.",
                     this);
 
                 return;
             }
 
             Debug.Log(
-                $"[Project Delta] 47일차 Battle Turn {battleSession.TurnNumber} Start",
+                $"[Project Delta] 47일차 Battle Round {battleSession.RoundNumber} Start",
                 this);
 
             // 56일차: "다음 턴" 버튼을 누르지 않아도 바로 행동할 수 있도록 첫 행동자를 자동으로 불러온다.
@@ -431,7 +439,7 @@ namespace ProjectDelta.Presentation
         private IEnumerator AdvanceBattleTurnRoutine()
         {
             while (battleSession.Context != null
-                && (battleSession.State == BattleState.TurnStart
+                && (battleSession.State == BattleState.RoundStart
                     || battleSession.State == BattleState.ResolvingAction))
             {
                 if (!battleSession.TryEnterAwaitingAction())
@@ -443,7 +451,7 @@ namespace ProjectDelta.Presentation
                     battleSession.CurrentActor;
 
                 Debug.Log(
-                    $"[Project Delta] 49일차 Battle AwaitingAction / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
+                    $"[Project Delta] 49일차 Battle AwaitingAction / Round {battleSession.RoundNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
                     this);
 
                 if (actor.Team != BattleTeam.Enemy)
@@ -465,7 +473,7 @@ namespace ProjectDelta.Presentation
                 ConfirmAttack();
 
                 // 이 공격으로 전투가 끝났으면(승리·패배) 다음 행동자를 기다릴 필요 없이 바로 멈춘다.
-                if (battleSession.State != BattleState.TurnStart
+                if (battleSession.State != BattleState.RoundStart
                     && battleSession.State != BattleState.ResolvingAction)
                 {
                     break;
@@ -505,7 +513,7 @@ namespace ProjectDelta.Presentation
 
         // 49일차: 대상 유효성을 검증하고 확정한다.
         // 50일차: 확정된 공격의 명중·피해를 실제로 계산해 적용한다.
-        public BattleCommandResult ConfirmAttack()
+        public BattleActionResult ConfirmAttack()
         {
             if (battleSession.State != BattleState.AwaitingAction
                 || battleSession.Context == null
@@ -528,19 +536,26 @@ namespace ProjectDelta.Presentation
 
             if (!declaration.Accepted)
             {
-                LastBattleCommandResult =
-                    declaration;
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
 
                 Debug.LogWarning(
                     $"[Project Delta] 49일차 공격 확정 실패 / {declaration.Message}",
                     this);
 
-                return declaration;
+                return rejectedResult;
             }
 
             if (!battleSession.TryBeginResolveAction())
             {
-                return declaration;
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
             }
 
             // 56일차: 이번에 실제로 행동한 참가자를 기록해, HUD가 살짝 움직이는 연출을 재생하게 한다.
@@ -552,13 +567,14 @@ namespace ProjectDelta.Presentation
             // 50일차: 명중 판정에 쓰는 난수(0~99)는 여기(Presentation)에서 만들어
             // BattleDamageCalculator(Application, 엔진 비의존)에 넘긴다.
             // 55일차: 피해 편차(95~105%, 11단계)에 쓰는 난수(0~10)도 같은 방식으로 넘긴다.
+            // 59일차: UnityEngine.Random 대신 목적별로 분리한 CombatRng(기획서 9.3)에서 뽑는다.
             int hitRoll =
-                UnityEngine.Random.Range(
+                combatRng.NextInt(
                     0,
                     100);
 
             int varianceRoll =
-                UnityEngine.Random.Range(
+                combatRng.NextInt(
                     0,
                     BattleDamageCalculator.DamageVarianceRollCount);
 
@@ -570,10 +586,11 @@ namespace ProjectDelta.Presentation
                     varianceRoll);
 
             string resolutionMessage;
+            int appliedDamage = 0;
 
             if (damageResult.IsHit)
             {
-                int appliedDamage =
+                appliedDamage =
                     target.ApplyDamage(
                         damageResult.Damage);
 
@@ -596,51 +613,79 @@ namespace ProjectDelta.Presentation
                     $"{actor.InstanceId} → {target.InstanceId} / 빗나감 (명중률 {damageResult.HitChancePercent}%, 편차 미적용)";
             }
 
-            BattleCommandResult resolvedResult =
-                BattleCommandResult.Accept(
-                    declaration.CommandId,
-                    resolutionMessage);
-
-            LastBattleCommandResult =
-                resolvedResult;
-
             Debug.Log(
                 $"[Project Delta] 50일차 Battle 공격 판정 / {resolutionMessage}",
                 this);
 
+            // 59일차: 문자열 메시지 하나 대신 실제로 무엇이 바뀌었는지(피해 변화·제거된 참가자)를
+            // 담아 BattleActionResult로 반환한다 (기획서 10.3).
+            BattleDamageChange[] damageChanges =
+            {
+                new BattleDamageChange(
+                    actor,
+                    target,
+                    damageResult,
+                    appliedDamage)
+            };
+
+            BattleParticipant[] removedParticipants =
+                target.IsAlive
+                    ? Array.Empty<BattleParticipant>()
+                    : new[] { target };
+
             // 51일차: 공격이 끝날 때마다 전멸 여부를 확인해, 결정됐으면 여기서 전투를 끝낸다.
+            // 59일차: 승리 시 FinishBattle() 내부에서 battleSession.Result가 곧바로 지워지므로
+            // (TryReset), 지워지기 전 값을 반환받아 BattleActionResult에 담는다.
+            BattleResult battleEndResult = null;
+
             if (BattleOutcomeEvaluator.TryEvaluate(
                     battleSession.Context,
                     out BattleOutcome outcome))
             {
-                FinishBattle(
-                    outcome);
+                battleEndResult =
+                    FinishBattle(
+                        outcome);
+            }
 
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { resolutionMessage },
+                    damageChanges,
+                    removedParticipants,
+                    true,
+                    battleEndResult);
+
+            LastBattleActionResult =
+                resolvedResult;
+
+            if (battleEndResult != null)
+            {
                 return resolvedResult;
             }
 
             // 56일차: "다음 턴" 버튼 없이도 바로 이어서 행동할 수 있도록 다음 행동자를 자동으로 불러온다.
             // Enemy면 TestAdvanceBattleTurn()이 알아서 공격까지 이어서 처리하고, Player 차례가 되면
             // AwaitingAction에서 멈춰 공격·방어 버튼이 곧바로 활성화된다.
-            if (battleSession.HasPendingActorsThisTurn)
+            if (battleSession.HasPendingActorsThisRound)
             {
                 TestAdvanceBattleTurn();
 
                 return resolvedResult;
             }
 
-            if (!battleSession.TryEndTurn())
+            if (!battleSession.TryEndRound())
             {
                 return resolvedResult;
             }
 
-            if (!battleSession.TryStartTurn())
+            if (!battleSession.TryStartRound())
             {
                 return resolvedResult;
             }
 
             Debug.Log(
-                $"[Project Delta] 49일차 Battle Turn {battleSession.TurnNumber} Start",
+                $"[Project Delta] 49일차 Battle Round {battleSession.RoundNumber} Start",
                 this);
 
             TestAdvanceBattleTurn();
@@ -650,7 +695,7 @@ namespace ProjectDelta.Presentation
 
         // 52일차: 방어를 확정한다. 공격과 달리 대상 선택이 필요 없어 확정하자마자 곧바로 해결한다.
         // 방어는 HP를 바꾸지 않으므로 승패 자동 판정(51일차)은 확인하지 않는다.
-        public BattleCommandResult ConfirmDefend()
+        public BattleActionResult ConfirmDefend()
         {
             if (battleSession.State != BattleState.AwaitingAction
                 || battleSession.Context == null
@@ -662,27 +707,34 @@ namespace ProjectDelta.Presentation
             BattleParticipant actor =
                 battleSession.CurrentActor;
 
-            BattleCommandResult result =
+            BattleCommandResult declaration =
                 defendCommand.Execute(
                     battleSession.Context,
                     actor,
                     null);
 
-            LastBattleCommandResult =
-                result;
-
-            if (!result.Accepted)
+            if (!declaration.Accepted)
             {
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
+
                 Debug.LogWarning(
-                    $"[Project Delta] 52일차 방어 확정 실패 / {result.Message}",
+                    $"[Project Delta] 52일차 방어 확정 실패 / {declaration.Message}",
                     this);
 
-                return result;
+                return rejectedResult;
             }
 
             if (!battleSession.TryBeginResolveAction())
             {
-                return result;
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
             }
 
             // 56일차: 방어도 공격과 같은 방식으로 행동자를 기록해 연출을 재생하게 한다.
@@ -692,34 +744,47 @@ namespace ProjectDelta.Presentation
             LastActionSequence++;
 
             Debug.Log(
-                $"[Project Delta] 52일차 Battle 방어 확정 / {result.Message}",
+                $"[Project Delta] 52일차 Battle 방어 확정 / {declaration.Message}",
                 this);
 
+            // 59일차: 방어는 피해 변화·제거된 참가자가 없으므로 로그만 담아 반환한다.
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { declaration.Message },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    true,
+                    null);
+
+            LastBattleActionResult =
+                resolvedResult;
+
             // 56일차: "다음 턴" 버튼 없이도 바로 이어서 진행되도록 다음 행동자를 자동으로 불러온다.
-            if (battleSession.HasPendingActorsThisTurn)
+            if (battleSession.HasPendingActorsThisRound)
             {
                 TestAdvanceBattleTurn();
 
-                return result;
+                return resolvedResult;
             }
 
-            if (!battleSession.TryEndTurn())
+            if (!battleSession.TryEndRound())
             {
-                return result;
+                return resolvedResult;
             }
 
-            if (!battleSession.TryStartTurn())
+            if (!battleSession.TryStartRound())
             {
-                return result;
+                return resolvedResult;
             }
 
             Debug.Log(
-                $"[Project Delta] 52일차 Battle Turn {battleSession.TurnNumber} Start",
+                $"[Project Delta] 52일차 Battle Round {battleSession.RoundNumber} Start",
                 this);
 
             TestAdvanceBattleTurn();
 
-            return result;
+            return resolvedResult;
         }
 
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.
@@ -751,17 +816,22 @@ namespace ProjectDelta.Presentation
         // 승리 → 46일차 Encounter 결과 처리(방 완료·저장)로 이어진다.
         // 패배 → 게임 오버 연출 없이 일단 타이틀(메인 메뉴)로 돌아간다.
         //         보상·재도전 같은 더 나은 패배 경험은 58일차에서 다룬다.
-        private void FinishBattle(
+        // 59일차: 승리 시 아래에서 battleSession.TryReset()을 호출해 Result가 null로 지워지므로,
+        // BattleActionResult.BattleEndResult에 담을 수 있도록 지워지기 전 결과를 반환한다.
+        private BattleResult FinishBattle(
             BattleOutcome outcome)
         {
             if (!battleSession.TryFinishBattle(
                     outcome))
             {
-                return;
+                return null;
             }
 
+            BattleResult finishedResult =
+                battleSession.Result;
+
             Debug.Log(
-                $"[Project Delta] 51일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount}",
+                $"[Project Delta] 51일차 Battle Finished / Outcome {finishedResult.Outcome} / Round {finishedResult.RoundCount}",
                 this);
 
             // 54일차: 전투 후 자동 회복은 없다 (기획서 4.2). 참가자가 들고 있던 현재 체력·마나·
@@ -793,7 +863,7 @@ namespace ProjectDelta.Presentation
                         "[Project Delta] Battle 승리 결과를 Encounter 결과로 변환하지 못했습니다.",
                         this);
 
-                    return;
+                    return finishedResult;
                 }
 
                 FinalizeActiveEncounter(
@@ -801,7 +871,7 @@ namespace ProjectDelta.Presentation
 
                 battleSession.TryReset();
 
-                return;
+                return finishedResult;
             }
 
             Debug.Log(
@@ -809,6 +879,8 @@ namespace ProjectDelta.Presentation
                 this);
 
             ApplicationFlow.Current?.ReturnToTitle();
+
+            return finishedResult;
         }
 
         private void FinalizeActiveEncounter(
