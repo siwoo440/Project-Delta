@@ -1,58 +1,40 @@
-using System;
+using System; // 수치 제한 기능
 
-namespace ProjectDelta.Application
+namespace ProjectDelta.Application // 상태 인스턴스 네임스페이스
 {
-    // 61일차: 기획서 10.3 StatusEffectInstance — 실제로 적용된 상태 이상 한 건의 런타임 데이터.
-    // 정의 데이터(StatusEffectDefinition)는 바꾸지 않고, 여기에 개별 적용 결과만 담는다.
-    //
-    // 문서 필드명은 "RemainingTurns"지만, 59일차에 정정한 대로 이 프로젝트에서 지속시간은
-    // "라운드" 단위이므로(기획서 4.4 "약한 상태 1라운드" 등) RemainingRounds로 이름 붙였다.
-    //
-    // SourceInstanceId는 이 상태를 건 참가자의 InstanceId다. 지속 피해로 사망했을 때 "마지막
-    // 공격자"를 기록하는 데 그대로 쓸 수 있다(기획서 4.2 "지속 피해로 체력이 0이 되면 해당
-    // 상태를 부여한 캐릭터를 마지막 공격자로 기록한다") — 실제 연결은 71일차 패배 기록 작업 몫이다.
-    public sealed class StatusEffectInstance
+    public sealed class StatusEffectInstance // 실제 적용된 상태 한 건
     {
-        public string DefinitionId { get; }
-        public string SourceInstanceId { get; }
-        public int RemainingRounds { get; private set; }
-        public int StackCount { get; private set; }
-        public int AppliedValue { get; }
+        public string DefinitionId { get; } // 상태 정의 ID
+        public string SourceInstanceId { get; } // 최초 상태 부여자 ID
+        public int RemainingRounds { get; private set; } // 남은 지속 라운드
+        public int StackCount { get; private set; } // 현재 중첩 수
+        public int AppliedValue { get; } // 적용 수치
 
-        public bool IsExpired =>
-            RemainingRounds <= 0;
+        public bool IsExpired => RemainingRounds <= 0; // 만료 여부
 
-        public StatusEffectInstance(
-            string definitionId,
-            string sourceInstanceId,
-            int remainingRounds,
-            int stackCount,
-            int appliedValue)
+        public StatusEffectInstance(string definitionId, string sourceInstanceId, int remainingRounds, int stackCount, int appliedValue) // 상태 인스턴스 생성자
         {
-            DefinitionId =
-                definitionId;
-
-            SourceInstanceId =
-                sourceInstanceId;
-
-            RemainingRounds =
-                remainingRounds;
-
-            StackCount =
-                stackCount;
-
-            AppliedValue =
-                appliedValue;
+            DefinitionId = definitionId; // 상태 정의 ID 저장
+            SourceInstanceId = sourceInstanceId; // 상태 부여자 ID 저장
+            RemainingRounds = remainingRounds; // 남은 라운드 저장
+            StackCount = stackCount; // 중첩 수 저장
+            AppliedValue = appliedValue; // 적용 수치 저장
         }
 
-        // 60일차: 라운드 파이프라인의 "상태 지속 시간 감소" 단계에서 호출한다. 0 밑으로는
-        // 내려가지 않는다.
-        public void DecrementRemainingRounds()
+        public void DecrementRemainingRounds() // 라운드 종료 지속시간 감소
         {
-            RemainingRounds =
-                Math.Max(
-                    0,
-                    RemainingRounds - 1);
+            RemainingRounds = Math.Max(0, RemainingRounds - 1); // 0 아래로 내려가지 않게 감소
+        }
+
+        public void RefreshDuration(int remainingRounds) // 동일 상태 재부여 지속시간 갱신
+        {
+            RemainingRounds = Math.Max(1, remainingRounds); // 최소 1라운드로 갱신
+        }
+
+        public void IncreaseStack(int maxStack) // 중첩 수 증가
+        {
+            int normalizedMaxStack = Math.Max(1, maxStack); // 최대 중첩 최소값 보정
+            StackCount = Math.Min(normalizedMaxStack, Math.Max(1, StackCount + 1)); // 최대값을 넘지 않게 증가
         }
     }
 }
