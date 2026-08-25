@@ -383,6 +383,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         [Test]
         public void CalculateDefendReductionPercent_NeverExceedsSixtyPercent()
         {
+            // defense ÷ (defense + 100)은 아무리 방어력이 커져도 1에 정수 나눗셈으로는 도달하지
+            // 못해 60%에 점근한다. 그래도 Min 상한이 실제로 60%를 넘기지 않는다는 것만 확인한다.
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
@@ -394,9 +396,9 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 BattleDamageCalculator.CalculateDefendReductionPercent(
                     defender);
 
-            Assert.AreEqual(
-                BattleDamageCalculator.DefendMaxReductionPercent,
-                reductionPercent);
+            Assert.LessOrEqual(
+                reductionPercent,
+                BattleDamageCalculator.DefendMaxReductionPercent);
         }
 
         [Test]
@@ -498,6 +500,172 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 damage);
         }
 
+        // 58일차: 기획서 4.2 피해 유형 표 — 상태 이상·지속 피해는 방어력이 아니라 저항을 쓴다.
+        [TestCase(DamageType.StatusEffect)]
+        [TestCase(DamageType.DamageOverTime)]
+        public void CalculateBaseDamage_StatusEffectOrDamageOverTime_UsesResistanceInsteadOfDefense(
+            DamageType damageType)
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 999, // 방어력은 무시돼야 하므로 극단적인 값을 넣는다
+                    resistance: 100);
+
+            int baseDamage =
+                BattleDamageCalculator.CalculateBaseDamage(
+                    attacker,
+                    defender,
+                    damageType);
+
+            // 방어력(999)이 아니라 저항(100)을 써야 한다: 10 × 100 ÷ (100 + 100) = 5
+            Assert.AreEqual(
+                5,
+                baseDamage);
+        }
+
+        [Test]
+        public void CalculateBaseDamage_Fixed_IgnoresDefense()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 999); // 고정 피해는 이 값을 완전히 무시해야 한다
+
+            int baseDamage =
+                BattleDamageCalculator.CalculateBaseDamage(
+                    attacker,
+                    defender,
+                    DamageType.Fixed);
+
+            // 방어력 무시 → 공격력 그대로: 10 × 100 ÷ 100 = 10
+            Assert.AreEqual(
+                10,
+                baseDamage);
+        }
+
+        [Test]
+        public void CanCriticalHit_MultiplierNotSpecified_ReturnsFalseRegardlessOfChance()
+        {
+            // 58일차: 기획서 4.2 "치명타 배율이 지정되지 않은 피해는 치명타가 발생하지 않는다".
+            Assert.IsFalse(
+                BattleDamageCalculator.CanCriticalHit(
+                    BattleDamageCalculator.NoCriticalMultiplierPercent));
+        }
+
+        [Test]
+        public void IsCriticalHit_RollBelowChanceWithMultiplier_ReturnsTrue()
+        {
+            Assert.IsTrue(
+                BattleDamageCalculator.IsCriticalHit(
+                    criticalChancePercent: 50,
+                    criticalMultiplierPercent: 150,
+                    criticalRoll: 49));
+        }
+
+        [Test]
+        public void IsCriticalHit_RollAtOrAboveChance_ReturnsFalse()
+        {
+            Assert.IsFalse(
+                BattleDamageCalculator.IsCriticalHit(
+                    criticalChancePercent: 50,
+                    criticalMultiplierPercent: 150,
+                    criticalRoll: 50));
+        }
+
+        [Test]
+        public void IsCriticalHit_NoMultiplierSpecified_ReturnsFalseEvenIfRollWouldHit()
+        {
+            // 확률상으로는 반드시 맞을 굴림(0)이라도 배율이 없으면 치명타가 아니다.
+            Assert.IsFalse(
+                BattleDamageCalculator.IsCriticalHit(
+                    criticalChancePercent: 100,
+                    criticalMultiplierPercent: BattleDamageCalculator.NoCriticalMultiplierPercent,
+                    criticalRoll: 0));
+        }
+
+        [Test]
+        public void CalculateDamage_CriticalHit_AppliesMultiplierOnTopOfVariance()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll,
+                    DefenseInteraction.Defendable,
+                    DamageType.Normal,
+                    criticalChancePercent: 100,
+                    criticalMultiplierPercent: 150,
+                    criticalRoll: 0);
+
+            // 기본 피해 10, 편차 100%, 치명타 배율 150% → 15
+            Assert.AreEqual(
+                15,
+                damage);
+        }
+
+        [Test]
+        public void CalculateDamage_DefaultParameters_NeverCritical()
+        {
+            // 매개변수를 생략하는 기존 호출부(기본 공격)는 치명타 확률이 0%라 절대 치명타가 아니다.
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll);
+
+            // 치명타가 적용됐다면 15가 나왔을 상황에서도 10 그대로여야 한다.
+            Assert.AreEqual(
+                10,
+                damage);
+        }
+
         [Test]
         public void Resolve_RollBelowHitChance_ReturnsHitWithDamage()
         {
@@ -534,6 +702,10 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreEqual(
                 70,
                 result.HitChancePercent);
+
+            // 58일차: 치명타 매개변수를 생략했으므로 치명타가 아니어야 한다.
+            Assert.IsFalse(
+                result.IsCritical);
         }
 
         [Test]

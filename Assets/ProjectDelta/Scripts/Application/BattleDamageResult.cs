@@ -2,6 +2,7 @@ namespace ProjectDelta.Application
 {
     // 50일차: 한 번의 공격 판정 결과 (명중 여부 + 피해량).
     // 55일차: 디버그 표시용으로 편차 적용 전 기본 피해와 적용된 편차(%)도 함께 담는다.
+    // 58일차: 치명타 발생 여부도 함께 담는다.
     public sealed class BattleDamageResult
     {
         public bool IsHit { get; }
@@ -9,13 +10,15 @@ namespace ProjectDelta.Application
         public int HitChancePercent { get; }
         public int BaseDamage { get; }
         public int VariancePercent { get; }
+        public bool IsCritical { get; }
 
         private BattleDamageResult(
             bool isHit,
             int damage,
             int hitChancePercent,
             int baseDamage,
-            int variancePercent)
+            int variancePercent,
+            bool isCritical)
         {
             IsHit =
                 isHit;
@@ -31,20 +34,25 @@ namespace ProjectDelta.Application
 
             VariancePercent =
                 variancePercent;
+
+            IsCritical =
+                isCritical;
         }
 
         public static BattleDamageResult Hit(
             int damage,
             int hitChancePercent,
             int baseDamage,
-            int variancePercent)
+            int variancePercent,
+            bool isCritical)
         {
             return new BattleDamageResult(
                 true,
                 damage,
                 hitChancePercent,
                 baseDamage,
-                variancePercent);
+                variancePercent,
+                isCritical);
         }
 
         public static BattleDamageResult Miss(
@@ -55,7 +63,8 @@ namespace ProjectDelta.Application
                 0,
                 hitChancePercent,
                 0,
-                0);
+                0,
+                false);
         }
     }
 }

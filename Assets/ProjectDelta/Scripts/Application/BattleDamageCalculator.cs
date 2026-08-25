@@ -5,6 +5,8 @@ namespace ProjectDelta.Application
     // 56일차: 명중 공식을 정합한다 — 스킬 기본값, 회피 가중치 50%, 5~95% 클램프 (기획서 4.2).
     // 57일차: 방어 감소율을 고정값에서 방어력 기반 곡선으로 바꾸고, 방어 가능·관통·불가를
     // 구분한다 (기획서 4.2).
+    // 58일차: 치명타(기본 확률 0%, 무기·스킬·유물·상태 효과로만 발생)와 피해 유형별 방어
+    // 수치(고정 피해는 방어 무시, 상태 이상은 저항)를 추가한다 (기획서 4.2).
     // 실제 데미지 적용(51일차 사망 판정 포함)이나 Command 연결은 이 클래스의 책임이 아니다.
     public static class BattleDamageCalculator
     {
@@ -39,6 +41,12 @@ namespace ProjectDelta.Application
         public const int DamageVarianceRollCount =
             MaxDamageVariancePercent - MinDamageVariancePercent + 1;
 
+        // 58일차: 기획서 4.2 "치명타 배율이 지정되지 않은 피해는 치명타가 발생하지 않는다".
+        // 기본 공격은 배율을 지정하지 않으므로 이 값 그대로 두면 치명타가 절대 발생하지 않는다.
+        // 실제 치명타 가능 여부·확률·배율은 무기·스킬·유물·상태 효과 데이터(66일차 이후)에서 온다.
+        public const int NoCriticalChancePercent = 0;
+        public const int NoCriticalMultiplierPercent = 0;
+
         // 56일차 명중률(%) = 스킬 기본 명중률 + 공격자 명중 - 방어자 회피 × 50%, 5~95% 사이로 고정.
         // 회피 가중치는 정수 나눗셈으로 버림 처리한다.
         public static int CalculateHitChancePercent(
@@ -59,13 +67,57 @@ namespace ProjectDelta.Application
                 MaxHitChancePercent);
         }
 
-        // 55일차 기본 피해 = 공격력 × 100 ÷ (100 + 방어력).
+        // 55일차 기본 피해 = 공격력 × 100 ÷ (100 + 적용 방어 수치).
         // "공격 배율"은 스킬 데이터(66일차 이후)에서 오므로, 기본 공격은 배율 100%로 취급한다.
+        // 58일차: 적용 방어 수치는 기획서 4.2 피해 유형 표를 따른다 — 일반 공격은 방어력,
+        // 상태 이상·지속 피해는 저항, 고정 피해는 방어력을 무시(0으로 취급)한다.
         public static int CalculateBaseDamage(
             BattleParticipant attacker,
-            BattleParticipant defender)
+            BattleParticipant defender,
+            DamageType damageType = DamageType.Normal)
         {
-            return attacker.Attack * 100 / (100 + defender.Defense);
+            int defenseValue =
+                GetDefenseValue(
+                    defender,
+                    damageType);
+
+            return attacker.Attack * 100 / (100 + defenseValue);
+        }
+
+        private static int GetDefenseValue(
+            BattleParticipant defender,
+            DamageType damageType)
+        {
+            switch (damageType)
+            {
+                case DamageType.Fixed:
+                    return 0; // 고정 피해 - 방어력 무시
+
+                case DamageType.StatusEffect:
+                case DamageType.DamageOverTime:
+                    return defender.Resistance; // 상태 이상·지속 피해 - 저항 사용
+
+                default:
+                    return defender.Defense; // 일반 공격·직접 공격 스킬 - 방어력 사용
+            }
+        }
+
+        // 58일차: 치명타 배율이 지정되지 않았으면(0 이하) 확률과 무관하게 치명타가 발생하지 않는다.
+        public static bool CanCriticalHit(
+            int criticalMultiplierPercent)
+        {
+            return criticalMultiplierPercent > 0;
+        }
+
+        // criticalRoll(0~99 난수)이 치명타 확률보다 작으면 치명타가 발생한다.
+        public static bool IsCriticalHit(
+            int criticalChancePercent,
+            int criticalMultiplierPercent,
+            int criticalRoll)
+        {
+            return CanCriticalHit(
+                    criticalMultiplierPercent)
+                && criticalRoll < criticalChancePercent;
         }
 
         // varianceRoll(0~10)을 95~105% 편차(%)로 바꾼다. 범위를 벗어나면 가장 가까운 경계로 고정한다.
@@ -97,18 +149,23 @@ namespace ProjectDelta.Application
                 : reductionPercent;
         }
 
-        // 기본 피해에 편차를 곱한 뒤, 방어 중이면 방어 가능·관통·불가에 따라 한 번 더 감소시키고
-        // 마지막에 최소 피해 1을 보장한다.
+        // 기본 피해에 편차를 곱하고, 치명타면 배율을 곱한 뒤, 방어 중이면 방어 가능·관통·불가에
+        // 따라 한 번 더 감소시키고 마지막에 최소 피해 1을 보장한다.
         public static int CalculateDamage(
             BattleParticipant attacker,
             BattleParticipant defender,
             int varianceRoll,
-            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable)
+            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable,
+            DamageType damageType = DamageType.Normal,
+            int criticalChancePercent = NoCriticalChancePercent,
+            int criticalMultiplierPercent = NoCriticalMultiplierPercent,
+            int criticalRoll = 0)
         {
             int baseDamage =
                 CalculateBaseDamage(
                     attacker,
-                    defender);
+                    defender,
+                    damageType);
 
             int variancePercent =
                 CalculateVariancePercent(
@@ -116,6 +173,16 @@ namespace ProjectDelta.Application
 
             int damage =
                 baseDamage * variancePercent / 100;
+
+            // 58일차: 치명타가 발생했으면 배율을 곱한다 (기획서 4.2 "... × 치명타 배율 × ...").
+            if (IsCriticalHit(
+                    criticalChancePercent,
+                    criticalMultiplierPercent,
+                    criticalRoll))
+            {
+                damage =
+                    damage * criticalMultiplierPercent / 100;
+            }
 
             // 57일차: 방어 불가 피해는 방어 중이어도 감소하지 않는다.
             if (defender.IsDefending
@@ -149,7 +216,11 @@ namespace ProjectDelta.Application
             BattleParticipant defender,
             int roll0To99,
             int varianceRoll,
-            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable)
+            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable,
+            DamageType damageType = DamageType.Normal,
+            int criticalChancePercent = NoCriticalChancePercent,
+            int criticalMultiplierPercent = NoCriticalMultiplierPercent,
+            int criticalRoll = 0)
         {
             int hitChancePercent =
                 CalculateHitChancePercent(
@@ -170,23 +241,36 @@ namespace ProjectDelta.Application
                     attacker,
                     defender,
                     varianceRoll,
-                    defenseInteraction);
+                    defenseInteraction,
+                    damageType,
+                    criticalChancePercent,
+                    criticalMultiplierPercent,
+                    criticalRoll);
 
             // 55일차: 편차 적용 전 기본 피해·적용된 편차(%)를 디버그 표시용으로 함께 담는다.
             int baseDamage =
                 CalculateBaseDamage(
                     attacker,
-                    defender);
+                    defender,
+                    damageType);
 
             int variancePercent =
                 CalculateVariancePercent(
                     varianceRoll);
 
+            // 58일차: 디버그 표시용으로 치명타 발생 여부도 함께 담는다.
+            bool isCritical =
+                IsCriticalHit(
+                    criticalChancePercent,
+                    criticalMultiplierPercent,
+                    criticalRoll);
+
             return BattleDamageResult.Hit(
                 damage,
                 hitChancePercent,
                 baseDamage,
-                variancePercent);
+                variancePercent,
+                isCritical);
         }
 
         private static int Clamp(
