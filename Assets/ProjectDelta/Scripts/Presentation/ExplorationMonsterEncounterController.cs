@@ -44,6 +44,10 @@ namespace ProjectDelta.Presentation
         private readonly IBattleCommand defendCommand =
             new DefendBattleCommand();
 
+        // 69일차: 전투 내부 도주 행동.
+        private readonly IBattleCommand fleeCommand =
+            new FleeBattleCommand();
+
         // 59일차: 기획서 9.3 "CombatRng - 명중·피해·상태 이상". 더 이상 UnityEngine.Random을
         // 전투 핵심 판정에 직접 쓰지 않고 이 발생원 하나에서만 뽑는다.
         private readonly IRandomSource combatRng =
@@ -1079,6 +1083,148 @@ namespace ProjectDelta.Presentation
                 : $" / {skill.GrantedStatusEffect.DisplayName} 부여 실패";
         }
 
+        // 69일차: 도주를 확정한다. 성공하면 전투가 즉시 끝나고(EncounterOutcome.Escaped로
+        // Encounter까지 정리됨), 실패하면 방어 실패와 같은 취급으로 그 턴만 소모하고 다음
+        // 행동자로 넘어간다.
+        public BattleActionResult ConfirmFlee()
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleCommandResult declaration =
+                fleeCommand.Execute(
+                    battleSession.Context,
+                    actor,
+                    null);
+
+            if (!declaration.Accepted)
+            {
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
+
+                Debug.LogWarning(
+                    $"[Project Delta] 69일차 도주 확정 실패 / {declaration.Message}",
+                    this);
+
+                return rejectedResult;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
+            }
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            int escapeChancePercent =
+                BattleEscapeCalculator.CalculateEscapeChancePercent(
+                    battleSession.Context,
+                    actor);
+
+            int escapeRoll =
+                combatRng.NextInt(
+                    0,
+                    100);
+
+            bool escaped =
+                escapeRoll < escapeChancePercent;
+
+            string resolutionMessage =
+                escaped
+                    ? $"도주 성공 / {actor.InstanceId} (성공률 {escapeChancePercent}%)"
+                    : $"도주 실패 / {actor.InstanceId} (성공률 {escapeChancePercent}%)";
+
+            Debug.Log(
+                $"[Project Delta] 69일차 Battle 도주 판정 / {resolutionMessage}",
+                this);
+
+            if (escaped)
+            {
+                BattleResult battleEndResult =
+                    FinishBattle(
+                        BattleOutcome.Escaped);
+
+                BattleActionResult escapedResult =
+                    BattleActionResult.Accept(
+                        declaration.CommandId,
+                        new[] { resolutionMessage },
+                        Array.Empty<BattleDamageChange>(),
+                        Array.Empty<BattleParticipant>(),
+                        true,
+                        battleEndResult);
+
+                LastBattleActionResult =
+                    escapedResult;
+
+                return escapedResult;
+            }
+
+            // 도주 실패 - 방어 실패와 같은 방식으로 로그만 남기고 턴을 소모한다.
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { resolutionMessage },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    true,
+                    null);
+
+            LastBattleActionResult =
+                resolvedResult;
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                TestAdvanceBattleTurn();
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return resolvedResult;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return resolvedResult;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 69일차 Battle Round {battleSession.RoundNumber} Start",
+                this);
+
+            TestAdvanceBattleTurn();
+
+            return resolvedResult;
+        }
+
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.
         // 51일차부터는 ConfirmAttack()의 자동 판정도 이 메서드가 감싼 FinishBattle()을 그대로 탄다.
         public void TestWinBattle()
@@ -1160,6 +1306,25 @@ namespace ProjectDelta.Presentation
 
                 FinalizeActiveEncounter(
                     result);
+
+                battleSession.TryReset();
+
+                return finishedResult;
+            }
+
+            // 69일차: 도주 성공 - 몬스터를 쓰러뜨린 것도 아니고 패배한 것도 아니므로, 승리와
+            // 같은 방식으로 Encounter를 정리하되 결과만 EncounterOutcome.Escaped로 담는다
+            // (46일차부터 있던 값 - 방 완료·몬스터 제거 둘 다 일어나지 않는다).
+            if (outcome == BattleOutcome.Escaped)
+            {
+                EncounterResult escapedResult =
+                    new EncounterResult(
+                        session.Context.RoomId,
+                        session.Context.MonsterDefinitionId,
+                        EncounterOutcome.Escaped);
+
+                FinalizeActiveEncounter(
+                    escapedResult);
 
                 battleSession.TryReset();
 
