@@ -3,6 +3,8 @@ namespace ProjectDelta.Application
     // 53일차: 명중/회피·피해·방어 계산에서 관통을 제거하고 정식 전투 능력치 구조에 맞춘다.
     // 55일차: 피해 공식을 비율형(방어력 감쇠)으로 바꾸고 95~105% 무작위 편차를 추가한다 (기획서 4.2).
     // 56일차: 명중 공식을 정합한다 — 스킬 기본값, 회피 가중치 50%, 5~95% 클램프 (기획서 4.2).
+    // 57일차: 방어 감소율을 고정값에서 방어력 기반 곡선으로 바꾸고, 방어 가능·관통·불가를
+    // 구분한다 (기획서 4.2).
     // 실제 데미지 적용(51일차 사망 판정 포함)이나 Command 연결은 이 클래스의 책임이 아니다.
     public static class BattleDamageCalculator
     {
@@ -17,7 +19,16 @@ namespace ProjectDelta.Application
         public const int MaxHitChancePercent = 95; // 56일차: 명중률 상한을 100 → 95로 낮춤
 
         public const int MinDamage = 1; // 방어력이 아무리 높아도 최소 피해 보장
-        public const int DefendDamageReductionPercent = 50; // 52일차: 방어 중이면 최종 피해를 이 비율만큼 줄임
+
+        // 57일차: 기획서 4.2 "방어 피해 감소율 = 30% + 방어력 ÷ (방어력 + 100) × 30%, 최대 60%".
+        public const int DefendBaseReductionPercent = 30;
+        public const int DefendVariableReductionScalePercent = 30;
+        public const int DefendMaxReductionPercent = 60;
+
+        // 57일차: 기획서 4.2 "방어 관통 - 일부 감소율만 적용". 정확한 비율이 문서에 없어
+        // 회피 가중치(56일차)와 같은 50%를 임시로 쓴다. 실제 관통 스킬이 생기면(66일차 이후)
+        // 재검토가 필요하다.
+        public const int PenetratingDefenseReductionWeightPercent = 50;
 
         // 55일차: 기획서 4.2 "최종 피해 = 기본 피해 × 95~105% 무작위 편차 × ...".
         // 치명타 배율·기타 보정은 58일차 이후 별도 항목에서 곱한다.
@@ -68,11 +79,31 @@ namespace ProjectDelta.Application
                     DamageVarianceRollCount - 1);
         }
 
-        // 기본 피해에 편차를 곱한 뒤, 방어 중이면 한 번 더 감소시키고 마지막에 최소 피해 1을 보장한다.
+        // 57일차 방어 피해 감소율(%) = 30% + 방어력 ÷ (방어력 + 100) × 30%, 최대 60%로 고정.
+        // 방어력이 높을수록 감소율이 30%에서 60%로 완만하게 수렴하는 곡선이다.
+        public static int CalculateDefendReductionPercent(
+            BattleParticipant defender)
+        {
+            int variablePercent =
+                defender.Defense * DefendVariableReductionScalePercent
+                / (defender.Defense + 100);
+
+            int reductionPercent =
+                DefendBaseReductionPercent
+                + variablePercent;
+
+            return reductionPercent > DefendMaxReductionPercent
+                ? DefendMaxReductionPercent
+                : reductionPercent;
+        }
+
+        // 기본 피해에 편차를 곱한 뒤, 방어 중이면 방어 가능·관통·불가에 따라 한 번 더 감소시키고
+        // 마지막에 최소 피해 1을 보장한다.
         public static int CalculateDamage(
             BattleParticipant attacker,
             BattleParticipant defender,
-            int varianceRoll)
+            int varianceRoll,
+            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable)
         {
             int baseDamage =
                 CalculateBaseDamage(
@@ -86,11 +117,23 @@ namespace ProjectDelta.Application
             int damage =
                 baseDamage * variancePercent / 100;
 
-            // 52일차: 대상이 방어 중이면 최종 피해를 한 번 더 비율만큼 줄인다.
-            if (defender.IsDefending)
+            // 57일차: 방어 불가 피해는 방어 중이어도 감소하지 않는다.
+            if (defender.IsDefending
+                && defenseInteraction != DefenseInteraction.IgnoresDefense)
             {
+                int reductionPercent =
+                    CalculateDefendReductionPercent(
+                        defender);
+
+                // 방어 관통 피해는 감소율을 일부만 적용한다.
+                if (defenseInteraction == DefenseInteraction.PenetratesDefense)
+                {
+                    reductionPercent =
+                        reductionPercent * PenetratingDefenseReductionWeightPercent / 100;
+                }
+
                 damage =
-                    damage * (100 - DefendDamageReductionPercent) / 100;
+                    damage * (100 - reductionPercent) / 100;
             }
 
             return damage > MinDamage
@@ -105,7 +148,8 @@ namespace ProjectDelta.Application
             BattleParticipant attacker,
             BattleParticipant defender,
             int roll0To99,
-            int varianceRoll)
+            int varianceRoll,
+            DefenseInteraction defenseInteraction = DefenseInteraction.Defendable)
         {
             int hitChancePercent =
                 CalculateHitChancePercent(
@@ -125,7 +169,8 @@ namespace ProjectDelta.Application
                 CalculateDamage(
                     attacker,
                     defender,
-                    varianceRoll);
+                    varianceRoll,
+                    defenseInteraction);
 
             // 55일차: 편차 적용 전 기본 피해·적용된 편차(%)를 디버그 표시용으로 함께 담는다.
             int baseDamage =

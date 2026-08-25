@@ -318,9 +318,9 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     defender,
                     NoVarianceRoll);
 
-            // 방어력 0, 편차 100% → 기본 피해 10, 방어로 50% 감소 → 5
+            // 방어력 0 → 감소율 30 + 0 = 30%. 편차 100% → 기본 피해 10, 방어로 30% 감소 → 7
             Assert.AreEqual(
-                5,
+                7,
                 damage);
         }
 
@@ -353,6 +353,116 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreEqual(
                 BattleDamageCalculator.MinDamage,
                 damage); // 방어로 더 줄어도 최소 피해는 유지 확인
+        }
+
+        // 57일차: 기획서 4.2 예상 감소율 표(방어력 25→약36%, 50→약40%, 100→약45%, 200→약50%)를 그대로 확인한다.
+        [TestCase(25, 36)]
+        [TestCase(50, 40)]
+        [TestCase(100, 45)]
+        [TestCase(200, 50)]
+        public void CalculateDefendReductionPercent_MatchesPlanningDocTable(
+            int defense,
+            int expectedReductionPercent)
+        {
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    defense: defense,
+                    accuracy: 0,
+                    evasion: 0);
+
+            int reductionPercent =
+                BattleDamageCalculator.CalculateDefendReductionPercent(
+                    defender);
+
+            Assert.AreEqual(
+                expectedReductionPercent,
+                reductionPercent);
+        }
+
+        [Test]
+        public void CalculateDefendReductionPercent_NeverExceedsSixtyPercent()
+        {
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    defense: 100000, // 극단적으로 높은 방어력
+                    accuracy: 0,
+                    evasion: 0);
+
+            int reductionPercent =
+                BattleDamageCalculator.CalculateDefendReductionPercent(
+                    defender);
+
+            Assert.AreEqual(
+                BattleDamageCalculator.DefendMaxReductionPercent,
+                reductionPercent);
+        }
+
+        [Test]
+        public void CalculateDamage_PenetratesDefense_AppliesOnlyPartialReduction()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0); // 감소율 30%
+
+            defender.SetDefending(
+                true);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll,
+                    DefenseInteraction.PenetratesDefense);
+
+            // 방어 관통 가중치 50% → 감소율 30% × 50% = 15%. 기본 피해 10 × (100-15)% = 8 (버림)
+            Assert.AreEqual(
+                8,
+                damage);
+        }
+
+        [Test]
+        public void CalculateDamage_IgnoresDefense_AppliesNoReductionEvenWhileDefending()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            defender.SetDefending(
+                true);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll,
+                    DefenseInteraction.IgnoresDefense);
+
+            // 방어 불가 피해는 방어 중이어도 그대로 들어간다.
+            Assert.AreEqual(
+                10,
+                damage);
         }
 
         [Test]
