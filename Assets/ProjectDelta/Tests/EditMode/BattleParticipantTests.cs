@@ -1,5 +1,6 @@
 using NUnit.Framework; // NUnit 테스트 사용
 using ProjectDelta.Application; // Battle Participant 사용
+using ProjectDelta.Data; // StatusEffectKind 사용
 
 namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 {
@@ -388,7 +389,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     2,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             participant.AddStatusEffect(
                 status);
@@ -415,7 +417,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     0,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             StatusEffectInstance active =
                 new StatusEffectInstance(
@@ -423,7 +426,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     2,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             participant.AddStatusEffect(
                 expired);
@@ -440,6 +444,90 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreSame(
                 active,
                 participant.StatusEffects[0]);
+        }
+
+        [Test]
+        public void HasActiveStatusEffectOfKind_TrueOnlyWhileMatchingKindIsActive()
+        {
+            // 64일차: BattleSession이 기절 판정에 사용하는 조회 API를 검증한다.
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            Assert.IsFalse(
+                participant.HasActiveStatusEffectOfKind(
+                    StatusEffectKind.Stun)); // 상태 없으면 false
+
+            participant.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_STUN",
+                    "MON_TEST",
+                    1,
+                    1,
+                    0,
+                    StatusEffectKind.Stun));
+
+            Assert.IsTrue(
+                participant.HasActiveStatusEffectOfKind(
+                    StatusEffectKind.Stun)); // 기절 상태 존재하면 true
+
+            Assert.IsFalse(
+                participant.HasActiveStatusEffectOfKind(
+                    StatusEffectKind.DamageOverTime)); // 다른 종류는 여전히 false
+        }
+
+        [Test]
+        public void HasActiveStatusEffectOfKind_IgnoresExpiredEntries()
+        {
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            participant.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_STUN",
+                    "MON_TEST",
+                    0,
+                    1,
+                    0,
+                    StatusEffectKind.Stun)); // 이미 만료된 상태
+
+            Assert.IsFalse(
+                participant.HasActiveStatusEffectOfKind(
+                    StatusEffectKind.Stun));
+        }
+
+        [Test]
+        public void RemoveAllStatusEffects_ClearsEveryEntryRegardlessOfDurationType()
+        {
+            // 64일차: 전투 종료 정리 대상 확인 (Rounds·UntilCombatEnd 구분 없이 전체 제거).
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            participant.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_POISON",
+                    "MON_TEST",
+                    2,
+                    1,
+                    -5,
+                    StatusEffectKind.DamageOverTime));
+
+            participant.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_STUN",
+                    "MON_TEST",
+                    1,
+                    1,
+                    0,
+                    StatusEffectKind.Stun));
+
+            participant.RemoveAllStatusEffects();
+
+            Assert.AreEqual(
+                0,
+                participant.StatusEffects.Count);
         }
 
         private static BattleParticipant CreateParticipant(

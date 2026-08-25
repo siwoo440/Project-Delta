@@ -18,4 +18,5 @@ MonoBehaviour:
   stackRule: 1
   maxStack: 1
   tickTiming: 0
-  roundEndValue: 0
+  roundEndValue: 3
+  effectKind: 2

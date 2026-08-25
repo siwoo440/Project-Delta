@@ -19,3 +19,4 @@ MonoBehaviour:
   maxStack: 1
   tickTiming: 0
   roundEndValue: 0
+  effectKind: 3

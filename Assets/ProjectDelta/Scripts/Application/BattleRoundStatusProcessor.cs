@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using ProjectDelta.Data;
 
 namespace ProjectDelta.Application
 {
@@ -7,9 +9,9 @@ namespace ProjectDelta.Application
     //   라운드 시작 → 지속 시작 효과 적용 → 행동 순서 계산 → 참가자별 행동
     //   → 지속 피해와 회복 적용 → 상태 지속 시간 감소 → 전투 종료 판정 → 다음 라운드
     //
-    // 실제 상태 이상(중독·출혈·재생 등, 기획서 4.4)은 62~63일차에 생기므로, 지금은 각
-    // 참가자의 StatusEffects가 항상 비어 있어 아무 효과도 나타나지 않는다. BattleSession이
-    // 매 라운드 이 메서드들을 실제로 호출하는 자리를 만들어두는 것이 이번 일차의 목적이다.
+    // 64일차: "지속 피해와 회복 적용" 단계를 AppliedValue의 부호가 아니라 StatusEffectKind
+    // 기준으로 실행하도록 정리했다 (기획서 4.4). 기절·추가 행동은 라운드 틱 효과가 아니라
+    // BattleSession의 행동 순서 처리가 직접 담당한다.
     public static class BattleRoundStatusProcessor
     {
         // "지속 시작 효과 적용" 단계. 라운드 시작 시(행동 순서 계산 전) 적용되는 효과는
@@ -19,8 +21,9 @@ namespace ProjectDelta.Application
         {
         }
 
-        // "지속 피해와 회복 적용" 단계. AppliedValue가 음수면 피해, 양수면 회복으로 다룬다
-        // (중독·출혈은 음수, 재생은 양수 - 기획서 4.4).
+        // "지속 피해와 회복 적용" 단계. StatusEffectKind가 DamageOverTime·HealOverTime인
+        // 상태만 실행 대상이며, 나머지(Stun·ExtraAction·Neutral)는 여기서 아무 일도 하지
+        // 않는다. StackCount를 곱해 중첩 수를 실제 피해·회복량에 반영한다 (기획서 4.4).
         public static void ApplyEndOfRoundDamageAndHealing(
             BattleContext context)
         {
@@ -34,15 +37,27 @@ namespace ProjectDelta.Application
 
                 foreach (StatusEffectInstance statusEffect in participant.StatusEffects)
                 {
-                    if (statusEffect.AppliedValue < 0)
+                    int tickAmount =
+                        Math.Abs(
+                            statusEffect.AppliedValue)
+                        * Math.Max(
+                            1,
+                            statusEffect.StackCount); // 중첩 수만큼 지속 피해·회복량 배증
+
+                    switch (statusEffect.EffectKind)
                     {
-                        participant.ApplyDamage(
-                            -statusEffect.AppliedValue);
-                    }
-                    else if (statusEffect.AppliedValue > 0)
-                    {
-                        participant.Heal(
-                            statusEffect.AppliedValue);
+                        case StatusEffectKind.DamageOverTime:
+                            participant.ApplyDamage(
+                                tickAmount);
+                            break;
+
+                        case StatusEffectKind.HealOverTime:
+                            participant.Heal(
+                                tickAmount);
+                            break;
+
+                        default:
+                            break; // Stun·ExtraAction·Neutral은 라운드 종료 지속 피해·회복 대상이 아님
                     }
                 }
             }

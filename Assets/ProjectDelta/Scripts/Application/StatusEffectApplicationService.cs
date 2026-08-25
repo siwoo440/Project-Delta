@@ -40,10 +40,10 @@ namespace ProjectDelta.Application // 상태 적용 서비스 네임스페이스
                 throw new ArgumentNullException(nameof(definition)); // 잘못된 호출 차단
             }
 
-            return TryApply(target, definition.Id, sourceInstanceId, durationRounds, appliedValue, definition.StackRule, definition.MaxStack, effectBaseChance, attackerStatusModifier, skillEquipmentRelicModifier, randomSource); // 정의값을 공통 적용 경로로 전달
+            return TryApply(target, definition.Id, sourceInstanceId, durationRounds, appliedValue, definition.EffectKind, definition.StackRule, definition.MaxStack, effectBaseChance, attackerStatusModifier, skillEquipmentRelicModifier, randomSource); // 정의값을 공통 적용 경로로 전달
         }
 
-        public static StatusEffectApplyResult TryApply(BattleParticipant target, string definitionId, string sourceInstanceId, int durationRounds, int appliedValue, StatusStackRule stackRule, int maxStack, int effectBaseChance, int attackerStatusModifier, int skillEquipmentRelicModifier, IRandomSource randomSource) // 상태 적용 시도
+        public static StatusEffectApplyResult TryApply(BattleParticipant target, string definitionId, string sourceInstanceId, int durationRounds, int appliedValue, StatusEffectKind effectKind, StatusStackRule stackRule, int maxStack, int effectBaseChance, int attackerStatusModifier, int skillEquipmentRelicModifier, IRandomSource randomSource) // 상태 적용 시도
         {
             if (target == null) // 대상 누락 확인
             {
@@ -74,7 +74,7 @@ namespace ProjectDelta.Application // 상태 적용 서비스 네임스페이스
 
             if (existingStatus == null) // 최초 상태 적용 확인
             {
-                StatusEffectInstance newStatus = new StatusEffectInstance(definitionId, sourceInstanceId, normalizedDuration, 1, appliedValue); // 새 상태 인스턴스 생성
+                StatusEffectInstance newStatus = new StatusEffectInstance(definitionId, sourceInstanceId, normalizedDuration, 1, appliedValue, effectKind); // 새 상태 인스턴스 생성
                 target.AddStatusEffect(newStatus); // 대상 상태 목록에 추가
                 return new StatusEffectApplyResult(finalSuccessChance, successLevel, roll, true, newStatus.StackCount, newStatus.RemainingRounds); // 신규 적용 결과 반환
             }

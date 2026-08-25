@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ProjectDelta.Data;
 
 namespace ProjectDelta.Application
 {
@@ -185,6 +186,33 @@ namespace ProjectDelta.Application
         {
             statusEffects.RemoveAll(
                 statusEffect => statusEffect.IsExpired);
+        }
+
+        // 64일차: 만료되지 않은 상태 중 지정한 EffectKind를 가진 것이 있는지 확인한다.
+        // BattleSession이 기절 판정(Stun) 등에 사용한다.
+        public bool HasActiveStatusEffectOfKind(
+            StatusEffectKind effectKind)
+        {
+            for (int index = 0; index < statusEffects.Count; index++)
+            {
+                StatusEffectInstance statusEffect =
+                    statusEffects[index];
+
+                if (!statusEffect.IsExpired
+                    && statusEffect.EffectKind == effectKind)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // 64일차: 전투 종료 시 전투 한정 상태를 모두 제거한다. Rounds·UntilCombatEnd 구분 없이
+        // 다음 전투까지 어떤 상태도 남지 않아야 하므로 전체를 비운다.
+        public void RemoveAllStatusEffects()
+        {
+            statusEffects.Clear();
         }
     }
 }

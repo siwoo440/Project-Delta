@@ -1,5 +1,6 @@
 using NUnit.Framework; // NUnit 테스트 사용
 using ProjectDelta.Application; // Battle Session 사용
+using ProjectDelta.Data; // StatusEffectKind 사용
 
 namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 {
@@ -564,7 +565,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     2,
                     1,
-                    -5)); // 중독: 라운드 종료 시 5 피해, 남은 2라운드
+                    5,
+                    StatusEffectKind.DamageOverTime)); // 중독: 라운드 종료 시 5 피해, 남은 2라운드
 
             Assert.IsTrue(
                 session.TryEnterAwaitingAction()); // 1번째 행동자
@@ -588,6 +590,184 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             Assert.AreEqual(
                 1,
                 player.StatusEffects[0].RemainingRounds); // 2 → 1로 감소, 아직 만료 아님
+        }
+
+        [Test]
+        public void TryEnterAwaitingAction_SkipsStunnedActor_AndConsumesTurnWithoutAwaitingInput()
+        {
+            // 64일차: 기절한 참가자는 입력을 요구하지 않고 차례만 소비한 뒤 다음 행동자로 넘어간다.
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy, 동률로 Player 우선)
+
+            BattleParticipant player =
+                session.Context.Player;
+
+            StatusEffectInstance stun =
+                new StatusEffectInstance(
+                    "STATUS_STUN",
+                    "MON_TEST",
+                    1,
+                    1,
+                    0,
+                    StatusEffectKind.Stun);
+
+            player.AddStatusEffect(
+                stun);
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // Player는 기절이라 건너뛰고 Enemy가 곧바로 선출됨
+
+            Assert.AreEqual(
+                "MON_TEST",
+                session.CurrentActor.InstanceId); // 기절 건너뜀 뒤 다음 참가자 정상 진행 확인
+
+            Assert.IsFalse(
+                session.HasPendingActorsThisRound); // Player·Enemy 모두 큐에서 빠졌으므로 없음
+
+            Assert.AreEqual(
+                1,
+                stun.RemainingRounds); // 기절 차례를 건너뛰어도 지속시간은 여기서 감소하지 않음
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEndRound()); // 남은 행동자 없이 정상적으로 라운드 종료
+
+            Assert.AreEqual(
+                0,
+                stun.RemainingRounds); // 라운드 종료 지속시간 감소 단계에서만 1 감소
+        }
+
+        [Test]
+        public void TryGrantExtraAction_InsertsActorAtFrontOfQueue_ThenResumesNormalOrder()
+        {
+            // 64일차: 추가 행동을 소비한 A가 한 번 더 행동한 뒤 정상 순서(B)로 복귀해야 한다.
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy, 동률로 Player 우선)
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 1번째: Player
+
+            BattleParticipant player =
+                session.CurrentActor;
+
+            Assert.AreEqual(
+                "PLAYER",
+                player.InstanceId);
+
+            Assert.IsTrue(
+                session.TryGrantExtraAction(
+                    player)); // Player에게 추가 행동 부여
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 추가 행동 소비: Player가 한 번 더 행동
+
+            Assert.AreSame(
+                player,
+                session.CurrentActor);
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // 정상 순서 복귀: Enemy
+
+            Assert.AreEqual(
+                "MON_TEST",
+                session.CurrentActor.InstanceId);
+
+            Assert.IsTrue(
+                session.TryBeginResolveAction());
+
+            Assert.IsTrue(
+                session.TryEndRound()); // 전원 행동 완료로 라운드 정상 종료
+        }
+
+        [Test]
+        public void TryGrantExtraAction_SameActorTwiceInSameRound_SecondGrantRejected()
+        {
+            // 64일차: 추가 행동이 다시 추가 행동을 무한 생성하지 않도록 라운드당 한 번만 허용한다.
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction()); // Player
+
+            BattleParticipant player =
+                session.CurrentActor;
+
+            Assert.IsTrue(
+                session.TryGrantExtraAction(
+                    player)); // 1차 부여 성공
+
+            Assert.IsFalse(
+                session.TryGrantExtraAction(
+                    player)); // 같은 라운드 2차 부여 거부
+        }
+
+        [Test]
+        public void TryGrantExtraAction_ActorNotInContext_Rejected()
+        {
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비
+
+            Assert.IsTrue(
+                session.TryEnterAwaitingAction());
+
+            BattleParticipant outsider =
+                CreatePlayer(); // Context에 속하지 않은 별개 참가자
+
+            Assert.IsFalse(
+                session.TryGrantExtraAction(
+                    outsider));
+        }
+
+        [Test]
+        public void TryFinishBattle_ClearsAllParticipantStatusEffects()
+        {
+            // 64일차: 전투가 끝나면 전투 한정 상태(중독·기절 등)가 다음 전투까지 남지 않아야 한다.
+            BattleSession session =
+                CreateRoundStartSession(); // RoundStart Session 준비 (Player + Enemy)
+
+            BattleParticipant player =
+                session.Context.Player;
+
+            BattleParticipant enemy =
+                session.Context.Enemies[0];
+
+            player.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_POISON",
+                    "MON_TEST",
+                    2,
+                    1,
+                    5,
+                    StatusEffectKind.DamageOverTime));
+
+            enemy.AddStatusEffect(
+                new StatusEffectInstance(
+                    "STATUS_STUN",
+                    "PLAYER",
+                    99,
+                    1,
+                    0,
+                    StatusEffectKind.Stun)); // UntilCombatEnd 여부와 무관하게 전투 종료 시 제거되어야 함
+
+            Assert.IsTrue(
+                session.TryFinishBattle(
+                    BattleOutcome.Victory));
+
+            Assert.AreEqual(
+                0,
+                player.StatusEffects.Count);
+
+            Assert.AreEqual(
+                0,
+                enemy.StatusEffects.Count);
         }
 
         private static BattleParticipant CreatePlayer()

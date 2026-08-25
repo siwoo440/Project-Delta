@@ -1,5 +1,6 @@
 using NUnit.Framework; // NUnit 테스트 사용
 using ProjectDelta.Application; // StatusEffectInstance 사용
+using ProjectDelta.Data; // StatusEffectKind 사용
 
 namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
 {
@@ -14,7 +15,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     3,
                     2,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             Assert.AreEqual(
                 "STATUS_POISON",
@@ -46,7 +48,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     1,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             Assert.IsFalse(
                 instance.IsExpired);
@@ -61,7 +64,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     0,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             Assert.IsTrue(
                 instance.IsExpired);
@@ -76,7 +80,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     2,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             instance.DecrementRemainingRounds();
 
@@ -106,7 +111,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     "MON_TEST",
                     0,
                     1,
-                    -5);
+                    -5,
+                    StatusEffectKind.DamageOverTime);
 
             instance.DecrementRemainingRounds();
 
