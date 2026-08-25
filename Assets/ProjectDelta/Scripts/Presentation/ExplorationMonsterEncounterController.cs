@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using ProjectDelta.Application;
 using ProjectDelta.Data;
@@ -109,6 +110,13 @@ namespace ProjectDelta.Presentation
         // 55일차: 마지막 공격에서 실제로 적용된 피해 공식·편차 난수를 디버그 창(BattleDamageDebugOverlay)에
         // 보여주기 위한 텍스트. 정식 UI가 아니라 디버그 전용이다.
         public string LastDamageFormulaDebugText { get; private set; }
+
+        // 56일차: 적 턴이 버튼 없이 자동으로 진행되면서 행동이 눈에 안 보이는 문제를 보완하기 위한
+        // 정보. 실제 행동(공격·방어)이 확정될 때마다 누가 행동했는지와 함께 증가하는 값을 남겨,
+        // BattleHudController가 매 프레임 값이 바뀌었는지 확인해 해당 슬롯에 살짝 움직이는
+        // 연출을 재생할 수 있게 한다.
+        public BattleParticipant LastActingParticipant { get; private set; }
+        public int LastActionSequence { get; private set; }
 
         private void Awake()
         {
@@ -391,34 +399,58 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 47일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
+
+            // 56일차: "다음 턴" 버튼을 누르지 않아도 바로 행동할 수 있도록 첫 행동자를 자동으로 불러온다.
+            TestAdvanceBattleTurn();
         }
 
+        // 56일차: 여러 Enemy가 연속으로 행동할 때 한 프레임에 몰아서 처리하면 화면에서 아무것도
+        // 안 보이므로, 행동자 한 명마다 짧게 대기해 각자의 행동(BattleDamageDebugOverlay·슬롯
+        // 튀어오르는 연출)이 보이게 하는 간격이다.
+        private const float EnemyActionVisibleDelaySeconds = 0.45f;
+
+        // 이미 코루틴이 진행 중이면 다시 시작하지 않는다 (코루틴의 while 루프가 알아서 이어간다).
+        private Coroutine autoAdvanceRoutine;
+
         // 49일차: 이번 턴의 다음 행동자를 AwaitingAction으로 불러온다.
-        // 실제 행동 확정(공격 등)은 별도이므로 여기서는 대상 선택을 기다리는 상태까지만 진행한다.
         // Enemy 차례는 아직 AI가 없으므로 유일한 대상(Player)을 자동으로 미리 선택해 둔다.
-        public bool TestAdvanceBattleTurn()
+        // 56일차: Enemy 차례는 대상 선택 후 버튼 입력 없이 바로 공격까지 자동으로 확정하고,
+        // Player 차례가 오거나 전투가 끝날 때까지 코루틴으로 한 명씩 이어서 진행한다.
+        public void TestAdvanceBattleTurn()
         {
-            if (battleSession.Context == null
-                || (battleSession.State != BattleState.TurnStart
-                    && battleSession.State != BattleState.ResolvingAction))
+            if (autoAdvanceRoutine != null)
             {
-                return false;
+                return;
             }
 
-            if (!battleSession.TryEnterAwaitingAction())
+            autoAdvanceRoutine =
+                StartCoroutine(
+                    AdvanceBattleTurnRoutine());
+        }
+
+        private IEnumerator AdvanceBattleTurnRoutine()
+        {
+            while (battleSession.Context != null
+                && (battleSession.State == BattleState.TurnStart
+                    || battleSession.State == BattleState.ResolvingAction))
             {
-                return false;
-            }
+                if (!battleSession.TryEnterAwaitingAction())
+                {
+                    break;
+                }
 
-            BattleParticipant actor =
-                battleSession.CurrentActor;
+                BattleParticipant actor =
+                    battleSession.CurrentActor;
 
-            Debug.Log(
-                $"[Project Delta] 49일차 Battle AwaitingAction / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
-                this);
+                Debug.Log(
+                    $"[Project Delta] 49일차 Battle AwaitingAction / Turn {battleSession.TurnNumber} / Actor {actor.InstanceId} (Speed {actor.Speed})",
+                    this);
 
-            if (actor.Team == BattleTeam.Enemy)
-            {
+                if (actor.Team != BattleTeam.Enemy)
+                {
+                    break; // Player 차례, 공격·방어 버튼 입력을 기다린다.
+                }
+
                 IReadOnlyList<BattleParticipant> validTargets =
                     BattleTargeting.GetValidTargets(
                         battleSession.Context,
@@ -429,9 +461,23 @@ namespace ProjectDelta.Presentation
                     battleSession.TrySelectTarget(
                         validTargets[0]);
                 }
+
+                ConfirmAttack();
+
+                // 이 공격으로 전투가 끝났으면(승리·패배) 다음 행동자를 기다릴 필요 없이 바로 멈춘다.
+                if (battleSession.State != BattleState.TurnStart
+                    && battleSession.State != BattleState.ResolvingAction)
+                {
+                    break;
+                }
+
+                // 56일차: 방금 행동(슬롯이 튀어오르는 연출 포함)이 화면에 보이도록 잠깐 대기한 뒤
+                // 다음 행동자로 넘어간다.
+                yield return new WaitForSeconds(
+                    EnemyActionVisibleDelaySeconds);
             }
 
-            return true;
+            autoAdvanceRoutine = null;
         }
 
         // 49일차: AwaitingAction 상태에서 CurrentActor의 공격 대상을 지정·재지정한다.
@@ -496,6 +542,12 @@ namespace ProjectDelta.Presentation
             {
                 return declaration;
             }
+
+            // 56일차: 이번에 실제로 행동한 참가자를 기록해, HUD가 살짝 움직이는 연출을 재생하게 한다.
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
 
             // 50일차: 명중 판정에 쓰는 난수(0~99)는 여기(Presentation)에서 만들어
             // BattleDamageCalculator(Application, 엔진 비의존)에 넘긴다.
@@ -567,8 +619,13 @@ namespace ProjectDelta.Presentation
                 return resolvedResult;
             }
 
+            // 56일차: "다음 턴" 버튼 없이도 바로 이어서 행동할 수 있도록 다음 행동자를 자동으로 불러온다.
+            // Enemy면 TestAdvanceBattleTurn()이 알아서 공격까지 이어서 처리하고, Player 차례가 되면
+            // AwaitingAction에서 멈춰 공격·방어 버튼이 곧바로 활성화된다.
             if (battleSession.HasPendingActorsThisTurn)
             {
+                TestAdvanceBattleTurn();
+
                 return resolvedResult;
             }
 
@@ -585,6 +642,8 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 49일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
+
+            TestAdvanceBattleTurn();
 
             return resolvedResult;
         }
@@ -626,12 +685,21 @@ namespace ProjectDelta.Presentation
                 return result;
             }
 
+            // 56일차: 방어도 공격과 같은 방식으로 행동자를 기록해 연출을 재생하게 한다.
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
             Debug.Log(
                 $"[Project Delta] 52일차 Battle 방어 확정 / {result.Message}",
                 this);
 
+            // 56일차: "다음 턴" 버튼 없이도 바로 이어서 진행되도록 다음 행동자를 자동으로 불러온다.
             if (battleSession.HasPendingActorsThisTurn)
             {
+                TestAdvanceBattleTurn();
+
                 return result;
             }
 
@@ -648,6 +716,8 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 52일차 Battle Turn {battleSession.TurnNumber} Start",
                 this);
+
+            TestAdvanceBattleTurn();
 
             return result;
         }

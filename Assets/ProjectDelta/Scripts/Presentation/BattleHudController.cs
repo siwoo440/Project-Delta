@@ -47,6 +47,11 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Button testWinButton;
         [SerializeField] private Button testLoseButton;
 
+        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완하기 위한
+        // 마지막으로 재생한 행동 순번. encounterController.LastActionSequence와 달라지면
+        // 그 사이에 새 행동이 있었다는 뜻이라 해당 슬롯에 튀어오르는 연출을 재생한다.
+        private int lastPlayedActionSequence;
+
         private void Awake()
         {
             ResolveEncounterController();
@@ -319,6 +324,60 @@ namespace ProjectDelta.Presentation
                         ? context.Player
                         : null,
                     playerPortrait);
+            }
+
+            PlayActionBumpIfNewActionHappened(
+                context);
+        }
+
+        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완한다.
+        // 슬롯을 최신 상태로 바인딩한 뒤에 호출해야 방금 행동한 참가자의 슬롯을 정확히 찾을 수 있다.
+        private void PlayActionBumpIfNewActionHappened(
+            BattleContext context)
+        {
+            int currentSequence =
+                encounterController.LastActionSequence;
+
+            if (currentSequence == lastPlayedActionSequence)
+            {
+                return;
+            }
+
+            lastPlayedActionSequence =
+                currentSequence;
+
+            BattleParticipant actor =
+                encounterController.LastActingParticipant;
+
+            if (context == null
+                || actor == null)
+            {
+                return;
+            }
+
+            if (actor == context.Player)
+            {
+                playerSlot?.PlayActionBump();
+
+                return;
+            }
+
+            if (enemySlots == null)
+            {
+                return;
+            }
+
+            for (int slotIndex = 0; slotIndex < enemySlots.Length; slotIndex++)
+            {
+                if (context.TryGetEnemyAtSlot(
+                        slotIndex,
+                        out BattleParticipant enemy)
+                    && enemy == actor)
+                {
+                    enemySlots[slotIndex]?.PlayActionBump();
+
+                    return;
+                }
             }
         }
 

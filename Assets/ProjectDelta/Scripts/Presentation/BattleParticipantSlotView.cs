@@ -1,3 +1,4 @@
+using System.Collections;
 using ProjectDelta.Application;
 using UnityEngine;
 using UnityEngine.Events;
@@ -42,9 +43,17 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Color selectedBackgroundColor =
             new Color(0.30f, 0.62f, 0.32f, 0.95f);
 
+        [Header("Action Bump (56일차)")]
+        [SerializeField] private float bumpHeight = 14f;
+        [SerializeField] private float bumpDuration = 0.12f; // 올라가는 시간, 내려오는 시간도 동일하게 사용
+
         public bool HasBoundParticipant { get; private set; }
 
         private bool isSelected;
+        private RectTransform portraitRectTransform;
+        private Vector2 portraitRestPosition;
+        private bool hasCachedPortraitRestPosition;
+        private Coroutine bumpRoutine;
 
         public void SetSlotLabel(
             string label)
@@ -106,6 +115,22 @@ namespace ProjectDelta.Presentation
 
             ApplyDefendBadge(
                 false);
+
+            // 56일차: 슬롯이 비워지는 동안 이전 참가자의 튀어오르는 연출이 이어지지 않게 정지한다.
+            if (bumpRoutine != null)
+            {
+                StopCoroutine(
+                    bumpRoutine);
+
+                bumpRoutine =
+                    null;
+
+                if (hasCachedPortraitRestPosition)
+                {
+                    portraitRectTransform.anchoredPosition =
+                        portraitRestPosition;
+                }
+            }
         }
 
         // 49일차: 이 슬롯을 대상으로 선택할 수 있는지 여부. 선택 가능할 때만 클릭이 동작한다.
@@ -163,6 +188,105 @@ namespace ProjectDelta.Presentation
             {
                 clickButton.onClick.AddListener(
                     callback);
+            }
+        }
+
+        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완한다.
+        // 이 슬롯의 참가자가 실제로 행동했을 때 일러스트를 살짝 위로 튀었다 내려오게 한다.
+        public void PlayActionBump()
+        {
+            if (portraitImage == null
+                || !isActiveAndEnabled)
+            {
+                return;
+            }
+
+            CachePortraitRestPositionIfNeeded();
+
+            if (bumpRoutine != null)
+            {
+                StopCoroutine(
+                    bumpRoutine);
+            }
+
+            bumpRoutine =
+                StartCoroutine(
+                    BumpRoutine());
+        }
+
+        private void CachePortraitRestPositionIfNeeded()
+        {
+            if (hasCachedPortraitRestPosition)
+            {
+                return;
+            }
+
+            portraitRectTransform =
+                portraitImage.rectTransform;
+
+            portraitRestPosition =
+                portraitRectTransform.anchoredPosition;
+
+            hasCachedPortraitRestPosition =
+                true;
+        }
+
+        private IEnumerator BumpRoutine()
+        {
+            Vector2 upPosition =
+                portraitRestPosition
+                + new Vector2(
+                    0f,
+                    bumpHeight);
+
+            yield return AnimatePortraitPosition(
+                portraitRestPosition,
+                upPosition,
+                bumpDuration);
+
+            yield return AnimatePortraitPosition(
+                upPosition,
+                portraitRestPosition,
+                bumpDuration);
+
+            portraitRectTransform.anchoredPosition =
+                portraitRestPosition; // 부동소수점 오차로 원위치에서 살짝 어긋나는 것을 방지
+
+            bumpRoutine =
+                null;
+        }
+
+        private IEnumerator AnimatePortraitPosition(
+            Vector2 from,
+            Vector2 to,
+            float duration)
+        {
+            if (duration <= 0f)
+            {
+                portraitRectTransform.anchoredPosition =
+                    to;
+
+                yield break;
+            }
+
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed +=
+                    Time.deltaTime;
+
+                float t =
+                    Mathf.Clamp01(
+                        elapsed / duration);
+
+                portraitRectTransform.anchoredPosition =
+                    Vector2.Lerp(
+                        from,
+                        to,
+                        t);
+
+                yield return null;
             }
         }
 

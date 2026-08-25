@@ -9,7 +9,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         private const int NoVarianceRoll = 5;
 
         [Test]
-        public void CalculateHitChancePercent_AddsAccuracyAndSubtractsEvasion()
+        public void CalculateHitChancePercent_AddsAccuracyAndSubtractsHalfEvasion()
         {
             BattleParticipant attacker =
                 CreateParticipant(
@@ -21,7 +21,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     accuracy: 0,
-                    evasion: 15,
+                    evasion: 20,
                     attack: 0,
                     defense: 0);
 
@@ -30,9 +30,37 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     attacker,
                     defender);
 
-            // 기본 70 + 명중 20 - 회피 15 = 75
+            // 56일차: 회피는 50%만 반영 → 기본 70 + 명중 20 - (회피 20 × 50%) = 80
             Assert.AreEqual(
-                75,
+                80,
+                hitChance);
+        }
+
+        [Test]
+        public void CalculateHitChancePercent_WeightsEvasionByFiftyPercentWithFloor()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 15, // 홀수 회피 → 가중치 적용 후 정수 나눗셈으로 버림
+                    attack: 0,
+                    defense: 0);
+
+            int hitChance =
+                BattleDamageCalculator.CalculateHitChancePercent(
+                    attacker,
+                    defender);
+
+            // 회피 15 × 50% = 7.5 → 정수 나눗셈으로 7까지 버림, 기본 70 - 7 = 63
+            Assert.AreEqual(
+                63,
                 hitChance);
         }
 

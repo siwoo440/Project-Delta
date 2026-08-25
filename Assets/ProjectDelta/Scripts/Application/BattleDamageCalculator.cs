@@ -2,12 +2,19 @@ namespace ProjectDelta.Application
 {
     // 53일차: 명중/회피·피해·방어 계산에서 관통을 제거하고 정식 전투 능력치 구조에 맞춘다.
     // 55일차: 피해 공식을 비율형(방어력 감쇠)으로 바꾸고 95~105% 무작위 편차를 추가한다 (기획서 4.2).
+    // 56일차: 명중 공식을 정합한다 — 스킬 기본값, 회피 가중치 50%, 5~95% 클램프 (기획서 4.2).
     // 실제 데미지 적용(51일차 사망 판정 포함)이나 Command 연결은 이 클래스의 책임이 아니다.
     public static class BattleDamageCalculator
     {
-        public const int BaseHitChancePercent = 70; // 기본 명중률
+        // 56일차: 기획서 4.2 "명중 공식 정합 — 스킬 기본값". 실제 스킬 데이터(66일차 이후)가
+        // 생기기 전까지는 기본 공격의 고정 기본 명중률로 취급한다.
+        public const int BaseSkillHitChancePercent = 70;
+
+        // 56일차: 회피는 100%가 아니라 이 비율만큼만 명중률에서 깎인다.
+        public const int EvasionWeightPercent = 50;
+
         public const int MinHitChancePercent = 5; // 아무리 회피가 높아도 최소 명중률 보장
-        public const int MaxHitChancePercent = 100; // 명중률 상한
+        public const int MaxHitChancePercent = 95; // 56일차: 명중률 상한을 100 → 95로 낮춤
 
         public const int MinDamage = 1; // 방어력이 아무리 높아도 최소 피해 보장
         public const int DefendDamageReductionPercent = 50; // 52일차: 방어 중이면 최종 피해를 이 비율만큼 줄임
@@ -21,15 +28,19 @@ namespace ProjectDelta.Application
         public const int DamageVarianceRollCount =
             MaxDamageVariancePercent - MinDamageVariancePercent + 1;
 
-        // 명중률(%) = 기본 명중률 + 공격자 명중 - 방어자 회피, 5~100% 사이로 고정.
+        // 56일차 명중률(%) = 스킬 기본 명중률 + 공격자 명중 - 방어자 회피 × 50%, 5~95% 사이로 고정.
+        // 회피 가중치는 정수 나눗셈으로 버림 처리한다.
         public static int CalculateHitChancePercent(
             BattleParticipant attacker,
             BattleParticipant defender)
         {
+            int weightedEvasion =
+                defender.Evasion * EvasionWeightPercent / 100;
+
             int rawHitChance =
-                BaseHitChancePercent
+                BaseSkillHitChancePercent
                 + attacker.Accuracy
-                - defender.Evasion;
+                - weightedEvasion;
 
             return Clamp(
                 rawHitChance,
