@@ -46,14 +46,16 @@ namespace ProjectDelta.Presentation
         private const int TestPlayerDefense = 3;
         private const int TestPlayerAccuracy = 90;
         private const int TestPlayerEvasion = 10;
-        private const int TestPlayerPenetration = 0;
+        private const int TestPlayerCharm = 0;
+        private const int TestPlayerResistance = 0;
         private const int TestEnemyMaxHp = 10;
         private const int TestEnemySpeed = 5;
         private const int TestEnemyAttack = 4;
         private const int TestEnemyDefense = 2;
         private const int TestEnemyAccuracy = 80;
         private const int TestEnemyEvasion = 5;
-        private const int TestEnemyPenetration = 0;
+        private const int TestEnemyCharm = 0;
+        private const int TestEnemyResistance = 0;
 
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
@@ -320,7 +322,8 @@ namespace ProjectDelta.Presentation
                     TestPlayerDefense,
                     TestPlayerAccuracy,
                     TestPlayerEvasion,
-                    TestPlayerPenetration);
+                    TestPlayerCharm,
+                    TestPlayerResistance);
 
             // 47일차: 적 슬롯 4칸 레이아웃을 확인하기 위해 접촉한 몬스터를 1번 슬롯에 두고
             // 같은 정의로 4명을 채운다. 실제 적 구성은 EncounterDefinition 연동 시 교체한다.
@@ -340,7 +343,8 @@ namespace ProjectDelta.Presentation
                         TestEnemyDefense,
                         TestEnemyAccuracy,
                         TestEnemyEvasion,
-                        TestEnemyPenetration);
+                        TestEnemyCharm,
+                        TestEnemyResistance);
             }
 
             BattleContext context =

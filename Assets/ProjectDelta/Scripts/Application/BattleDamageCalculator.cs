@@ -1,6 +1,6 @@
 namespace ProjectDelta.Application
 {
-    // 50일차: 명중/회피·피해·방어·관통 계산 공식을 한 곳에 모은다.
+    // 53일차: 명중/회피·피해·방어 계산에서 관통을 제거하고 정식 전투 능력치 구조에 맞춘다.
     // 실제 데미지 적용(51일차 사망 판정 포함)이나 Command 연결은 이 클래스의 책임이 아니다.
     public static class BattleDamageCalculator
     {
@@ -27,14 +27,14 @@ namespace ProjectDelta.Application
                 MaxHitChancePercent);
         }
 
-        // 피해량 = 공격력 + 관통 - 방어력, 최소 1은 보장.
+        // 53일차 임시 피해량 = 공격력 - 방어력, 최소 1은 보장.
+        // 비율형 피해 공식과 피해 편차는 이후 일차에서 별도로 적용한다.
         public static int CalculateDamage(
             BattleParticipant attacker,
             BattleParticipant defender)
         {
             int rawDamage =
                 attacker.Attack
-                + attacker.Penetration
                 - defender.Defense;
 
             int damage =

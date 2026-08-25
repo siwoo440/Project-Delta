@@ -13,16 +13,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     accuracy: 20,
                     evasion: 0,
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             BattleParticipant defender =
                 CreateParticipant(
                     accuracy: 0,
                     evasion: 15,
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             int hitChance =
                 BattleDamageCalculator.CalculateHitChancePercent(
@@ -43,16 +41,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     accuracy: 0,
                     evasion: 0,
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             BattleParticipant defender =
                 CreateParticipant(
                     accuracy: 0,
                     evasion: 500, // 극단적으로 높은 회피
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             int hitChance =
                 BattleDamageCalculator.CalculateHitChancePercent(
@@ -72,16 +68,14 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     accuracy: 500, // 극단적으로 높은 명중
                     evasion: 0,
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             BattleParticipant defender =
                 CreateParticipant(
                     accuracy: 0,
                     evasion: 0,
                     attack: 0,
-                    defense: 0,
-                    penetration: 0);
+                    defense: 0);
 
             int hitChance =
                 BattleDamageCalculator.CalculateHitChancePercent(
@@ -94,12 +88,11 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
-        public void CalculateDamage_AttackPlusPenetrationMinusDefense()
+        public void CalculateDamage_AttackMinusDefense()
         {
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 10,
-                    penetration: 3,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -107,7 +100,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 5);
@@ -117,9 +109,9 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                     attacker,
                     defender);
 
-            // 10 + 3 - 5 = 8
+            // 10 - 5 = 5
             Assert.AreEqual(
-                8,
+                5,
                 damage);
         }
 
@@ -129,7 +121,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 1,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -137,7 +128,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 999); // 극단적으로 높은 방어력
@@ -158,7 +148,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 10,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -166,7 +155,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -191,7 +179,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 1,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -199,7 +186,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -218,12 +204,42 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void CalculateDamage_CharmAndResistance_DoNotAffectCurrentDamageFormula()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    defense: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    charm: 99,
+                    resistance: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    defense: 4,
+                    accuracy: 0,
+                    evasion: 0,
+                    charm: 0,
+                    resistance: 99);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender);
+
+            Assert.AreEqual(
+                6,
+                damage); // 53일차에서는 매력·저항을 피해 공식에 사용하지 않음
+        }
+
+        [Test]
         public void Resolve_RollBelowHitChance_ReturnsHitWithDamage()
         {
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 10,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -231,7 +247,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 4);
@@ -261,7 +276,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant attacker =
                 CreateParticipant(
                     attack: 10,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 0);
@@ -269,7 +283,6 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             BattleParticipant defender =
                 CreateParticipant(
                     attack: 0,
-                    penetration: 0,
                     accuracy: 0,
                     evasion: 0,
                     defense: 4);
@@ -294,7 +307,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
             int defense,
             int accuracy,
             int evasion,
-            int penetration)
+            int charm = 0,
+            int resistance = 0)
         {
             return new BattleParticipant(
                 "TEST",
@@ -306,7 +320,8 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 defense,
                 accuracy,
                 evasion,
-                penetration);
+                charm,
+                resistance);
         }
     }
 }

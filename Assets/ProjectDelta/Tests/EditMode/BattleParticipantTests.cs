@@ -6,6 +6,52 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
     public sealed class BattleParticipantTests
     {
         [Test]
+        public void Constructor_StoresSevenCombatStats()
+        {
+            BattleParticipant participant =
+                new BattleParticipant(
+                    "PLAYER",
+                    "PLAYER",
+                    BattleTeam.Player,
+                    20,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                    12,
+                    13);
+
+            Assert.AreEqual(
+                7,
+                participant.Speed);
+
+            Assert.AreEqual(
+                8,
+                participant.Attack);
+
+            Assert.AreEqual(
+                9,
+                participant.Defense);
+
+            Assert.AreEqual(
+                10,
+                participant.Accuracy);
+
+            Assert.AreEqual(
+                11,
+                participant.Evasion);
+
+            Assert.AreEqual(
+                12,
+                participant.Charm);
+
+            Assert.AreEqual(
+                13,
+                participant.Resistance);
+        }
+
+        [Test]
         public void ApplyDamage_ReducesCurrentHpByAmount()
         {
             BattleParticipant participant =
@@ -127,6 +173,7 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 3,
                 90,
                 10,
+                0,
                 0);
         }
     }
