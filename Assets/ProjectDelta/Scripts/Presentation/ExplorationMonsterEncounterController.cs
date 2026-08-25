@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using ProjectDelta.Application;
+using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using UnityEngine;
 
@@ -13,6 +14,10 @@ namespace ProjectDelta.Presentation
         [SerializeField] private PlayerGridMovementController movementController;
         [SerializeField] private PlayerLookController lookController;
         [SerializeField] private DungeonFloorController floorController;
+
+        // 54일차: 47일차 테스트 상수를 대체하는 몬스터 정의. 실제 조우 몬스터 연동
+        // (DataRepository로 EncounterContext.MonsterDefinitionId를 조회하는 것)은 이후 일차로 미룬다.
+        [SerializeField] private MonsterDefinition testMonsterDefinition;
 
         private readonly ExplorationEncounterSession session =
             new ExplorationEncounterSession();
@@ -38,24 +43,11 @@ namespace ProjectDelta.Presentation
         private readonly IBattleCommand defendCommand =
             new DefendBattleCommand();
 
-        // 47일차: 승패 계산 전까지 사용하는 최소 테스트 스탯.
+        // 47일차: 승패 계산 전까지 사용하던 테스트 스탯. 54일차부터 플레이어의 체력·공격·방어·
+        // 속도·매력·회피·저항은 PlayerRunState(기획서 6.1), 적은 MonsterDefinition에서 가져온다.
+        // 명중은 능력치가 아니라 스킬별 기본값이라 56일차 명중 공식 정정 전까지는 임시 상수로 둔다.
         private const string TestPlayerInstanceId = "PLAYER";
-        private const int TestPlayerMaxHp = 20;
-        private const int TestPlayerSpeed = 5;
-        private const int TestPlayerAttack = 6;
-        private const int TestPlayerDefense = 3;
         private const int TestPlayerAccuracy = 90;
-        private const int TestPlayerEvasion = 10;
-        private const int TestPlayerCharm = 0;
-        private const int TestPlayerResistance = 0;
-        private const int TestEnemyMaxHp = 10;
-        private const int TestEnemySpeed = 5;
-        private const int TestEnemyAttack = 4;
-        private const int TestEnemyDefense = 2;
-        private const int TestEnemyAccuracy = 80;
-        private const int TestEnemyEvasion = 5;
-        private const int TestEnemyCharm = 0;
-        private const int TestEnemyResistance = 0;
 
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
@@ -306,27 +298,43 @@ namespace ProjectDelta.Presentation
         {
             if (session.State != EncounterState.Active
                 || session.Context == null
-                || battleSession.State != BattleState.Idle)
+                || battleSession.State != BattleState.Idle
+                || RunContext.Current == null
+                || testMonsterDefinition == null)
             {
                 return;
             }
+
+            // 54일차: 플레이어 참가자는 PlayerRunState의 최종 능력치와 현재 자원(체력·마나·정력)을
+            // 그대로 이어받는다. 전투가 끝나면 FinishBattle()에서 다시 PlayerRunState로 되돌린다.
+            PlayerRunState playerRunState =
+                RunContext.Current.Player;
+
+            StatBlock finalStats =
+                playerRunState.GetFinalStats();
 
             BattleParticipant player =
                 new BattleParticipant(
                     TestPlayerInstanceId,
                     TestPlayerInstanceId,
                     BattleTeam.Player,
-                    TestPlayerMaxHp,
-                    TestPlayerSpeed,
-                    TestPlayerAttack,
-                    TestPlayerDefense,
+                    finalStats.MaxHealth,
+                    finalStats.Speed,
+                    finalStats.Attack,
+                    finalStats.Defense,
                     TestPlayerAccuracy,
-                    TestPlayerEvasion,
-                    TestPlayerCharm,
-                    TestPlayerResistance);
+                    finalStats.Evasion,
+                    finalStats.Charm,
+                    finalStats.Resistance,
+                    finalStats.MaxMana,
+                    finalStats.MaxStamina,
+                    playerRunState.CurrentHp,
+                    playerRunState.CurrentMana,
+                    playerRunState.CurrentStamina);
 
             // 47일차: 적 슬롯 4칸 레이아웃을 확인하기 위해 접촉한 몬스터를 1번 슬롯에 두고
-            // 같은 정의로 4명을 채운다. 실제 적 구성은 EncounterDefinition 연동 시 교체한다.
+            // 같은 정의로 4명을 채운다. 실제 적 구성(EncounterDefinition에 연결된 몬스터 조회)은
+            // DataRepository가 도입되는 이후 일차에서 교체한다.
             BattleParticipant[] enemies =
                 new BattleParticipant[BattleContext.MaxEnemySlots];
 
@@ -337,14 +345,15 @@ namespace ProjectDelta.Presentation
                         $"{session.Context.MonsterDefinitionId}#{slotIndex + 1}",
                         session.Context.MonsterDefinitionId,
                         BattleTeam.Enemy,
-                        TestEnemyMaxHp,
-                        TestEnemySpeed,
-                        TestEnemyAttack,
-                        TestEnemyDefense,
-                        TestEnemyAccuracy,
-                        TestEnemyEvasion,
-                        TestEnemyCharm,
-                        TestEnemyResistance);
+                        testMonsterDefinition.MaxHp,
+                        testMonsterDefinition.Speed,
+                        testMonsterDefinition.Attack,
+                        testMonsterDefinition.Defense,
+                        testMonsterDefinition.Accuracy,
+                        testMonsterDefinition.Evasion,
+                        testMonsterDefinition.Charm,
+                        testMonsterDefinition.Resistance,
+                        testMonsterDefinition.MaxMana);
             }
 
             BattleContext context =
@@ -363,7 +372,7 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                $"[Project Delta] 47일차 Battle Starting / Player {TestPlayerMaxHp}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {TestEnemyMaxHp}HP",
+                $"[Project Delta] 54일차 Battle Starting / Player {finalStats.MaxHealth}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {testMonsterDefinition.MaxHp}HP",
                 this);
 
             if (!battleSession.TryStartTurn())
@@ -663,6 +672,24 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 51일차 Battle Finished / Outcome {battleSession.Result.Outcome} / Turn {battleSession.Result.TurnCount}",
                 this);
+
+            // 54일차: 전투 후 자동 회복은 없다 (기획서 4.2). 참가자가 들고 있던 현재 체력·마나·
+            // 정력을 PlayerRunState로 그대로 되돌린다. 다음 회복 시점은 층 이동(3.6.2)뿐이다.
+            if (battleSession.Context != null
+                && RunContext.Current != null)
+            {
+                BattleParticipant player =
+                    battleSession.Context.Player;
+
+                RunContext.Current.Player.CurrentHp =
+                    player.CurrentHp;
+
+                RunContext.Current.Player.CurrentMana =
+                    player.CurrentMana;
+
+                RunContext.Current.Player.CurrentStamina =
+                    player.CurrentStamina;
+            }
 
             if (outcome == BattleOutcome.Victory)
             {

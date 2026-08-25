@@ -52,6 +52,138 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void Constructor_WithoutMaxManaOrStamina_DefaultsToZero()
+        {
+            // 54일차: maxMana·maxStamina를 생략하는 기존 호출부(몬스터 등)와의 호환성 확인.
+            BattleParticipant participant =
+                CreateParticipant(
+                    20);
+
+            Assert.AreEqual(
+                0,
+                participant.MaxMana);
+
+            Assert.AreEqual(
+                0,
+                participant.CurrentMana);
+
+            Assert.AreEqual(
+                0,
+                participant.MaxStamina);
+
+            Assert.AreEqual(
+                0,
+                participant.CurrentStamina);
+        }
+
+        [Test]
+        public void Constructor_WithMaxManaAndStamina_StartsFull()
+        {
+            BattleParticipant participant =
+                new BattleParticipant(
+                    "PLAYER",
+                    "PLAYER",
+                    BattleTeam.Player,
+                    20,
+                    5,
+                    6,
+                    3,
+                    90,
+                    10,
+                    0,
+                    0,
+                    50,
+                    100);
+
+            Assert.AreEqual(
+                50,
+                participant.MaxMana);
+
+            Assert.AreEqual(
+                50,
+                participant.CurrentMana);
+
+            Assert.AreEqual(
+                100,
+                participant.MaxStamina);
+
+            Assert.AreEqual(
+                100,
+                participant.CurrentStamina);
+        }
+
+        [Test]
+        public void Constructor_WithCurrentValues_CarriesOverFromRunState()
+        {
+            // 54일차: 전투 진입 시 PlayerRunState의 현재 체력·마나·정력을 그대로 이어받는 경로.
+            BattleParticipant participant =
+                new BattleParticipant(
+                    "PLAYER",
+                    "PLAYER",
+                    BattleTeam.Player,
+                    20,
+                    5,
+                    6,
+                    3,
+                    90,
+                    10,
+                    0,
+                    0,
+                    50,
+                    100,
+                    currentHp: 12,
+                    currentMana: 30,
+                    currentStamina: 40);
+
+            Assert.AreEqual(
+                12,
+                participant.CurrentHp);
+
+            Assert.AreEqual(
+                30,
+                participant.CurrentMana);
+
+            Assert.AreEqual(
+                40,
+                participant.CurrentStamina);
+        }
+
+        [Test]
+        public void Constructor_WithCurrentValueAboveMax_ClampsToMax()
+        {
+            BattleParticipant participant =
+                new BattleParticipant(
+                    "PLAYER",
+                    "PLAYER",
+                    BattleTeam.Player,
+                    20,
+                    5,
+                    6,
+                    3,
+                    90,
+                    10,
+                    0,
+                    0,
+                    50,
+                    100,
+                    currentHp: 999,
+                    currentMana: 999,
+                    currentStamina: 999);
+
+            Assert.AreEqual(
+                20,
+                participant.CurrentHp);
+
+            Assert.AreEqual(
+                50,
+                participant.CurrentMana);
+
+            Assert.AreEqual(
+                100,
+                participant.CurrentStamina);
+        }
+
+        [Test]
         public void ApplyDamage_ReducesCurrentHpByAmount()
         {
             BattleParticipant participant =

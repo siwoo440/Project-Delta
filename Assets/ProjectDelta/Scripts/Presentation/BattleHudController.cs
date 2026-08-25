@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using ProjectDelta.Application;
-using ProjectDelta.Domain;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -411,44 +410,33 @@ namespace ProjectDelta.Presentation
                     ? context.Player
                     : null;
 
-            // HP는 전투 참가자 데이터가 기준이다.
-            if (player != null)
-            {
-                ApplyVital(
-                    healthFillImage,
-                    healthText,
-                    "HP",
-                    player.CurrentHp,
-                    player.MaxHp);
-            }
-
-            // MP·SP는 전투 모델에 아직 없으므로 런 상태를 표시만 한다 (66~72일차 스킬 단계에서 연결).
-            PlayerRunState playerState =
-                RunContext.Current != null
-                    ? RunContext.Current.Player
-                    : null;
-
-            if (playerState == null)
+            // 54일차: HP·MP·SP 모두 전투 참가자 데이터가 기준이다 (전투 중에는 참가자 값이
+            // 최신이고, PlayerRunState는 전투가 끝날 때만 되돌아 맞춰진다).
+            if (player == null)
             {
                 return;
             }
 
-            StatBlock finalStats =
-                playerState.GetFinalStats();
+            ApplyVital(
+                healthFillImage,
+                healthText,
+                "HP",
+                player.CurrentHp,
+                player.MaxHp);
 
             ApplyVital(
                 manaFillImage,
                 manaText,
                 "MP",
-                playerState.CurrentMana,
-                finalStats.MaxMana);
+                player.CurrentMana,
+                player.MaxMana);
 
             ApplyVital(
                 staminaFillImage,
                 staminaText,
                 "SP",
-                playerState.CurrentStamina,
-                finalStats.MaxStamina);
+                player.CurrentStamina,
+                player.MaxStamina);
         }
 
         private static void ApplyVital(

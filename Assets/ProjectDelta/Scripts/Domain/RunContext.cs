@@ -31,7 +31,7 @@ namespace ProjectDelta.Domain
                 StartedAtIso8601 = DateTime.UtcNow.ToString("o")
             };
 
-            Player = new PlayerRunState();
+            Player = PlayerRunState.CreateDefault(); // 54일차: 기획서 6.1 기본 능력치로 시작
             Dungeon = new DungeonRunState();
             Inventory = new InventoryRunState();
             Skills = new SkillRunState();

@@ -31,6 +31,36 @@ namespace ProjectDelta.Domain
         {
             return StatBlock.Sum(BaseStats, AllocatedStats, TemporaryStats);
         }
+
+        // 54일차: 기획서 6.1 기본 능력치 표를 그대로 옮긴 시작 상태.
+        // PlayerBaseDefinition ScriptableObject가 생기기 전까지 여기서 상수로 관리한다.
+        // ApplicationFlow.StartNewGame() -> RunContext.Begin()에서 호출한다.
+        public static PlayerRunState CreateDefault()
+        {
+            var state = new PlayerRunState
+            {
+                Level = 1,
+                BaseStats = new StatBlock
+                {
+                    MaxHealth = 100,
+                    MaxMana = 50,
+                    MaxStamina = 100,
+                    Attack = 50,
+                    Defense = 40,
+                    Speed = 50,
+                    Charm = 50,
+                    Evasion = 40,
+                    Resistance = 50
+                }
+            };
+
+            StatBlock finalStats = state.GetFinalStats();
+            state.CurrentHp = finalStats.MaxHealth;
+            state.CurrentMana = finalStats.MaxMana;
+            state.CurrentStamina = finalStats.MaxStamina;
+
+            return state;
+        }
     }
 
     // Mirrors the 6.1절 기본 능력치 table: 3 resource caps + 6 combat stats.

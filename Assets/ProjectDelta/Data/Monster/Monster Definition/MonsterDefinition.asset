@@ -14,3 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_TEST
   displayName: Test Monster
+  maxHp: 10
+  maxMana: 0
+  speed: 5
+  attack: 4
+  defense: 2
+  accuracy: 80
+  evasion: 5
+  charm: 0
+  resistance: 0

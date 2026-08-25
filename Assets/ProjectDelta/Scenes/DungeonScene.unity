@@ -5408,6 +5408,7 @@ MonoBehaviour:
   movementController: {fileID: 1454137231}
   lookController: {fileID: 1454137232}
   floorController: {fileID: 500000005}
+  testMonsterDefinition: {fileID: 11400000, guid: 133917812ecdfae49b319e5980fbb44e, type: 2}
 --- !u!1 &1463512776
 GameObject:
   m_ObjectHideFlags: 0
