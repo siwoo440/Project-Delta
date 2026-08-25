@@ -6,7 +6,8 @@ namespace ProjectDelta.Data
     /// 스킬 데이터 원본 (기획서 4.2 "전투 명령" - 공격·방어에 이은 세 번째 전투 행동).
     /// 66일차에는 기존 계산 엔진(BattleDamageCalculator, StatusEffectApplicationService,
     /// BattleSession.TryGrantExtraAction)이 이미 받을 수 있는 값을 데이터로 옮기는 것까지만
-    /// 담당한다. 실제로 이 데이터를 읽어 실행하는 SkillBattleCommand는 이후 일차에서 만든다.
+    /// 담당했다. 67일차에 SkillBattleCommand(선언 판정용)가 읽는 TargetType을 추가했다.
+    /// 실제 명중·피해·상태 부여 판정을 이 데이터로 실행하는 로직은 이후 일차에서 만든다.
     /// </summary>
     [CreateAssetMenu(
         fileName = "SkillDefinition",
@@ -15,6 +16,10 @@ namespace ProjectDelta.Data
     {
         [Header("Display")]
         [SerializeField] private string displayName;
+
+        [Header("Target")]
+        [Tooltip("Enemy면 대상을 선택해야 하고, Self면 대상 선택 없이 시전자 자신에게 적용한다 (67일차).")]
+        [SerializeField] private SkillTargetType targetType;
 
         [Header("Cost")]
         [Tooltip("스킬 사용에 필요한 마나. 부족하면 사용할 수 없다.")]
@@ -59,6 +64,8 @@ namespace ProjectDelta.Data
                 return string.IsNullOrWhiteSpace(displayName) ? Id : displayName;
             }
         }
+
+        public SkillTargetType TargetType => targetType;
 
         public int ManaCost => manaCost;
         public int StaminaCost => staminaCost;
