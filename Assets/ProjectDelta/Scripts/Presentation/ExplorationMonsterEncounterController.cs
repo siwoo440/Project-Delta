@@ -63,6 +63,7 @@ namespace ProjectDelta.Presentation
         private bool wasMoving;
         private bool ownsExplorationControlLock;
         private bool movementLockBeforeEncounter;
+        private EncounterResult pendingVictoryEncounterResult; // 72일차 승리 후 보상 선택 전 Encounter 결과 보관
 
         public bool IsEncounterActive =>
             session.State != EncounterState.Idle;
@@ -130,6 +131,10 @@ namespace ProjectDelta.Presentation
         public BattleParticipant LastActingParticipant { get; private set; }
         public int LastActionSequence { get; private set; }
 
+        public bool IsBattleRewardPending =>
+            pendingVictoryEncounterResult != null
+            && BattleRewardState.IsPending; // 72일차 보상 선택 대기 여부
+
         private void Awake()
         {
             if (movementController == null)
@@ -168,6 +173,8 @@ namespace ProjectDelta.Presentation
             activeMonster = null;
             LastCommandResult = null;
             LastEncounterResult = null;
+            pendingVictoryEncounterResult = null; // 72일차 대기 중 보상 결과 정리
+            BattleRewardState.Clear(); // 72일차 보상 상태 정리
             wasMoving = false;
         }
 
@@ -395,6 +402,8 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            BattleRewardState.Clear(); // 72일차 이전 보상 상태 초기화
+            pendingVictoryEncounterResult = null; // 72일차 이전 보상 결과 초기화
             BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
 
             Debug.Log(
@@ -1237,6 +1246,41 @@ namespace ProjectDelta.Presentation
             return resolvedResult;
         }
 
+        public bool ConfirmBattleReward(
+            string rewardId)
+        {
+            if (pendingVictoryEncounterResult == null
+                || RunContext.Current == null
+                || !BattleRewardState.IsPending)
+            {
+                return false;
+            }
+
+            if (!BattleRewardState.TryClaim(
+                    rewardId,
+                    RunContext.Current.Player))
+            {
+                return false;
+            }
+
+            EncounterResult result =
+                pendingVictoryEncounterResult;
+
+            pendingVictoryEncounterResult =
+                null; // 72일차 중복 보상 수령 방지
+
+            FinalizeActiveEncounter(
+                result); // 보상 지급 후 기존 Encounter 완료 처리
+
+            battleSession.TryReset(); // 보상 처리 후 Battle 세션 정리
+
+            Debug.Log(
+                $"[Project Delta] 72일차 Battle Reward Claimed / {rewardId} / 탐험 복귀",
+                this);
+
+            return true;
+        }
+
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.
         // 51일차부터는 ConfirmAttack()의 자동 판정도 이 메서드가 감싼 FinishBattle()을 그대로 탄다.
         public void TestWinBattle()
@@ -1316,10 +1360,14 @@ namespace ProjectDelta.Presentation
                     return finishedResult;
                 }
 
-                FinalizeActiveEncounter(
-                    result);
+                pendingVictoryEncounterResult =
+                    result; // 72일차 보상 선택 완료 전 Encounter 종료 보류
 
-                battleSession.TryReset();
+                BattleRewardState.BeginDefaultRewards(); // 72일차 기본 보상 후보 생성
+
+                Debug.Log(
+                    "[Project Delta] 72일차 Battle Victory / 보상 선택 대기",
+                    this);
 
                 return finishedResult;
             }
@@ -1523,6 +1571,11 @@ namespace ProjectDelta.Presentation
         {
             activeMonster =
                 null;
+
+            pendingVictoryEncounterResult =
+                null; // 72일차 보상 대기 결과 제거
+
+            BattleRewardState.Clear(); // 72일차 보상 상태 제거
 
             LastCommandResult =
                 null;
