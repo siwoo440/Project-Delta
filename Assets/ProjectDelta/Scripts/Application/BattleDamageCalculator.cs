@@ -51,9 +51,12 @@ namespace ProjectDelta.Application
 
         // 56일차 명중률(%) = 스킬 기본 명중률 + 공격자 명중 - 방어자 회피 × 50%, 5~95% 사이로 고정.
         // 회피 가중치는 정수 나눗셈으로 버림 처리한다.
+        // 68일차: skillAccuracyModifierPercent는 SkillDefinition.AccuracyModifierPercent가 넘어오는
+        // 자리다. 기본 공격은 이 값을 넘기지 않으므로(기본값 0) 기존 계산과 동일하게 유지된다.
         public static int CalculateHitChancePercent(
             BattleParticipant attacker,
-            BattleParticipant defender)
+            BattleParticipant defender,
+            int skillAccuracyModifierPercent = 0)
         {
             int weightedEvasion =
                 BattleStatModifierService.GetEffectiveEvasion(
@@ -63,7 +66,8 @@ namespace ProjectDelta.Application
                 BaseSkillHitChancePercent
                 + BattleStatModifierService.GetEffectiveAccuracy(
                     attacker)
-                - weightedEvasion;
+                - weightedEvasion
+                + skillAccuracyModifierPercent;
 
             return Clamp(
                 rawHitChance,
@@ -163,8 +167,10 @@ namespace ProjectDelta.Application
                 : reductionPercent;
         }
 
-        // 기본 피해에 편차를 곱하고, 치명타면 배율을 곱한 뒤, 방어 중이면 방어 가능·관통·불가에
-        // 따라 한 번 더 감소시키고 마지막에 최소 피해 1을 보장한다.
+        // 기본 피해에 편차를 곱하고, 스킬 배율을 곱하고, 치명타면 배율을 곱한 뒤, 방어 중이면
+        // 방어 가능·관통·불가에 따라 한 번 더 감소시키고 마지막에 최소 피해 1을 보장한다.
+        // 68일차: skillDamageMultiplierPercent는 SkillDefinition.DamageMultiplierPercent가
+        // 넘어오는 자리다. 기본 공격은 100%를 넘겨 기존 계산과 동일하게 유지된다.
         public static int CalculateDamage(
             BattleParticipant attacker,
             BattleParticipant defender,
@@ -173,7 +179,8 @@ namespace ProjectDelta.Application
             DamageType damageType = DamageType.Normal,
             int criticalChancePercent = NoCriticalChancePercent,
             int criticalMultiplierPercent = NoCriticalMultiplierPercent,
-            int criticalRoll = 0)
+            int criticalRoll = 0,
+            int skillDamageMultiplierPercent = 100)
         {
             int baseDamage =
                 CalculateBaseDamage(
@@ -187,6 +194,9 @@ namespace ProjectDelta.Application
 
             int damage =
                 baseDamage * variancePercent / 100;
+
+            damage =
+                damage * skillDamageMultiplierPercent / 100;
 
             // 58일차: 치명타가 발생했으면 배율을 곱한다 (기획서 4.2 "... × 치명타 배율 × ...").
             if (IsCriticalHit(
@@ -234,12 +244,15 @@ namespace ProjectDelta.Application
             DamageType damageType = DamageType.Normal,
             int criticalChancePercent = NoCriticalChancePercent,
             int criticalMultiplierPercent = NoCriticalMultiplierPercent,
-            int criticalRoll = 0)
+            int criticalRoll = 0,
+            int skillAccuracyModifierPercent = 0,
+            int skillDamageMultiplierPercent = 100)
         {
             int hitChancePercent =
                 CalculateHitChancePercent(
                     attacker,
-                    defender);
+                    defender,
+                    skillAccuracyModifierPercent);
 
             bool isHit =
                 roll0To99 < hitChancePercent;
@@ -259,7 +272,8 @@ namespace ProjectDelta.Application
                     damageType,
                     criticalChancePercent,
                     criticalMultiplierPercent,
-                    criticalRoll);
+                    criticalRoll,
+                    skillDamageMultiplierPercent);
 
             // 55일차: 편차 적용 전 기본 피해·적용된 편차(%)를 디버그 표시용으로 함께 담는다.
             int baseDamage =

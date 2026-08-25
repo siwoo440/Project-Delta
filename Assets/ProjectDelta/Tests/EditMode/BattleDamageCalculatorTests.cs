@@ -856,6 +856,161 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 hitChance);
         }
 
+        [Test]
+        public void CalculateHitChancePercent_SkillAccuracyModifier_AddsToHitChance()
+        {
+            // 68일차: SkillDefinition.AccuracyModifierPercent가 넘어오는 자리를 검증한다.
+            BattleParticipant attacker =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            int hitChance =
+                BattleDamageCalculator.CalculateHitChancePercent(
+                    attacker,
+                    defender,
+                    skillAccuracyModifierPercent: 15);
+
+            // 기본 70 + 15 = 85
+            Assert.AreEqual(
+                85,
+                hitChance);
+        }
+
+        [Test]
+        public void CalculateHitChancePercent_DefaultSkillAccuracyModifier_MatchesBasicAttack()
+        {
+            // 68일차: 매개변수를 생략하는 기존 호출부(기본 공격)는 결과가 그대로여야 한다.
+            BattleParticipant attacker =
+                CreateParticipant(
+                    accuracy: 20,
+                    evasion: 0,
+                    attack: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    accuracy: 0,
+                    evasion: 20,
+                    attack: 0,
+                    defense: 0);
+
+            Assert.AreEqual(
+                80,
+                BattleDamageCalculator.CalculateHitChancePercent(
+                    attacker,
+                    defender));
+        }
+
+        [Test]
+        public void CalculateDamage_SkillDamageMultiplier_ScalesDamage()
+        {
+            // 68일차: SkillDefinition.DamageMultiplierPercent가 넘어오는 자리를 검증한다.
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            int damage =
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll,
+                    skillDamageMultiplierPercent: 150);
+
+            // 기본 피해 10, 편차 100%, 스킬 배율 150% → 15
+            Assert.AreEqual(
+                15,
+                damage);
+        }
+
+        [Test]
+        public void CalculateDamage_DefaultSkillDamageMultiplier_MatchesBasicAttack()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            Assert.AreEqual(
+                10,
+                BattleDamageCalculator.CalculateDamage(
+                    attacker,
+                    defender,
+                    NoVarianceRoll));
+        }
+
+        [Test]
+        public void Resolve_SkillModifiers_AffectHitChanceAndDamage()
+        {
+            BattleParticipant attacker =
+                CreateParticipant(
+                    attack: 10,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleParticipant defender =
+                CreateParticipant(
+                    attack: 0,
+                    accuracy: 0,
+                    evasion: 0,
+                    defense: 0);
+
+            BattleDamageResult result =
+                BattleDamageCalculator.Resolve(
+                    attacker,
+                    defender,
+                    84, // 기본 명중률 70이면 빗나갈 굴림이지만, 스킬 보정 +20으로 90% → 명중
+                    NoVarianceRoll,
+                    DefenseInteraction.Defendable,
+                    DamageType.Normal,
+                    BattleDamageCalculator.NoCriticalChancePercent,
+                    BattleDamageCalculator.NoCriticalMultiplierPercent,
+                    0,
+                    skillAccuracyModifierPercent: 20,
+                    skillDamageMultiplierPercent: 200);
+
+            Assert.IsTrue(
+                result.IsHit);
+
+            Assert.AreEqual(
+                90,
+                result.HitChancePercent);
+
+            // 기본 피해 10, 편차 100%, 스킬 배율 200% → 20
+            Assert.AreEqual(
+                20,
+                result.Damage);
+        }
+
         private static BattleParticipant CreateParticipant(
             int attack,
             int defense,

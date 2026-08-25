@@ -811,6 +811,274 @@ namespace ProjectDelta.Presentation
             return resolvedResult;
         }
 
+        // 68일차: SkillDefinition 하나를 실제로 판정한다. ConfirmAttack()·ConfirmDefend()와
+        // 같은 구조를 스킬 데이터 기반으로 일반화했다 - 특정 스킬 전용 메서드가 아니라 어떤
+        // SkillDefinition을 넘겨도 동작한다. TargetType이 Self면 대상 선택 없이 시전자 자신을
+        // 대상으로 삼고(피해 판정 없이 상태만 적용), Enemy면 지금 선택된 대상에게 공격과 같은
+        // 방식으로 명중·피해를 판정한다.
+        public BattleActionResult ConfirmSkill(
+            SkillDefinition skill)
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleParticipant target =
+                skill != null
+                && skill.TargetType == SkillTargetType.Self
+                    ? actor
+                    : battleSession.SelectedTarget;
+
+            IBattleCommand skillCommand =
+                new SkillBattleCommand(
+                    skill);
+
+            BattleCommandResult declaration =
+                skillCommand.Execute(
+                    battleSession.Context,
+                    actor,
+                    target);
+
+            if (!declaration.Accepted)
+            {
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
+
+                Debug.LogWarning(
+                    $"[Project Delta] 68일차 스킬 확정 실패 / {declaration.Message}",
+                    this);
+
+                return rejectedResult;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
+            }
+
+            // 66일차에 만든 자원 소모 API를 여기서 실제로 쓴다. Execute()는 충분한지 확인만
+            // 했으므로, 선언이 확정된 지금(TryBeginResolveAction 이후) 실제로 차감한다.
+            actor.TrySpendMana(
+                skill.ManaCost);
+
+            actor.TrySpendStamina(
+                skill.StaminaCost);
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            string resolutionMessage;
+            BattleDamageChange[] damageChanges;
+            BattleParticipant[] removedParticipants =
+                Array.Empty<BattleParticipant>();
+
+            if (skill.TargetType == SkillTargetType.Self)
+            {
+                // 자기 자신 대상 스킬은 공격이 아니므로 명중 판정 없이 항상 적용된다.
+                resolutionMessage =
+                    $"스킬 사용 / {actor.InstanceId} / {skill.DisplayName}";
+
+                resolutionMessage +=
+                    ApplyGrantedStatusEffectIfAny(
+                        skill,
+                        actor,
+                        actor);
+
+                damageChanges =
+                    Array.Empty<BattleDamageChange>();
+            }
+            else
+            {
+                int hitRoll =
+                    combatRng.NextInt(
+                        0,
+                        100);
+
+                int varianceRoll =
+                    combatRng.NextInt(
+                        0,
+                        BattleDamageCalculator.DamageVarianceRollCount);
+
+                int criticalRoll =
+                    combatRng.NextInt(
+                        0,
+                        100);
+
+                BattleDamageResult damageResult =
+                    BattleDamageCalculator.Resolve(
+                        actor,
+                        target,
+                        hitRoll,
+                        varianceRoll,
+                        SkillEffectMapping.ToDefenseInteraction(
+                            skill.DefenseInteraction),
+                        SkillEffectMapping.ToDamageType(
+                            skill.DamageType),
+                        skill.CriticalChancePercent,
+                        skill.CriticalMultiplierPercent,
+                        criticalRoll,
+                        skill.AccuracyModifierPercent,
+                        skill.DamageMultiplierPercent);
+
+                int appliedDamage = 0;
+
+                if (damageResult.IsHit)
+                {
+                    appliedDamage =
+                        target.ApplyDamage(
+                            damageResult.Damage);
+
+                    resolutionMessage =
+                        $"스킬 적중 / {actor.InstanceId} → {target.InstanceId} / {skill.DisplayName} / {appliedDamage} 데미지 (명중률 {damageResult.HitChancePercent}%)";
+
+                    resolutionMessage +=
+                        ApplyGrantedStatusEffectIfAny(
+                            skill,
+                            actor,
+                            target);
+                }
+                else
+                {
+                    resolutionMessage =
+                        $"스킬 빗나감 / {actor.InstanceId} → {target.InstanceId} / {skill.DisplayName} (명중률 {damageResult.HitChancePercent}%)";
+                }
+
+                damageChanges =
+                    new[]
+                    {
+                        new BattleDamageChange(
+                            actor,
+                            target,
+                            damageResult,
+                            appliedDamage)
+                    };
+
+                removedParticipants =
+                    target.IsAlive
+                        ? Array.Empty<BattleParticipant>()
+                        : new[] { target };
+            }
+
+            // 64일차에 만든 추가 행동 부여를 여기서 처음 실전 투입한다. 명중 여부와 무관하게
+            // "스킬 사용 자체가 성공"했으면(선언이 확정됐으면) 부여한다.
+            if (skill.GrantsExtraAction)
+            {
+                battleSession.TryGrantExtraAction(
+                    actor);
+            }
+
+            Debug.Log(
+                $"[Project Delta] 68일차 Battle 스킬 판정 / {resolutionMessage}",
+                this);
+
+            BattleResult battleEndResult = null;
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome outcome))
+            {
+                battleEndResult =
+                    FinishBattle(
+                        outcome);
+            }
+
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { resolutionMessage },
+                    damageChanges,
+                    removedParticipants,
+                    true,
+                    battleEndResult);
+
+            LastBattleActionResult =
+                resolvedResult;
+
+            if (battleEndResult != null)
+            {
+                return resolvedResult;
+            }
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                TestAdvanceBattleTurn();
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return resolvedResult;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return resolvedResult;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 68일차 Battle Round {battleSession.RoundNumber} Start",
+                this);
+
+            TestAdvanceBattleTurn();
+
+            return resolvedResult;
+        }
+
+        // 68일차: 스킬이 상태를 부여하도록 지정돼 있으면 시도하고, 로그에 덧붙일 문구를 반환한다.
+        // 상태가 지정돼 있지 않으면 빈 문자열을 반환해 호출부가 조건 없이 이어 붙일 수 있게 한다.
+        private string ApplyGrantedStatusEffectIfAny(
+            SkillDefinition skill,
+            BattleParticipant source,
+            BattleParticipant statusTarget)
+        {
+            if (skill.GrantedStatusEffect == null)
+            {
+                return string.Empty;
+            }
+
+            StatusEffectApplyResult statusResult =
+                StatusEffectApplicationService.TryApply(
+                    statusTarget,
+                    skill.GrantedStatusEffect,
+                    source.InstanceId,
+                    skill.StatusEffectDurationRounds,
+                    skill.StatusEffectAppliedValue,
+                    skill.StatusEffectBaseChancePercent,
+                    0,
+                    0,
+                    combatRng);
+
+            return statusResult.Succeeded
+                ? $" / {skill.GrantedStatusEffect.DisplayName} 부여 성공"
+                : $" / {skill.GrantedStatusEffect.DisplayName} 부여 실패";
+        }
+
         // 47일차: 실제 승패 계산 전까지 Battle을 승리로 강제 종료하는 테스트용 버튼.
         // 51일차부터는 ConfirmAttack()의 자동 판정도 이 메서드가 감싼 FinishBattle()을 그대로 탄다.
         public void TestWinBattle()
