@@ -72,6 +72,66 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void TryBeginBattle_WithMaxEnemySlotEnemies_Starts()
+        {
+            // 75일차: 적 최대 인원 4명은 정상적으로 시작돼야 한다.
+            BattleSession session =
+                new BattleSession(); // 새 Session 생성
+
+            BattleParticipant[] enemies =
+                new BattleParticipant[BattleContext.MaxEnemySlots];
+
+            for (int index = 0; index < enemies.Length; index++)
+            {
+                enemies[index] =
+                    CreateEnemy();
+            }
+
+            BattleContext context =
+                new BattleContext(
+                    CreatePlayer(),
+                    enemies);
+
+            Assert.IsTrue(
+                session.TryBeginBattle(
+                    context));
+
+            Assert.AreEqual(
+                BattleState.Starting,
+                session.State);
+        }
+
+        [Test]
+        public void TryBeginBattle_WithMoreThanMaxEnemySlotEnemies_StaysIdle()
+        {
+            // 75일차: 적 최대 인원(4명)을 넘기면 거부해야 한다.
+            BattleSession session =
+                new BattleSession(); // 새 Session 생성
+
+            BattleParticipant[] enemies =
+                new BattleParticipant[BattleContext.MaxEnemySlots + 1];
+
+            for (int index = 0; index < enemies.Length; index++)
+            {
+                enemies[index] =
+                    CreateEnemy();
+            }
+
+            BattleContext context =
+                new BattleContext(
+                    CreatePlayer(),
+                    enemies);
+
+            Assert.IsFalse(
+                session.TryBeginBattle(
+                    context)); // 시작 거부 확인
+
+            Assert.AreEqual(
+                BattleState.Idle,
+                session.State); // Idle 유지 확인
+        }
+
+        [Test]
         public void TryBeginBattle_WhileAlreadyActive_BlocksDuplicateBattle()
         {
             BattleSession session =

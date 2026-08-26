@@ -71,6 +71,93 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
         }
 
         [Test]
+        public void GetValidTargets_EnemyActor_WithMultipleEnemies_NeverIncludesOtherEnemies()
+        {
+            // 75일차: 적이 여럿(최대 4명)이어도 몬스터끼리는 서로를 공격 대상으로 고를 수 없다.
+            BattleParticipant player =
+                CreatePlayer();
+
+            BattleParticipant actingEnemy =
+                CreateEnemy(
+                    "ENEMY_1",
+                    10);
+
+            BattleParticipant otherEnemyA =
+                CreateEnemy(
+                    "ENEMY_2",
+                    10);
+
+            BattleParticipant otherEnemyB =
+                CreateEnemy(
+                    "ENEMY_3",
+                    10);
+
+            BattleParticipant otherEnemyC =
+                CreateEnemy(
+                    "ENEMY_4",
+                    10);
+
+            BattleContext context =
+                new BattleContext(
+                    player,
+                    new[] { actingEnemy, otherEnemyA, otherEnemyB, otherEnemyC });
+
+            var targets =
+                BattleTargeting.GetValidTargets(
+                    context,
+                    actingEnemy);
+
+            Assert.AreEqual(
+                1,
+                targets.Count); // Player 한 명만 대상 확인
+
+            Assert.AreEqual(
+                "PLAYER",
+                targets[0].InstanceId);
+
+            CollectionAssert.DoesNotContain(
+                targets,
+                otherEnemyA);
+
+            CollectionAssert.DoesNotContain(
+                targets,
+                otherEnemyB);
+
+            CollectionAssert.DoesNotContain(
+                targets,
+                otherEnemyC);
+        }
+
+        [Test]
+        public void IsValidTarget_EnemyActorTargetingAnotherEnemy_ReturnsFalse()
+        {
+            // 75일차: IsValidTarget 단건 판정에서도 몬스터 간 상호 공격이 거부돼야 한다.
+            BattleParticipant player =
+                CreatePlayer();
+
+            BattleParticipant actingEnemy =
+                CreateEnemy(
+                    "ENEMY_1",
+                    10);
+
+            BattleParticipant otherEnemy =
+                CreateEnemy(
+                    "ENEMY_2",
+                    10);
+
+            BattleContext context =
+                new BattleContext(
+                    player,
+                    new[] { actingEnemy, otherEnemy });
+
+            Assert.IsFalse(
+                BattleTargeting.IsValidTarget(
+                    context,
+                    actingEnemy,
+                    otherEnemy));
+        }
+
+        [Test]
         public void GetValidTargets_NullContextOrActor_ReturnsEmpty()
         {
             BattleParticipant player =

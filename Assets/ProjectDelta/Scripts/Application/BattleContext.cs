@@ -7,6 +7,7 @@ namespace ProjectDelta.Application
     public sealed class BattleContext
     {
         // 47일차: 전투 화면의 적 슬롯은 맨 왼쪽 1번부터 최대 4번까지다.
+        // 75일차: 적 최대 인원을 4명으로 확정한다 (BattleSession.TryBeginBattle()에서 강제).
         public const int MaxEnemySlots = 4;
 
         public BattleParticipant Player { get; }

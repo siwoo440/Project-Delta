@@ -167,6 +167,19 @@ namespace ProjectDelta.Presentation
         {
             RestoreExplorationControl();
 
+            // Unity는 GameObject/컴포넌트가 비활성화되면 실행 중이던 코루틴을 그 자리에서
+            // 즉시 중단시키고, 코루틴 본문에 남은 코드(끝부분의 autoAdvanceRoutine = null)는
+            // 실행하지 않는다. 정리하지 않으면 이 필드가 죽은 코루틴 참조를 계속 들고 있게
+            // 되어, 다음 전투에서 TestAdvanceBattleTurn()이 "이미 실행 중"이라고 착각하고
+            // 아무것도 하지 않아 전투 조작이 영구히 먹통이 된다.
+            if (autoAdvanceRoutine != null)
+            {
+                StopCoroutine(
+                    autoAdvanceRoutine);
+
+                autoAdvanceRoutine = null;
+            }
+
             session.ForceReset();
             battleSession.ForceReset();
             actionSelectionGate.Reset();

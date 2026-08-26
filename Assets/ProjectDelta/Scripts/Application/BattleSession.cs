@@ -55,9 +55,10 @@ namespace ProjectDelta.Application
             if (context == null
                 || context.Player == null
                 || context.Enemies == null
-                || context.Enemies.Count == 0) // 필수 참가자 확인
+                || context.Enemies.Count == 0
+                || context.Enemies.Count > BattleContext.MaxEnemySlots) // 필수 참가자·최대 인원 확인
             {
-                return false; // 참가자 누락 거부
+                return false; // 참가자 누락 또는 75일차 확정 최대 인원(4명) 초과 거부
             }
 
             Context =
