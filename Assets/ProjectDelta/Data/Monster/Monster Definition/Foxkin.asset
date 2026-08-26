@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ca07b3e1e39b394b9257c55d3144bd5, type: 3}
+  m_Name: Foxkin
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
+  id: MON_FOXKIN
+  displayName: 여우 수인
+  rarity: 0
+  maxHp: 14
+  maxMana: 0
+  speed: 8
+  attack: 5
+  defense: 2
+  accuracy: 85
+  evasion: 12
+  charm: 15
+  resistance: 5
+  aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}

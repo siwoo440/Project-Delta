@@ -13,6 +13,13 @@ MonoBehaviour:
   m_Name: EncounterDefinition
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.EncounterDefinition
   id: ENC_TEST_MONSTER
-  monster: {fileID: 11400000, guid: 133917812ecdfae49b319e5980fbb44e, type: 2}
+  monster: {fileID: 11400000, guid: 7bec9ffe90f14a9e9037f8ad9f5bea7e, type: 2}
   roomSpawnChance: 0.35
   enabled: 1
+  additionalMonsterPool:
+  - monster: {fileID: 11400000, guid: 7bec9ffe90f14a9e9037f8ad9f5bea7e, type: 2}
+    weight: 5
+  - monster: {fileID: 11400000, guid: 9ffb57e8f4c94fcca28dc8835e9781d1, type: 2}
+    weight: 1
+  minGroupSize: 1
+  maxGroupSize: 3
