@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using ProjectDelta.Application;
 using UnityEngine;
 using UnityEngine.Events;
@@ -6,9 +8,7 @@ using UnityEngine.UI;
 
 namespace ProjectDelta.Presentation
 {
-    // 47일차: 전투 참가자 한 명의 일러스트·이름·체력바를 표시하는 슬롯 뷰.
-    // 적 슬롯 4개와 플레이어 상태 일러스트가 같은 컴포넌트를 재사용한다.
-    // 49일차: 대상 선택을 위해 슬롯 클릭·선택 가능·선택됨 표시를 추가했다.
+    // 전투 참가자 한 명의 일러스트·체력·상태 및 행동 피드백 표시.
     [DisallowMultipleComponent]
     public sealed class BattleParticipantSlotView : MonoBehaviour
     {
@@ -20,7 +20,12 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Text healthText;
         [SerializeField] private Button clickButton;
         [SerializeField] private Image backgroundImage;
-        [SerializeField] private GameObject defendBadge; // 52일차: 방어 중 표시
+        [SerializeField] private GameObject defendBadge;
+
+        [Header("Day 84 Runtime HUD")]
+        [SerializeField] private Text statusText;
+        [SerializeField] private Text damageFeedbackText;
+        [SerializeField] private Text currentActorText;
 
         [Header("Portrait")]
         [SerializeField] private Color aliveTint =
@@ -29,11 +34,10 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Color defeatedTint =
             new Color(0.35f, 0.35f, 0.42f, 0.65f);
 
-        // 일러스트가 아직 없는 슬롯에 표시할 자리 표시 색상.
         [SerializeField] private Color emptyPortraitColor =
             new Color(0.18f, 0.20f, 0.26f, 1f);
 
-        [Header("Selection (49일차)")]
+        [Header("Selection")]
         [SerializeField] private Color normalBackgroundColor =
             new Color(0.09f, 0.10f, 0.14f, 0.92f);
 
@@ -43,9 +47,13 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Color selectedBackgroundColor =
             new Color(0.30f, 0.62f, 0.32f, 0.95f);
 
-        [Header("Action Bump (56일차)")]
+        [Header("Action Bump")]
         [SerializeField] private float bumpHeight = 14f;
-        [SerializeField] private float bumpDuration = 0.12f; // 올라가는 시간, 내려오는 시간도 동일하게 사용
+        [SerializeField] private float bumpDuration = 0.12f;
+
+        [Header("Day 84 Feedback")]
+        [SerializeField] private float damageVisibleDuration = 0.65f;
+        [SerializeField] private float damageFadeDuration = 0.25f;
 
         public bool HasBoundParticipant { get; private set; }
 
@@ -54,6 +62,15 @@ namespace ProjectDelta.Presentation
         private Vector2 portraitRestPosition;
         private bool hasCachedPortraitRestPosition;
         private Coroutine bumpRoutine;
+        private Coroutine damageFeedbackRoutine;
+        private string boundParticipantInstanceId;
+        private int lastHp;
+        private bool hasHpSnapshot;
+
+        private void Awake()
+        {
+            EnsureDay84RuntimeHud();
+        }
 
         public void SetSlotLabel(
             string label)
@@ -74,6 +91,40 @@ namespace ProjectDelta.Presentation
                 Clear();
                 return;
             }
+
+            EnsureDay84RuntimeHud();
+
+            bool sameParticipant =
+                hasHpSnapshot
+                && string.Equals(
+                    boundParticipantInstanceId,
+                    participant.InstanceId,
+                    StringComparison.Ordinal);
+
+            if (sameParticipant
+                && lastHp != participant.CurrentHp)
+            {
+                string deltaText =
+                    BattleHudDisplayFormatter.FormatVitalDelta(
+                        lastHp,
+                        participant.CurrentHp);
+
+                if (!string.IsNullOrEmpty(
+                        deltaText))
+                {
+                    ShowDamageFeedback(
+                        deltaText);
+                }
+            }
+
+            boundParticipantInstanceId =
+                participant.InstanceId;
+
+            lastHp =
+                participant.CurrentHp;
+
+            hasHpSnapshot =
+                true;
 
             HasBoundParticipant =
                 true;
@@ -97,6 +148,9 @@ namespace ProjectDelta.Presentation
 
             ApplyDefendBadge(
                 participant.IsDefending);
+
+            SetStatusEffects(
+                participant.StatusEffects);
         }
 
         public void Clear()
@@ -104,8 +158,11 @@ namespace ProjectDelta.Presentation
             HasBoundParticipant =
                 false;
 
-            SetSlotVisible(
-                false);
+            boundParticipantInstanceId =
+                null;
+
+            hasHpSnapshot =
+                false;
 
             SetSelectable(
                 false);
@@ -113,27 +170,21 @@ namespace ProjectDelta.Presentation
             SetSelected(
                 false);
 
+            SetCurrentActor(
+                false);
+
+            SetStatusEffects(
+                null);
+
             ApplyDefendBadge(
                 false);
 
-            // 56일차: 슬롯이 비워지는 동안 이전 참가자의 튀어오르는 연출이 이어지지 않게 정지한다.
-            if (bumpRoutine != null)
-            {
-                StopCoroutine(
-                    bumpRoutine);
-
-                bumpRoutine =
-                    null;
-
-                if (hasCachedPortraitRestPosition)
-                {
-                    portraitRectTransform.anchoredPosition =
-                        portraitRestPosition;
-                }
-            }
+            ClearDamageFeedback();
+            StopBump();
+            SetSlotVisible(
+                false);
         }
 
-        // 49일차: 이 슬롯을 대상으로 선택할 수 있는지 여부. 선택 가능할 때만 클릭이 동작한다.
         public void SetSelectable(
             bool selectable)
         {
@@ -153,7 +204,6 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        // 49일차: 현재 선택된 대상인지 강조 표시한다.
         public void SetSelected(
             bool selected)
         {
@@ -168,12 +218,12 @@ namespace ProjectDelta.Presentation
             backgroundImage.color =
                 selected
                     ? selectedBackgroundColor
-                    : (clickButton != null && clickButton.interactable
+                    : (clickButton != null
+                       && clickButton.interactable
                         ? selectableBackgroundColor
                         : normalBackgroundColor);
         }
 
-        // 49일차: 슬롯 클릭 시 호출할 콜백을 등록한다. 기존 콜백은 교체된다.
         public void SetOnClick(
             UnityAction callback)
         {
@@ -191,8 +241,72 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완한다.
-        // 이 슬롯의 참가자가 실제로 행동했을 때 일러스트를 살짝 위로 튀었다 내려오게 한다.
+        public void SetStatusEffects(
+            IReadOnlyList<StatusEffectInstance> statusEffects)
+        {
+            EnsureDay84RuntimeHud();
+
+            if (statusText == null)
+            {
+                return;
+            }
+
+            string formatted =
+                BattleHudDisplayFormatter.FormatStatusEffects(
+                    statusEffects);
+
+            statusText.text =
+                formatted;
+
+            statusText.gameObject.SetActive(
+                !string.IsNullOrEmpty(
+                    formatted));
+        }
+
+        public void SetCurrentActor(
+            bool isCurrentActor)
+        {
+            EnsureDay84RuntimeHud();
+
+            if (currentActorText == null)
+            {
+                return;
+            }
+
+            currentActorText.text =
+                isCurrentActor
+                    ? "행동 중"
+                    : string.Empty;
+
+            currentActorText.gameObject.SetActive(
+                isCurrentActor);
+        }
+
+        public void ShowDamageFeedback(
+            string text)
+        {
+            EnsureDay84RuntimeHud();
+
+            if (damageFeedbackText == null
+                || string.IsNullOrEmpty(
+                    text)
+                || !isActiveAndEnabled)
+            {
+                return;
+            }
+
+            if (damageFeedbackRoutine != null)
+            {
+                StopCoroutine(
+                    damageFeedbackRoutine);
+            }
+
+            damageFeedbackRoutine =
+                StartCoroutine(
+                    DamageFeedbackRoutine(
+                        text));
+        }
+
         public void PlayActionBump()
         {
             if (portraitImage == null
@@ -214,9 +328,237 @@ namespace ProjectDelta.Presentation
                     BumpRoutine());
         }
 
+        private void EnsureDay84RuntimeHud()
+        {
+            Transform parent =
+                slotRoot != null
+                    ? slotRoot.transform
+                    : transform;
+
+            if (statusText == null)
+            {
+                statusText =
+                    FindRuntimeText(
+                        parent,
+                        "Day84StatusText")
+                    ?? CreateRuntimeText(
+                        parent,
+                        "Day84StatusText",
+                        13,
+                        FontStyle.Normal,
+                        TextAnchor.LowerCenter);
+
+                RectTransform rect =
+                    statusText.rectTransform;
+
+                rect.anchorMin =
+                    new Vector2(
+                        0f,
+                        0f);
+
+                rect.anchorMax =
+                    new Vector2(
+                        1f,
+                        0f);
+
+                rect.pivot =
+                    new Vector2(
+                        0.5f,
+                        0f);
+
+                rect.anchoredPosition =
+                    new Vector2(
+                        0f,
+                        8f);
+
+                rect.sizeDelta =
+                    new Vector2(
+                        -18f,
+                        48f);
+
+                statusText.horizontalOverflow =
+                    HorizontalWrapMode.Wrap;
+
+                statusText.verticalOverflow =
+                    VerticalWrapMode.Truncate;
+
+                statusText.gameObject.SetActive(
+                    false);
+            }
+
+            if (damageFeedbackText == null)
+            {
+                damageFeedbackText =
+                    FindRuntimeText(
+                        parent,
+                        "Day84DamageFeedback")
+                    ?? CreateRuntimeText(
+                        parent,
+                        "Day84DamageFeedback",
+                        27,
+                        FontStyle.Bold,
+                        TextAnchor.MiddleCenter);
+
+                RectTransform rect =
+                    damageFeedbackText.rectTransform;
+
+                rect.anchorMin =
+                    new Vector2(
+                        0.5f,
+                        0.5f);
+
+                rect.anchorMax =
+                    new Vector2(
+                        0.5f,
+                        0.5f);
+
+                rect.pivot =
+                    new Vector2(
+                        0.5f,
+                        0.5f);
+
+                rect.anchoredPosition =
+                    new Vector2(
+                        0f,
+                        44f);
+
+                rect.sizeDelta =
+                    new Vector2(
+                        220f,
+                        54f);
+
+                Outline outline =
+                    damageFeedbackText.GetComponent<Outline>();
+
+                if (outline == null)
+                {
+                    outline =
+                        damageFeedbackText.gameObject.AddComponent<Outline>();
+                }
+
+                outline.effectDistance =
+                    new Vector2(
+                        1f,
+                        -1f);
+
+                damageFeedbackText.gameObject.SetActive(
+                    false);
+            }
+
+            if (currentActorText == null)
+            {
+                currentActorText =
+                    FindRuntimeText(
+                        parent,
+                        "Day84CurrentActor")
+                    ?? CreateRuntimeText(
+                        parent,
+                        "Day84CurrentActor",
+                        14,
+                        FontStyle.Bold,
+                        TextAnchor.UpperCenter);
+
+                RectTransform rect =
+                    currentActorText.rectTransform;
+
+                rect.anchorMin =
+                    new Vector2(
+                        0.5f,
+                        1f);
+
+                rect.anchorMax =
+                    new Vector2(
+                        0.5f,
+                        1f);
+
+                rect.pivot =
+                    new Vector2(
+                        0.5f,
+                        1f);
+
+                rect.anchoredPosition =
+                    new Vector2(
+                        0f,
+                        -6f);
+
+                rect.sizeDelta =
+                    new Vector2(
+                        120f,
+                        24f);
+
+                currentActorText.gameObject.SetActive(
+                    false);
+            }
+        }
+
+        private static Text FindRuntimeText(
+            Transform parent,
+            string objectName)
+        {
+            if (parent == null)
+            {
+                return null;
+            }
+
+            Transform found =
+                parent.Find(
+                    objectName);
+
+            return found != null
+                ? found.GetComponent<Text>()
+                : null;
+        }
+
+        private static Text CreateRuntimeText(
+            Transform parent,
+            string objectName,
+            int fontSize,
+            FontStyle fontStyle,
+            TextAnchor alignment)
+        {
+            GameObject textObject =
+                new GameObject(
+                    objectName,
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Text));
+
+            textObject.transform.SetParent(
+                parent,
+                false);
+
+            Text text =
+                textObject.GetComponent<Text>();
+
+            text.font =
+                Resources.GetBuiltinResource<Font>(
+                    "LegacyRuntime.ttf");
+
+            text.fontSize =
+                fontSize;
+
+            text.fontStyle =
+                fontStyle;
+
+            text.alignment =
+                alignment;
+
+            text.raycastTarget =
+                false;
+
+            text.horizontalOverflow =
+                HorizontalWrapMode.Overflow;
+
+            text.verticalOverflow =
+                VerticalWrapMode.Overflow;
+
+            return text;
+        }
+
         private void CachePortraitRestPositionIfNeeded()
         {
-            if (hasCachedPortraitRestPosition)
+            if (hasCachedPortraitRestPosition
+                || portraitImage == null)
             {
                 return;
             }
@@ -250,7 +592,7 @@ namespace ProjectDelta.Presentation
                 bumpDuration);
 
             portraitRectTransform.anchoredPosition =
-                portraitRestPosition; // 부동소수점 오차로 원위치에서 살짝 어긋나는 것을 방지
+                portraitRestPosition;
 
             bumpRoutine =
                 null;
@@ -269,7 +611,8 @@ namespace ProjectDelta.Presentation
                 yield break;
             }
 
-            float elapsed = 0f;
+            float elapsed =
+                0f;
 
             while (elapsed < duration)
             {
@@ -290,6 +633,108 @@ namespace ProjectDelta.Presentation
             }
         }
 
+        private IEnumerator DamageFeedbackRoutine(
+            string text)
+        {
+            damageFeedbackText.text =
+                text;
+
+            Color baseColor =
+                damageFeedbackText.color;
+
+            baseColor.a =
+                1f;
+
+            damageFeedbackText.color =
+                baseColor;
+
+            damageFeedbackText.gameObject.SetActive(
+                true);
+
+            if (damageVisibleDuration > 0f)
+            {
+                yield return new WaitForSecondsRealtime(
+                    damageVisibleDuration);
+            }
+
+            float elapsed =
+                0f;
+
+            while (elapsed < damageFadeDuration)
+            {
+                elapsed +=
+                    Time.unscaledDeltaTime;
+
+                float ratio =
+                    damageFadeDuration > 0f
+                        ? Mathf.Clamp01(
+                            elapsed / damageFadeDuration)
+                        : 1f;
+
+                Color color =
+                    baseColor;
+
+                color.a =
+                    1f - ratio;
+
+                damageFeedbackText.color =
+                    color;
+
+                yield return null;
+            }
+
+            damageFeedbackText.gameObject.SetActive(
+                false);
+
+            damageFeedbackText.color =
+                baseColor;
+
+            damageFeedbackRoutine =
+                null;
+        }
+
+        private void ClearDamageFeedback()
+        {
+            if (damageFeedbackRoutine != null)
+            {
+                StopCoroutine(
+                    damageFeedbackRoutine);
+
+                damageFeedbackRoutine =
+                    null;
+            }
+
+            if (damageFeedbackText != null)
+            {
+                damageFeedbackText.text =
+                    string.Empty;
+
+                damageFeedbackText.gameObject.SetActive(
+                    false);
+            }
+        }
+
+        private void StopBump()
+        {
+            if (bumpRoutine == null)
+            {
+                return;
+            }
+
+            StopCoroutine(
+                bumpRoutine);
+
+            bumpRoutine =
+                null;
+
+            if (hasCachedPortraitRestPosition
+                && portraitRectTransform != null)
+            {
+                portraitRectTransform.anchoredPosition =
+                    portraitRestPosition;
+            }
+        }
+
         private void ApplyPortrait(
             Sprite portrait,
             bool isAlive)
@@ -302,7 +747,6 @@ namespace ProjectDelta.Presentation
             portraitImage.sprite =
                 portrait;
 
-            // 일러스트가 없으면 자리 표시 색상만 보여준다.
             if (portrait == null)
             {
                 portraitImage.color =
@@ -340,7 +784,6 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        // 52일차: 방어 중 배지를 참가자 상태에 맞춰 켜고 끈다.
         private void ApplyDefendBadge(
             bool isDefending)
         {

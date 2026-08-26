@@ -4,6 +4,7 @@ using UnityEngine.UI;
 
 namespace ProjectDelta.Presentation
 {
+    // 84일차: 최대 4명 적의 행동 예고를 전투 HUD에서 즉시 읽을 수 있도록 표시를 정리한다.
     [DisallowMultipleComponent]
     public sealed class BattleIntentHudController : MonoBehaviour
     {
@@ -60,7 +61,9 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            for (int slotIndex = 0; slotIndex < intentTexts.Length; slotIndex++)
+            for (int slotIndex = 0;
+                 slotIndex < intentTexts.Length;
+                 slotIndex++)
             {
                 Text intentText =
                     intentTexts[slotIndex];
@@ -103,7 +106,7 @@ namespace ProjectDelta.Presentation
                     string.IsNullOrEmpty(
                         intent.TargetInstanceId)
                         ? string.Empty
-                        : $"\n→ {intent.TargetInstanceId}";
+                        : $"\n→ {GetTargetLabel(intent.TargetInstanceId)}";
 
                 intentText.text =
                     $"[{GetIconLabel(intent.IconType)}] {intent.DisplayName}{targetLabel}";
@@ -138,31 +141,39 @@ namespace ProjectDelta.Presentation
             }
         }
 
+        private static string GetTargetLabel(
+            string targetInstanceId)
+        {
+            return targetInstanceId == "PLAYER"
+                ? "플레이어"
+                : targetInstanceId;
+        }
+
         private static string GetIconLabel(
             BattleIntentIconType iconType)
         {
             switch (iconType)
             {
                 case BattleIntentIconType.Attack:
-                    return "ATK";
+                    return "공격";
 
                 case BattleIntentIconType.Defend:
-                    return "DEF";
+                    return "방어";
 
                 case BattleIntentIconType.Buff:
-                    return "BUFF";
+                    return "강화";
 
                 case BattleIntentIconType.Debuff:
-                    return "DEBUFF";
+                    return "약화";
 
                 case BattleIntentIconType.Status:
-                    return "STATUS";
+                    return "상태";
 
                 case BattleIntentIconType.Heal:
-                    return "HEAL";
+                    return "회복";
 
                 case BattleIntentIconType.Special:
-                    return "SPECIAL";
+                    return "특수";
 
                 default:
                     return "?";

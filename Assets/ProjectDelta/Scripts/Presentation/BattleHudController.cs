@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace ProjectDelta.Presentation
 {
-    // 47일차: 전투 화면 레이아웃을 담당한다.
+    // 84일차: 다수 대상·행동자·피해·상태이상 표시를 하나의 전투 HUD 갱신 흐름으로 정리한다.
     [DisallowMultipleComponent]
     public sealed class BattleHudController : MonoBehaviour
     {
@@ -33,8 +33,6 @@ namespace ProjectDelta.Presentation
         [Header("Action Buttons")]
         [SerializeField] private Button attackButton;
         [SerializeField] private Button defendButton;
-
-        // 83일차: 기존 씬에는 전용 직렬화 참조가 없으므로 actionButtons에서 자동 탐색한다.
         [SerializeField] private Button fleeButton;
 
         [SerializeField] private Button[] actionButtons =
@@ -140,7 +138,6 @@ namespace ProjectDelta.Presentation
                     OnDefendButtonClicked);
             }
 
-            // 83일차: 69일차에 구현된 ConfirmFlee를 실제 HUD 버튼에 연결한다.
             if (fleeButton != null)
             {
                 fleeButton.onClick.AddListener(
@@ -346,20 +343,30 @@ namespace ProjectDelta.Presentation
             RefreshEnemySlots(
                 context);
 
+            BattleParticipant currentActor =
+                encounterController.CurrentBattleActor;
+
             if (playerSlot != null)
             {
-                playerSlot.Bind(
+                BattleParticipant player =
                     context != null
                         ? context.Player
-                        : null,
+                        : null;
+
+                playerSlot.Bind(
+                    player,
                     playerPortrait);
+
+                playerSlot.SetCurrentActor(
+                    player != null
+                    && player == currentActor);
             }
 
-            PlayActionBumpIfNewActionHappened(
+            RefreshActionFeedback(
                 context);
         }
 
-        private void PlayActionBumpIfNewActionHappened(
+        private void RefreshActionFeedback(
             BattleContext context)
         {
             int currentSequence =
@@ -376,6 +383,19 @@ namespace ProjectDelta.Presentation
             BattleParticipant actor =
                 encounterController.LastActingParticipant;
 
+            PlayActorBump(
+                context,
+                actor);
+
+            PlayDamageFeedback(
+                context,
+                encounterController.LastBattleActionResult);
+        }
+
+        private void PlayActorBump(
+            BattleContext context,
+            BattleParticipant actor)
+        {
             if (context == null
                 || actor == null)
             {
@@ -385,7 +405,6 @@ namespace ProjectDelta.Presentation
             if (actor == context.Player)
             {
                 playerSlot?.PlayActionBump();
-
                 return;
             }
 
@@ -404,10 +423,88 @@ namespace ProjectDelta.Presentation
                     && enemy == actor)
                 {
                     enemySlots[slotIndex]?.PlayActionBump();
-
                     return;
                 }
             }
+        }
+
+        private void PlayDamageFeedback(
+            BattleContext context,
+            BattleActionResult actionResult)
+        {
+            if (context == null
+                || actionResult == null
+                || actionResult.DamageChanges == null)
+            {
+                return;
+            }
+
+            for (int index = 0;
+                 index < actionResult.DamageChanges.Count;
+                 index++)
+            {
+                BattleDamageChange change =
+                    actionResult.DamageChanges[index];
+
+                if (change == null
+                    || change.Target == null)
+                {
+                    continue;
+                }
+
+                BattleParticipantSlotView targetSlot =
+                    FindSlotForParticipant(
+                        context,
+                        change.Target);
+
+                if (targetSlot == null)
+                {
+                    continue;
+                }
+
+                string feedback =
+                    BattleHudDisplayFormatter.FormatDamageChange(
+                        change);
+
+                targetSlot.ShowDamageFeedback(
+                    feedback);
+            }
+        }
+
+        private BattleParticipantSlotView FindSlotForParticipant(
+            BattleContext context,
+            BattleParticipant participant)
+        {
+            if (context == null
+                || participant == null)
+            {
+                return null;
+            }
+
+            if (context.Player == participant)
+            {
+                return playerSlot;
+            }
+
+            if (enemySlots == null)
+            {
+                return null;
+            }
+
+            for (int slotIndex = 0;
+                 slotIndex < enemySlots.Length;
+                 slotIndex++)
+            {
+                if (context.TryGetEnemyAtSlot(
+                        slotIndex,
+                        out BattleParticipant enemy)
+                    && enemy == participant)
+                {
+                    return enemySlots[slotIndex];
+                }
+            }
+
+            return null;
         }
 
         private void RefreshEnemySlots(
@@ -423,6 +520,9 @@ namespace ProjectDelta.Presentation
 
             BattleParticipant selectedTarget =
                 encounterController.SelectedBattleTarget;
+
+            BattleParticipant currentActor =
+                encounterController.CurrentBattleActor;
 
             for (int slotIndex = 0;
                  slotIndex < enemySlots.Length;
@@ -457,6 +557,9 @@ namespace ProjectDelta.Presentation
 
                 slot.SetSelected(
                     enemy == selectedTarget);
+
+                slot.SetCurrentActor(
+                    enemy == currentActor);
             }
         }
 
@@ -464,6 +567,11 @@ namespace ProjectDelta.Presentation
             IReadOnlyList<BattleParticipant> participants,
             BattleParticipant participant)
         {
+            if (participants == null)
+            {
+                return false;
+            }
+
             for (int index = 0;
                  index < participants.Count;
                  index++)
@@ -558,7 +666,6 @@ namespace ProjectDelta.Presentation
         {
             ResolveFleeButtonReference();
 
-            // 아직 구현되지 않은 공용 행동 버튼은 기본적으로 비활성화한다.
             if (actionButtons != null)
             {
                 foreach (Button actionButton
@@ -572,11 +679,19 @@ namespace ProjectDelta.Presentation
                 }
             }
 
+            BattleParticipant actor =
+                encounterController.CurrentBattleActor;
+
+            bool playerCanAct =
+                encounterController.CurrentBattleState
+                    == BattleState.AwaitingAction
+                && actor != null
+                && actor.Team == BattleTeam.Player;
+
             if (attackButton != null)
             {
                 attackButton.interactable =
-                    encounterController.CurrentBattleState
-                        == BattleState.AwaitingAction
+                    playerCanAct
                     && encounterController.SelectedBattleTarget
                         != null;
             }
@@ -584,22 +699,13 @@ namespace ProjectDelta.Presentation
             if (defendButton != null)
             {
                 defendButton.interactable =
-                    encounterController.CurrentBattleState
-                        == BattleState.AwaitingAction;
+                    playerCanAct;
             }
 
-            // 83일차: 도주는 플레이어 행동 차례에서만 활성화한다.
-            // actionButtons 전체 비활성화 뒤 다시 설정하므로 매 프레임 false로 덮이던 문제를 해소한다.
             if (fleeButton != null)
             {
-                BattleParticipant actor =
-                    encounterController.CurrentBattleActor;
-
                 fleeButton.interactable =
-                    encounterController.CurrentBattleState
-                        == BattleState.AwaitingAction
-                    && actor != null
-                    && actor.Team == BattleTeam.Player;
+                    playerCanAct;
             }
 
             bool isBattleActive =
