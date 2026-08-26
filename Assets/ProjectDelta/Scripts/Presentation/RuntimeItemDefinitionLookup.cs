@@ -1,11 +1,36 @@
+using System.Collections.Generic;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using UnityEngine;
 
 namespace ProjectDelta.Presentation
 {
+    // 런타임에 이미 로드된 아이템 정의를 ID/에셋명/표시명으로 조회한다.
     public static class RuntimeItemDefinitionLookup
     {
+        private static readonly Dictionary<string, ItemDefinition> itemLookup =
+            new Dictionary<string, ItemDefinition>();
+
+        private static bool cacheInitialized;
+
+        [RuntimeInitializeOnLoadMethod(
+            RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCache()
+        {
+            itemLookup.Clear();
+
+            cacheInitialized =
+                false;
+        }
+
+        [RuntimeInitializeOnLoadMethod(
+            RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void InvalidateAfterSceneLoad()
+        {
+            cacheInitialized =
+                false;
+        }
+
         public static bool TryFind(
             string itemKey,
             out ItemDefinition definition)
@@ -19,68 +44,44 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
-            ItemDefinition[] definitions =
-                Resources.FindObjectsOfTypeAll<ItemDefinition>();
+            EnsureCache();
 
-            for (int index = 0;
-                 index < definitions.Length;
-                 index++)
+            if (!itemLookup.TryGetValue(
+                    itemKey,
+                    out definition)
+                || definition == null)
             {
-                ItemDefinition candidate =
-                    definitions[index];
+                definition =
+                    null;
 
-                if (candidate == null)
-                {
-                    continue;
-                }
-
-                if ((!string.IsNullOrEmpty(
-                            candidate.Id)
-                        && candidate.Id
-                            == itemKey)
-                    || candidate.name
-                        == itemKey
-                    || candidate.DisplayName
-                        == itemKey)
-                {
-                    definition =
-                        candidate;
-
-                    return true;
-                }
+                return false;
             }
 
-            return false;
+            return true;
         }
 
         public static string ResolveCanonicalItemId(
             string itemKey)
         {
-            if (TryFind(
+            return TryFind(
                     itemKey,
                     out ItemDefinition definition)
                 && !string.IsNullOrEmpty(
-                    definition.Id))
-            {
-                return definition.Id;
-            }
-
-            return itemKey;
+                    definition.Id)
+                    ? definition.Id
+                    : itemKey;
         }
 
         public static string ResolveDisplayName(
             string itemKey)
         {
-            if (TryFind(
+            return TryFind(
                     itemKey,
                     out ItemDefinition definition)
                 && !string.IsNullOrEmpty(
-                    definition.DisplayName))
-            {
-                return definition.DisplayName;
-            }
-
-            return itemKey;
+                    definition.DisplayName)
+                    ? definition.DisplayName
+                    : itemKey;
         }
 
         public static int ResolveMaxStackSize(
@@ -101,6 +102,67 @@ namespace ProjectDelta.Presentation
                     out ItemDefinition definition)
                 ? definition.Category
                 : ItemCategory.Uncategorized;
+        }
+
+        private static void EnsureCache()
+        {
+            if (cacheInitialized)
+            {
+                return;
+            }
+
+            RebuildCache();
+        }
+
+        private static void RebuildCache()
+        {
+            itemLookup.Clear();
+
+            ItemDefinition[] definitions =
+                Resources.FindObjectsOfTypeAll<ItemDefinition>();
+
+            for (int index = 0;
+                 index < definitions.Length;
+                 index++)
+            {
+                ItemDefinition definition =
+                    definitions[index];
+
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                AddLookupKey(
+                    definition.Id,
+                    definition);
+
+                AddLookupKey(
+                    definition.name,
+                    definition);
+
+                AddLookupKey(
+                    definition.DisplayName,
+                    definition);
+            }
+
+            cacheInitialized =
+                true;
+        }
+
+        private static void AddLookupKey(
+            string key,
+            ItemDefinition definition)
+        {
+            if (string.IsNullOrEmpty(
+                    key)
+                || definition == null)
+            {
+                return;
+            }
+
+            itemLookup[key] =
+                definition;
         }
     }
 }

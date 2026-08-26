@@ -25,10 +25,12 @@ namespace ProjectDelta.Presentation
         private InputAction interactAction;
 
         private string promptText;
-        private GUIStyle promptStyle;
-        private GUIStyle panelStyle;
-        private GUIStyle slotStyle;
-        private GUIStyle warningStyle;
+
+        [Header("UI")]
+        [SerializeField]
+        private ChestInteractionView interactionView;
+
+        private bool interactionViewHooked;
 
         private InventoryRunState inventory;
         private ChestContentMarker openChest;
@@ -70,10 +72,19 @@ namespace ProjectDelta.Presentation
                 RunContext.Current != null
                     ? RunContext.Current.Inventory
                     : new InventoryRunState();
+
+            ResolveInteractionView();
+            HookInteractionView();
+
+            interactionView?.SetPanelVisible(
+                false);
         }
 
         private void OnEnable()
         {
+            ResolveInteractionView();
+            HookInteractionView();
+
             if (inputActions == null)
             {
                 Debug.LogError(
@@ -106,10 +117,15 @@ namespace ProjectDelta.Presentation
                 interactAction.performed -=
                     OnInteract;
             }
+
+            UnhookInteractionView();
         }
 
         private void Update()
         {
+            ResolveInteractionView();
+            HookInteractionView();
+
             if (isPanelOpen)
             {
                 if (Keyboard.current != null
@@ -118,6 +134,7 @@ namespace ProjectDelta.Presentation
                     if (isOverflowPanelOpen)
                     {
                         CancelPendingAcquisition();
+                        RefreshInteractionView();
                     }
                     else
                     {
@@ -132,6 +149,9 @@ namespace ProjectDelta.Presentation
                 FindChestMarkerInFront() != null
                     ? "상자 열기 [F]"
                     : string.Empty;
+
+            interactionView?.SetInteractionPrompt(
+                promptText);
         }
 
         private void OnInteract(
@@ -199,6 +219,14 @@ namespace ProjectDelta.Presentation
             }
 
             ApplicationFlow.Current?.SaveDungeonProgress();
+
+            interactionView?.SetInteractionPrompt(
+                string.Empty);
+
+            interactionView?.SetPanelVisible(
+                true);
+
+            RefreshInteractionView();
         }
 
         private void ClosePanel()
@@ -222,6 +250,9 @@ namespace ProjectDelta.Presentation
                 lookController.SetCursorFreeForUi(
                     false);
             }
+
+            interactionView?.SetPanelVisible(
+                false);
         }
 
         private ChestContentMarker FindChestMarkerInFront()
@@ -281,202 +312,84 @@ namespace ProjectDelta.Presentation
             return null;
         }
 
-        private void OnGUI()
+        private void ResolveInteractionView()
         {
-            if (isPanelOpen)
-            {
-                DrawPanel();
-
-                if (isOverflowPanelOpen)
-                {
-                    DrawOverflowPanel();
-                }
-
-                return;
-            }
-
-            if (string.IsNullOrEmpty(
-                    promptText))
+            if (interactionView != null)
             {
                 return;
             }
 
-            EnsurePromptStyle();
-
-            Rect promptRect =
-                new Rect(
-                    0f,
-                    Screen.height * 0.72f,
-                    Screen.width,
-                    40f);
-
-            GUI.Label(
-                promptRect,
-                promptText,
-                promptStyle);
+            interactionView =
+                FindFirstObjectByType<ChestInteractionView>();
         }
 
-        private void DrawPanel()
+        private void HookInteractionView()
         {
-            EnsurePanelStyles();
-
-            float panelWidth =
-                300f;
-
-            float panelHeight =
-                360f;
-
-            float gap =
-                40f;
-
-            float centerX =
-                Screen.width / 2f;
-
-            float top =
-                (Screen.height - panelHeight)
-                / 2f;
-
-            Rect inventoryRect =
-                new Rect(
-                    centerX
-                        - (gap / 2f)
-                        - panelWidth,
-                    top,
-                    panelWidth,
-                    panelHeight);
-
-            Rect chestRect =
-                new Rect(
-                    centerX
-                        + (gap / 2f),
-                    top,
-                    panelWidth,
-                    panelHeight);
-
-            GUI.Box(
-                inventoryRect,
-                isSelectingReplacement
-                    ? "교체할 슬롯 선택"
-                    : "인벤토리",
-                panelStyle);
-
-            GUI.Box(
-                chestRect,
-                "상자",
-                panelStyle);
-
-            DrawInventorySlots(
-                inventoryRect);
-
-            DrawChestSlots(
-                chestRect);
-
-            bool previousEnabled =
-                GUI.enabled;
-
-            GUI.enabled =
-                !isOverflowPanelOpen;
-
-            Rect closeRect =
-                new Rect(
-                    centerX - 50f,
-                    top + panelHeight + 12f,
-                    100f,
-                    32f);
-
-            if (GUI.Button(
-                    closeRect,
-                    "닫기"))
+            if (interactionView == null
+                || interactionViewHooked)
             {
-                ClosePanel();
+                return;
             }
 
-            GUI.enabled =
-                previousEnabled;
+            interactionView.ChestItemClicked += HandleChestItemClicked;
+            interactionView.ReplacementSlotClicked += HandleReplacementSlotClicked;
+            interactionView.CloseRequested += ClosePanel;
+            interactionView.LeaveRequested += HandleLeaveRequested;
+            interactionView.BeginReplacementRequested += HandleBeginReplacementRequested;
+            interactionView.CancelAcquisitionRequested += HandleCancelAcquisitionRequested;
+            interactionView.BackReplacementRequested += HandleBackReplacementRequested;
+
+            interactionViewHooked = true;
         }
 
-        private void DrawInventorySlots(
-            Rect panelRect)
+        private void UnhookInteractionView()
         {
-            float y =
-                panelRect.y + 36f;
-
-            int visibleSlotCount =
-                Mathf.Min(
-                    InventoryRunState.BaseSlotCount,
-                    inventory.Slots.Count);
-
-            for (int index = 0;
-                 index < visibleSlotCount;
-                 index++)
+            if (interactionView == null
+                || !interactionViewHooked)
             {
-                InventorySlotState slot =
-                    inventory.Slots[index];
-
-                Rect slotRect =
-                    new Rect(
-                        panelRect.x + 10f,
-                        y,
-                        panelRect.width - 20f,
-                        28f);
-
-                string slotText =
-                    slot == null
-                    || slot.IsEmpty
-                        ? $"{index + 1}. (빈 슬롯)"
-                        : $"{index + 1}. {slot.DisplayName} ×{slot.Quantity}";
-
-                if (!isSelectingReplacement)
-                {
-                    GUI.Label(
-                        slotRect,
-                        slotText,
-                        slotStyle);
-
-                    y += 30f;
-                    continue;
-                }
-
-                ItemCategory category =
-                    slot == null
-                    || slot.IsEmpty
-                        ? ItemCategory.Uncategorized
-                        : RuntimeItemDefinitionLookup.ResolveCategory(
-                            slot.ItemId);
-
-                bool canReplace =
-                    slot != null
-                    && !slot.IsEmpty
-                    && InventoryAcquisitionService.CanReplaceTarget(
-                        category);
-
-                bool previousEnabled =
-                    GUI.enabled;
-
-                GUI.enabled =
-                    canReplace;
-
-                if (GUI.Button(
-                        slotRect,
-                        slotText,
-                        slotStyle))
-                {
-                    ResolveReplacement(
-                        index,
-                        category);
-                }
-
-                GUI.enabled =
-                    previousEnabled;
-
-                y += 30f;
+                return;
             }
+
+            interactionView.ChestItemClicked -= HandleChestItemClicked;
+            interactionView.ReplacementSlotClicked -= HandleReplacementSlotClicked;
+            interactionView.CloseRequested -= ClosePanel;
+            interactionView.LeaveRequested -= HandleLeaveRequested;
+            interactionView.BeginReplacementRequested -= HandleBeginReplacementRequested;
+            interactionView.CancelAcquisitionRequested -= HandleCancelAcquisitionRequested;
+            interactionView.BackReplacementRequested -= HandleBackReplacementRequested;
+
+            interactionViewHooked = false;
         }
 
-        private void DrawChestSlots(
-            Rect panelRect)
+        private void RefreshInteractionView()
         {
-            if (openChest == null)
+            if (interactionView == null)
+            {
+                return;
+            }
+
+            interactionView.SetInteractionPrompt(string.Empty);
+
+            if (!isPanelOpen)
+            {
+                interactionView.SetPanelVisible(false);
+                return;
+            }
+
+            interactionView.Render(
+                openChest != null
+                    ? openChest.RemainingItems
+                    : null,
+                inventory,
+                isOverflowPanelOpen,
+                isSelectingReplacement,
+                overflowStatusText);
+        }
+
+        private void HandleChestItemClicked(int chestIndex)
+        {
+            if (isOverflowPanelOpen
+                || openChest == null)
             {
                 return;
             }
@@ -484,57 +397,91 @@ namespace ProjectDelta.Presentation
             IReadOnlyList<string> items =
                 openChest.RemainingItems;
 
-            float y =
-                panelRect.y + 36f;
-
-            if (items.Count == 0)
+            if (items == null
+                || chestIndex < 0
+                || chestIndex >= items.Count)
             {
-                GUI.Label(
-                    new Rect(
-                        panelRect.x + 10f,
-                        y,
-                        panelRect.width - 20f,
-                        28f),
-                    "(비어있음)",
-                    slotStyle);
-
                 return;
             }
 
-            bool previousEnabled =
-                GUI.enabled;
+            BeginChestAcquisition(
+                chestIndex,
+                items[chestIndex]);
 
-            GUI.enabled =
-                !isOverflowPanelOpen;
+            RefreshInteractionView();
+        }
 
-            for (int index = 0;
-                 index < items.Count;
-                 index++)
+        private void HandleReplacementSlotClicked(int targetSlotIndex)
+        {
+            if (!isOverflowPanelOpen
+                || !isSelectingReplacement
+                || pendingPlan == null
+                || inventory == null
+                || !inventory.TryGetSlot(
+                    targetSlotIndex,
+                    out InventorySlotState slot)
+                || slot == null
+                || slot.IsEmpty)
             {
-                Rect slotRect =
-                    new Rect(
-                        panelRect.x + 10f,
-                        y,
-                        panelRect.width - 20f,
-                        28f);
-
-                if (GUI.Button(
-                        slotRect,
-                        items[index],
-                        slotStyle))
-                {
-                    BeginChestAcquisition(
-                        index,
-                        items[index]);
-
-                    break;
-                }
-
-                y += 30f;
+                return;
             }
 
-            GUI.enabled =
-                previousEnabled;
+            ItemCategory category =
+                RuntimeItemDefinitionLookup.ResolveCategory(
+                    slot.ItemId);
+
+            if (!InventoryAcquisitionService.CanReplaceTarget(category))
+            {
+                return;
+            }
+
+            ResolveReplacement(
+                targetSlotIndex,
+                category);
+
+            RefreshInteractionView();
+        }
+
+        private void HandleLeaveRequested()
+        {
+            ResolveLeave();
+            RefreshInteractionView();
+        }
+
+        private void HandleBeginReplacementRequested()
+        {
+            if (pendingPlan == null)
+            {
+                return;
+            }
+
+            isSelectingReplacement = true;
+
+            overflowStatusText =
+                "교체할 인벤토리 슬롯을 선택하세요.\n중요/유물/저주/미분류 아이템은 교체할 수 없습니다.";
+
+            RefreshInteractionView();
+        }
+
+        private void HandleCancelAcquisitionRequested()
+        {
+            CancelPendingAcquisition();
+            RefreshInteractionView();
+        }
+
+        private void HandleBackReplacementRequested()
+        {
+            if (pendingPlan == null)
+            {
+                return;
+            }
+
+            isSelectingReplacement = false;
+
+            overflowStatusText =
+                $"인벤토리에 공간이 없습니다.\n{pendingPlan.DisplayName} ×{pendingPlan.RemainingQuantity}";
+
+            RefreshInteractionView();
         }
 
         private void BeginChestAcquisition(
@@ -591,120 +538,6 @@ namespace ProjectDelta.Presentation
 
             overflowStatusText =
                 $"인벤토리에 공간이 없습니다.\n{plan.DisplayName} ×{plan.RemainingQuantity}";
-        }
-
-        private void DrawOverflowPanel()
-        {
-            if (pendingPlan == null)
-            {
-                return;
-            }
-
-            EnsurePanelStyles();
-
-            float width =
-                420f;
-
-            float height =
-                isSelectingReplacement
-                    ? 190f
-                    : 230f;
-
-            Rect panelRect =
-                new Rect(
-                    (Screen.width - width) / 2f,
-                    60f,
-                    width,
-                    height);
-
-            GUI.Box(
-                panelRect,
-                "인벤토리가 가득 찼습니다",
-                panelStyle);
-
-            Rect messageRect =
-                new Rect(
-                    panelRect.x + 20f,
-                    panelRect.y + 45f,
-                    panelRect.width - 40f,
-                    65f);
-
-            GUI.Label(
-                messageRect,
-                overflowStatusText,
-                warningStyle);
-
-            if (isSelectingReplacement)
-            {
-                Rect backRect =
-                    new Rect(
-                        panelRect.x + 135f,
-                        panelRect.y + 135f,
-                        150f,
-                        36f);
-
-                if (GUI.Button(
-                        backRect,
-                        "선택 취소"))
-                {
-                    isSelectingReplacement =
-                        false;
-
-                    overflowStatusText =
-                        $"인벤토리에 공간이 없습니다.\n{pendingPlan.DisplayName} ×{pendingPlan.RemainingQuantity}";
-                }
-
-                return;
-            }
-
-            float buttonY =
-                panelRect.y + 150f;
-
-            Rect leaveRect =
-                new Rect(
-                    panelRect.x + 15f,
-                    buttonY,
-                    120f,
-                    38f);
-
-            Rect replaceRect =
-                new Rect(
-                    panelRect.x + 150f,
-                    buttonY,
-                    120f,
-                    38f);
-
-            Rect cancelRect =
-                new Rect(
-                    panelRect.x + 285f,
-                    buttonY,
-                    120f,
-                    38f);
-
-            if (GUI.Button(
-                    leaveRect,
-                    "두고 간다"))
-            {
-                ResolveLeave();
-            }
-
-            if (GUI.Button(
-                    replaceRect,
-                    "교체"))
-            {
-                isSelectingReplacement =
-                    true;
-
-                overflowStatusText =
-                    "왼쪽 인벤토리에서 교체할 슬롯을 선택하세요.\n중요/유물/저주/미분류 아이템은 교체할 수 없습니다.";
-            }
-
-            if (GUI.Button(
-                    cancelRect,
-                    "취소"))
-            {
-                CancelPendingAcquisition();
-            }
         }
 
         private void ResolveLeave()
@@ -831,76 +664,6 @@ namespace ProjectDelta.Presentation
                 string.Empty;
         }
 
-        private void EnsurePromptStyle()
-        {
-            if (promptStyle != null)
-            {
-                return;
-            }
 
-            promptStyle =
-                new GUIStyle(
-                    GUI.skin.label);
-
-            promptStyle.alignment =
-                TextAnchor.MiddleCenter;
-
-            promptStyle.fontSize =
-                22;
-
-            promptStyle.normal.textColor =
-                Color.white;
-        }
-
-        private void EnsurePanelStyles()
-        {
-            if (panelStyle == null)
-            {
-                panelStyle =
-                    new GUIStyle(
-                        GUI.skin.box);
-
-                panelStyle.fontSize =
-                    18;
-
-                panelStyle.alignment =
-                    TextAnchor.UpperCenter;
-
-                panelStyle.normal.textColor =
-                    Color.white;
-            }
-
-            if (slotStyle == null)
-            {
-                slotStyle =
-                    new GUIStyle(
-                        GUI.skin.button);
-
-                slotStyle.alignment =
-                    TextAnchor.MiddleLeft;
-
-                slotStyle.fontSize =
-                    16;
-            }
-
-            if (warningStyle == null)
-            {
-                warningStyle =
-                    new GUIStyle(
-                        GUI.skin.label);
-
-                warningStyle.alignment =
-                    TextAnchor.MiddleCenter;
-
-                warningStyle.fontSize =
-                    16;
-
-                warningStyle.wordWrap =
-                    true;
-
-                warningStyle.normal.textColor =
-                    Color.white;
-            }
-        }
     }
 }

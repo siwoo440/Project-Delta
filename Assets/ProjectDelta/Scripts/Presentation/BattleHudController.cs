@@ -45,6 +45,10 @@ namespace ProjectDelta.Presentation
 
         private int lastPlayedActionSequence;
 
+        // 96일차: 같은 몬스터 초상화를 매 프레임 Resources.Load 하지 않도록 캐시한다.
+        private readonly Dictionary<string, Sprite> monsterPortraitCache =
+            new Dictionary<string, Sprite>();
+
         private void Awake()
         {
             ResolveEncounterController();
@@ -585,18 +589,38 @@ namespace ProjectDelta.Presentation
             return false;
         }
 
-        private static Sprite LoadMonsterPortrait(
+        private Sprite LoadMonsterPortrait(
             string monsterDefinitionId)
         {
+            if (string.IsNullOrEmpty(
+                    monsterDefinitionId))
+            {
+                return null;
+            }
+
+            if (monsterPortraitCache.TryGetValue(
+                    monsterDefinitionId,
+                    out Sprite cachedPortrait))
+            {
+                return cachedPortrait;
+            }
+
             string resourcePath =
                 MonsterBillboardView.BuildResourcePath(
                     monsterDefinitionId);
 
-            return string.IsNullOrEmpty(
+            Sprite portrait =
+                string.IsNullOrEmpty(
                     resourcePath)
-                ? null
-                : Resources.Load<Sprite>(
-                    resourcePath);
+                    ? null
+                    : Resources.Load<Sprite>(
+                        resourcePath);
+
+            // 찾지 못한 경우(null)도 캐시해서 잘못된 ID를 매 프레임 다시 조회하지 않는다.
+            monsterPortraitCache[monsterDefinitionId] =
+                portrait;
+
+            return portrait;
         }
 
         private void RefreshPlayerVitals()

@@ -61,16 +61,32 @@ namespace ProjectDelta.Presentation
         private int selectedSlotIndex =
             -1;
 
+        [Header("Actions")]
+        [SerializeField]
         private Button useButton;
+
+        [SerializeField]
         private Button moveButton;
+
+        [SerializeField]
         private Button discardButton;
 
+        [SerializeField]
         private Text moveButtonText;
 
+        [SerializeField]
         private GameObject discardConfirmPanel;
+
+        [SerializeField]
         private Text discardConfirmText;
+
+        [SerializeField]
         private Button discardOneButton;
+
+        [SerializeField]
         private Button discardAllButton;
+
+        [SerializeField]
         private Button discardCancelButton;
 
         private bool isMoveMode;
@@ -81,6 +97,10 @@ namespace ProjectDelta.Presentation
 
         private string lastUseMessage =
             string.Empty;
+
+        // 96일차: 전체 인벤토리 UI를 매 프레임 다시 그리지 않기 위한 상태 서명.
+        private bool hasRefreshSignature;
+        private ulong lastRefreshSignature;
 
         private bool IsDiscardConfirmOpen =>
             discardConfirmPanel != null
@@ -93,6 +113,19 @@ namespace ProjectDelta.Presentation
 
         private void Update()
         {
+            // 선택 아이템이 있을 때만 조우 컨트롤러를 늦게 찾는다.
+            // 한 번 찾은 뒤에는 ResolveEncounterController()가 즉시 반환한다.
+            if (selectedSlotIndex >= 0
+                && encounterController == null)
+            {
+                ResolveEncounterController();
+            }
+
+            if (!ShouldRefreshInventory())
+            {
+                return;
+            }
+
             RefreshInventory();
         }
 
@@ -120,7 +153,6 @@ namespace ProjectDelta.Presentation
 
             ResizeSlotArrayLengths();
             AutoBindQuantityTexts();
-            EnsureActionUi();
             HookButtons();
 
             selectedSlotIndex =
@@ -280,463 +312,6 @@ namespace ProjectDelta.Presentation
                         quantityTransform.GetComponent<Text>();
                 }
             }
-        }
-
-        private void EnsureActionUi()
-        {
-            if (selectedItemPanel == null)
-            {
-                return;
-            }
-
-            useButton =
-                EnsureActionButton(
-                    "UseButton",
-                    "사용",
-                    -210f);
-
-            moveButton =
-                EnsureActionButton(
-                    "MoveButton",
-                    "이동",
-                    -110f);
-
-            discardButton =
-                EnsureActionButton(
-                    "DiscardButton",
-                    "버리기",
-                    -10f);
-
-            moveButtonText =
-                moveButton != null
-                    ? FindButtonText(
-                        moveButton)
-                    : null;
-
-            EnsureDiscardConfirmPanel();
-        }
-
-        private Button EnsureActionButton(
-            string objectName,
-            string label,
-            float anchoredX)
-        {
-            Button button =
-                FindButtonByName(
-                    objectName);
-
-            if (button == null)
-            {
-                GameObject buttonObject =
-                    new GameObject(
-                        objectName,
-                        typeof(RectTransform),
-                        typeof(Image),
-                        typeof(Button));
-
-                buttonObject.transform.SetParent(
-                    selectedItemPanel.transform,
-                    false);
-
-                Image background =
-                    buttonObject.GetComponent<Image>();
-
-                background.color =
-                    new Color(
-                        0.18f,
-                        0.18f,
-                        0.18f,
-                        0.95f);
-
-                button =
-                    buttonObject.GetComponent<Button>();
-            }
-
-            RectTransform rectTransform =
-                button.GetComponent<RectTransform>();
-
-            rectTransform.anchorMin =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.anchorMax =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.pivot =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.sizeDelta =
-                new Vector2(
-                    90f,
-                    32f);
-
-            rectTransform.anchoredPosition =
-                new Vector2(
-                    anchoredX,
-                    10f);
-
-            Text text =
-                EnsureButtonText(
-                    button,
-                    label);
-
-            text.text =
-                label;
-
-            return button;
-        }
-
-        private Button FindButtonByName(
-            string objectName)
-        {
-            if (selectedItemPanel == null)
-            {
-                return null;
-            }
-
-            Button[] buttons =
-                selectedItemPanel.GetComponentsInChildren<Button>(
-                    true);
-
-            for (int index = 0;
-                 index < buttons.Length;
-                 index++)
-            {
-                Button button =
-                    buttons[index];
-
-                if (button != null
-                    && button.name
-                        == objectName)
-                {
-                    return button;
-                }
-            }
-
-            return null;
-        }
-
-        private static Text FindButtonText(
-            Button button)
-        {
-            if (button == null)
-            {
-                return null;
-            }
-
-            Transform textTransform =
-                button.transform.Find(
-                    "Text");
-
-            return textTransform != null
-                ? textTransform.GetComponent<Text>()
-                : button.GetComponentInChildren<Text>(
-                    true);
-        }
-
-        private static Text EnsureButtonText(
-            Button button,
-            string label)
-        {
-            Text text =
-                FindButtonText(
-                    button);
-
-            if (text != null)
-            {
-                return text;
-            }
-
-            GameObject textObject =
-                new GameObject(
-                    "Text",
-                    typeof(RectTransform),
-                    typeof(Text));
-
-            textObject.transform.SetParent(
-                button.transform,
-                false);
-
-            RectTransform textRect =
-                textObject.GetComponent<RectTransform>();
-
-            textRect.anchorMin =
-                Vector2.zero;
-
-            textRect.anchorMax =
-                Vector2.one;
-
-            textRect.offsetMin =
-                Vector2.zero;
-
-            textRect.offsetMax =
-                Vector2.zero;
-
-            text =
-                textObject.GetComponent<Text>();
-
-            text.text =
-                label;
-
-            text.alignment =
-                TextAnchor.MiddleCenter;
-
-            text.fontSize =
-                16;
-
-            text.color =
-                Color.white;
-
-            text.raycastTarget =
-                false;
-
-            text.font =
-                Resources.GetBuiltinResource<Font>(
-                    "LegacyRuntime.ttf");
-
-            return text;
-        }
-
-        private void EnsureDiscardConfirmPanel()
-        {
-            Transform existing =
-                selectedItemPanel.transform.Find(
-                    "DiscardConfirmPanel");
-
-            if (existing != null)
-            {
-                discardConfirmPanel =
-                    existing.gameObject;
-            }
-            else
-            {
-                discardConfirmPanel =
-                    new GameObject(
-                        "DiscardConfirmPanel",
-                        typeof(RectTransform),
-                        typeof(Image));
-
-                discardConfirmPanel.transform.SetParent(
-                    selectedItemPanel.transform,
-                    false);
-            }
-
-            RectTransform panelRect =
-                discardConfirmPanel.GetComponent<RectTransform>();
-
-            panelRect.anchorMin =
-                new Vector2(
-                    0.5f,
-                    0.5f);
-
-            panelRect.anchorMax =
-                new Vector2(
-                    0.5f,
-                    0.5f);
-
-            panelRect.pivot =
-                new Vector2(
-                    0.5f,
-                    0.5f);
-
-            panelRect.sizeDelta =
-                new Vector2(
-                    360f,
-                    150f);
-
-            panelRect.anchoredPosition =
-                Vector2.zero;
-
-            Image panelImage =
-                discardConfirmPanel.GetComponent<Image>();
-
-            panelImage.color =
-                new Color(
-                    0.06f,
-                    0.06f,
-                    0.06f,
-                    0.98f);
-
-            discardConfirmText =
-                EnsureDiscardConfirmText();
-
-            discardOneButton =
-                EnsureDiscardPanelButton(
-                    "DiscardOneButton",
-                    "1개 버리기",
-                    -110f);
-
-            discardAllButton =
-                EnsureDiscardPanelButton(
-                    "DiscardAllButton",
-                    "전부 버리기",
-                    0f);
-
-            discardCancelButton =
-                EnsureDiscardPanelButton(
-                    "DiscardCancelButton",
-                    "취소",
-                    110f);
-
-            discardConfirmPanel.transform.SetAsLastSibling();
-
-            discardConfirmPanel.SetActive(
-                false);
-        }
-
-        private Text EnsureDiscardConfirmText()
-        {
-            Transform existing =
-                discardConfirmPanel.transform.Find(
-                    "MessageText");
-
-            Text text;
-
-            if (existing != null)
-            {
-                text =
-                    existing.GetComponent<Text>();
-            }
-            else
-            {
-                GameObject textObject =
-                    new GameObject(
-                        "MessageText",
-                        typeof(RectTransform),
-                        typeof(Text));
-
-                textObject.transform.SetParent(
-                    discardConfirmPanel.transform,
-                    false);
-
-                text =
-                    textObject.GetComponent<Text>();
-            }
-
-            RectTransform rectTransform =
-                text.GetComponent<RectTransform>();
-
-            rectTransform.anchorMin =
-                new Vector2(
-                    0f,
-                    0f);
-
-            rectTransform.anchorMax =
-                new Vector2(
-                    1f,
-                    1f);
-
-            rectTransform.offsetMin =
-                new Vector2(
-                    15f,
-                    58f);
-
-            rectTransform.offsetMax =
-                new Vector2(
-                    -15f,
-                    -15f);
-
-            text.alignment =
-                TextAnchor.MiddleCenter;
-
-            text.fontSize =
-                16;
-
-            text.color =
-                Color.white;
-
-            text.font =
-                Resources.GetBuiltinResource<Font>(
-                    "LegacyRuntime.ttf");
-
-            text.raycastTarget =
-                false;
-
-            return text;
-        }
-
-        private Button EnsureDiscardPanelButton(
-            string objectName,
-            string label,
-            float anchoredX)
-        {
-            Transform existing =
-                discardConfirmPanel.transform.Find(
-                    objectName);
-
-            Button button;
-
-            if (existing != null)
-            {
-                button =
-                    existing.GetComponent<Button>();
-            }
-            else
-            {
-                GameObject buttonObject =
-                    new GameObject(
-                        objectName,
-                        typeof(RectTransform),
-                        typeof(Image),
-                        typeof(Button));
-
-                buttonObject.transform.SetParent(
-                    discardConfirmPanel.transform,
-                    false);
-
-                button =
-                    buttonObject.GetComponent<Button>();
-
-                Image image =
-                    buttonObject.GetComponent<Image>();
-
-                image.color =
-                    new Color(
-                        0.18f,
-                        0.18f,
-                        0.18f,
-                        1f);
-            }
-
-            RectTransform rectTransform =
-                button.GetComponent<RectTransform>();
-
-            rectTransform.anchorMin =
-                new Vector2(
-                    0.5f,
-                    0f);
-
-            rectTransform.anchorMax =
-                new Vector2(
-                    0.5f,
-                    0f);
-
-            rectTransform.pivot =
-                new Vector2(
-                    0.5f,
-                    0f);
-
-            rectTransform.sizeDelta =
-                new Vector2(
-                    100f,
-                    34f);
-
-            rectTransform.anchoredPosition =
-                new Vector2(
-                    anchoredX,
-                    15f);
-
-            EnsureButtonText(
-                button,
-                label).text =
-                label;
-
-            return button;
         }
 
         private void HookButtons()
@@ -1251,6 +826,304 @@ namespace ProjectDelta.Presentation
             if (selectedSlotIndex >= 0)
             {
                 RefreshSelectedItem();
+            }
+
+            // 직접 호출된 Refresh도 현재 상태를 기준으로 기록하여
+            // 다음 프레임에 같은 UI를 한 번 더 갱신하지 않는다.
+            CaptureRefreshSignature();
+        }
+
+        private bool ShouldRefreshInventory()
+        {
+            ulong currentSignature =
+                CalculateRefreshSignature();
+
+            return !hasRefreshSignature
+                || currentSignature
+                    != lastRefreshSignature;
+        }
+
+        private void CaptureRefreshSignature()
+        {
+            lastRefreshSignature =
+                CalculateRefreshSignature();
+
+            hasRefreshSignature =
+                true;
+        }
+
+        private ulong CalculateRefreshSignature()
+        {
+            // FNV-1a 64bit. UI에 영향을 주는 작은 상태만 비교하므로
+            // 매 프레임 전체 Graphic/Text를 갱신하는 것보다 훨씬 가볍다.
+            ulong signature =
+                1469598103934665603UL;
+
+            AddRefreshSignature(
+                ref signature,
+                selectedSlotIndex);
+
+            AddRefreshSignature(
+                ref signature,
+                isMoveMode);
+
+            AddRefreshSignature(
+                ref signature,
+                moveSourceSlotIndex);
+
+            AddRefreshSignature(
+                ref signature,
+                IsDiscardConfirmOpen);
+
+            AddRefreshSignature(
+                ref signature,
+                lastUseMessage);
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            AddRefreshSignature(
+                ref signature,
+                inventory != null);
+
+            if (inventory != null)
+            {
+                AddRefreshSignature(
+                    ref signature,
+                    inventory.Slots.Count);
+
+                int slotCount =
+                    Mathf.Min(
+                        VisibleSlotCount,
+                        inventory.Slots.Count);
+
+                for (int index = 0;
+                     index < slotCount;
+                     index++)
+                {
+                    InventorySlotState slot =
+                        inventory.Slots[index];
+
+                    bool hasItem =
+                        slot != null
+                        && !slot.IsEmpty;
+
+                    AddRefreshSignature(
+                        ref signature,
+                        hasItem);
+
+                    if (!hasItem)
+                    {
+                        continue;
+                    }
+
+                    AddRefreshSignature(
+                        ref signature,
+                        slot.ItemId);
+
+                    AddRefreshSignature(
+                        ref signature,
+                        slot.DisplayName);
+
+                    AddRefreshSignature(
+                        ref signature,
+                        slot.Quantity);
+
+                    AddRefreshSignature(
+                        ref signature,
+                        slot.MaxStackSize);
+                }
+            }
+
+            // 선택 아이템이 없으면 자원/전투 상태는 인벤토리 표시 결과에 영향을 주지 않는다.
+            if (selectedSlotIndex < 0)
+            {
+                return signature;
+            }
+
+            RunContext runContext =
+                RunContext.Current;
+
+            PlayerRunState player =
+                runContext != null
+                    ? runContext.Player
+                    : null;
+
+            AddRefreshSignature(
+                ref signature,
+                player != null);
+
+            if (player != null)
+            {
+                AddRefreshSignature(
+                    ref signature,
+                    player.CurrentHp);
+
+                AddRefreshSignature(
+                    ref signature,
+                    player.CurrentMana);
+
+                AddRefreshSignature(
+                    ref signature,
+                    player.CurrentStamina);
+
+                StatBlock finalStats =
+                    player.GetFinalStats();
+
+                AddRefreshSignature(
+                    ref signature,
+                    finalStats.MaxHealth);
+
+                AddRefreshSignature(
+                    ref signature,
+                    finalStats.MaxMana);
+
+                AddRefreshSignature(
+                    ref signature,
+                    finalStats.MaxStamina);
+            }
+
+            AddRefreshSignature(
+                ref signature,
+                encounterController != null);
+
+            if (encounterController == null)
+            {
+                return signature;
+            }
+
+            AddRefreshSignature(
+                ref signature,
+                encounterController.HasBattle);
+
+            AddRefreshSignature(
+                ref signature,
+                encounterController.IsBattleActive);
+
+            AddRefreshSignature(
+                ref signature,
+                (int)encounterController.CurrentBattleState);
+
+            BattleParticipant actor =
+                encounterController.CurrentBattleActor;
+
+            AddRefreshSignature(
+                ref signature,
+                actor != null);
+
+            if (actor != null)
+            {
+                AddRefreshSignature(
+                    ref signature,
+                    actor.InstanceId);
+
+                AddRefreshSignature(
+                    ref signature,
+                    (int)actor.Team);
+            }
+
+            BattleContext battleContext =
+                encounterController.CurrentBattleContext;
+
+            BattleParticipant battlePlayer =
+                battleContext != null
+                    ? battleContext.Player
+                    : null;
+
+            AddRefreshSignature(
+                ref signature,
+                battlePlayer != null);
+
+            if (battlePlayer != null)
+            {
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.CurrentHp);
+
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.MaxHp);
+
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.CurrentMana);
+
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.MaxMana);
+
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.CurrentStamina);
+
+                AddRefreshSignature(
+                    ref signature,
+                    battlePlayer.MaxStamina);
+            }
+
+            return signature;
+        }
+
+        private static void AddRefreshSignature(
+            ref ulong signature,
+            bool value)
+        {
+            AddRefreshSignature(
+                ref signature,
+                value
+                    ? 1
+                    : 0);
+        }
+
+        private static void AddRefreshSignature(
+            ref ulong signature,
+            int value)
+        {
+            unchecked
+            {
+                signature ^=
+                    (ulong)(uint)value;
+
+                signature *=
+                    1099511628211UL;
+            }
+        }
+
+        private static void AddRefreshSignature(
+            ref ulong signature,
+            string value)
+        {
+            unchecked
+            {
+                if (string.IsNullOrEmpty(
+                        value))
+                {
+                    signature ^=
+                        0UL;
+
+                    signature *=
+                        1099511628211UL;
+
+                    return;
+                }
+
+                for (int index = 0;
+                     index < value.Length;
+                     index++)
+                {
+                    signature ^=
+                        value[index];
+
+                    signature *=
+                        1099511628211UL;
+                }
+
+                // 서로 다른 문자열 경계를 구분한다.
+                signature ^=
+                    255UL;
+
+                signature *=
+                    1099511628211UL;
             }
         }
 
