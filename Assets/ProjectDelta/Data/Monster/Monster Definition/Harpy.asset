@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Harpy
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_HARPY
-  displayName: 하피
+  displayName: "\uD558\uD53C"
   rarity: 0
   maxHp: 13
   maxMana: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 5
   resistance: 0
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

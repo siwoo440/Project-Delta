@@ -131,6 +131,10 @@ namespace ProjectDelta.Presentation
         public BattleParticipant LastActingParticipant { get; private set; }
         public int LastActionSequence { get; private set; }
 
+        // 79일차: 가장 최근 승리에서 적용된 경험치·레벨업 결과.
+        // 81일차 정식 보상 화면이 이 값을 그대로 표시할 수 있도록 보존한다.
+        public BattleGrowthResult LastBattleGrowthResult { get; private set; }
+
         public bool IsBattleRewardPending =>
             pendingVictoryEncounterResult != null
             && BattleRewardState.IsPending; // 72일차 보상 선택 대기 여부
@@ -188,6 +192,7 @@ namespace ProjectDelta.Presentation
             LastEncounterResult = null;
             pendingVictoryEncounterResult = null; // 72일차 대기 중 보상 결과 정리
             BattleRewardState.Clear(); // 72일차 보상 상태 정리
+            LastBattleGrowthResult = null; // 79일차 성장 결과 정리
             wasMoving = false;
         }
 
@@ -430,6 +435,7 @@ namespace ProjectDelta.Presentation
 
             BattleRewardState.Clear(); // 72일차 이전 보상 상태 초기화
             pendingVictoryEncounterResult = null; // 72일차 이전 보상 결과 초기화
+            LastBattleGrowthResult = null; // 79일차 이전 전투 성장 결과 초기화
             BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
 
             Debug.Log(
@@ -1652,6 +1658,8 @@ namespace ProjectDelta.Presentation
 
             if (outcome == BattleOutcome.Victory)
             {
+                ApplyVictoryGrowth(); // 79일차 경험치·레벨업
+
                 if (!EncounterResultResolver.TryCreateTestResult(
                         session.Context,
                         actionSelectionGate.SelectedCommandId,
@@ -1704,6 +1712,77 @@ namespace ProjectDelta.Presentation
                 battleSession.RoundNumber); // 70일차 패배 기록 후 임시 타이틀 복귀
 
             return finishedResult;
+        }
+
+        // 79일차: 승리가 확정된 BattleContext의 실제 Enemy 구성 전체를 경험치로 환산한다.
+        // FinishBattle()이 성공한 뒤 한 번만 호출되므로 보상 선택 버튼을 여러 번 눌러도 중복 지급되지 않는다.
+        private void ApplyVictoryGrowth()
+        {
+            if (RunContext.Current == null
+                || battleSession.Context == null
+                || battleSession.Context.Enemies == null)
+            {
+                LastBattleGrowthResult =
+                    null;
+
+                return;
+            }
+
+            List<MonsterDefinition> defeatedMonsters =
+                new List<MonsterDefinition>();
+
+            foreach (BattleParticipant enemy
+                     in battleSession.Context.Enemies)
+            {
+                if (enemy == null)
+                {
+                    continue;
+                }
+
+                MonsterDefinition definition =
+                    ResolveMonsterDefinition(
+                        enemy.DefinitionId);
+
+                if (definition != null)
+                {
+                    defeatedMonsters.Add(
+                        definition);
+                }
+            }
+
+            PlayerGrowthDefinition growthDefinition =
+                Resources.Load<PlayerGrowthDefinition>(
+                    "PlayerGrowthDefinition");
+
+            bool createdRuntimeFallback =
+                false;
+
+            if (growthDefinition == null)
+            {
+                growthDefinition =
+                    PlayerGrowthDefinition.CreateDefaultRuntime();
+
+                createdRuntimeFallback =
+                    true;
+            }
+
+            LastBattleGrowthResult =
+                PlayerGrowthService.ApplyBattleExperience(
+                    RunContext.Current.Player,
+                    defeatedMonsters,
+                    growthDefinition);
+
+            Debug.Log(
+                $"[Project Delta] 79일차 Battle Growth / EXP +{LastBattleGrowthResult.EarnedExperience} / "
+                + $"Lv.{LastBattleGrowthResult.PreviousLevel} → Lv.{LastBattleGrowthResult.CurrentLevel} / "
+                + $"Stat Point +{LastBattleGrowthResult.GainedStatPoints}",
+                this);
+
+            if (createdRuntimeFallback)
+            {
+                Destroy(
+                    growthDefinition);
+            }
         }
 
         private void FinalizeActiveEncounter(

@@ -27,6 +27,10 @@ namespace ProjectDelta.Data
         [Header("74일차 몬스터 AI")]
         [SerializeField] private MonsterAiProfile aiProfile;
 
+        [Header("79일차 성장 보상")]
+        [Min(0)]
+        [SerializeField] private int experienceReward = 20;
+
         public string DisplayName => displayName;
         public MonsterRarity Rarity => rarity;
 
@@ -41,5 +45,10 @@ namespace ProjectDelta.Data
         public int Resistance => resistance;
 
         public MonsterAiProfile AiProfile => aiProfile;
+
+        public int ExperienceReward =>
+            Mathf.Max(
+                0,
+                experienceReward);
     }
 }

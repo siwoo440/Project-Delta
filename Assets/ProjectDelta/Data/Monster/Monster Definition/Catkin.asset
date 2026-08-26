@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Catkin
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_CATKIN
-  displayName: 고양이 수인
+  displayName: "\uACE0\uC591\uC774 \uC218\uC778"
   rarity: 0
   maxHp: 13
   maxMana: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 10
   resistance: 0
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

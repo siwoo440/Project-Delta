@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Arachne
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_ARACHNE
-  displayName: 아라크네
+  displayName: "\uC544\uB77C\uD06C\uB124"
   rarity: 0
   maxHp: 16
   maxMana: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 5
   resistance: 5
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

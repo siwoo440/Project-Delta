@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Minotaur
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_MINOTAUR
-  displayName: 미노타우르
+  displayName: "\uBBF8\uB178\uD0C0\uC6B0\uB974"
   rarity: 2
   maxHp: 90
   maxMana: 10
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 0
   resistance: 15
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 120

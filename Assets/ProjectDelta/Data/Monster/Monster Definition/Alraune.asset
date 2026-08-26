@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Alraune
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_ALRAUNE
-  displayName: 알라우네
+  displayName: "\uC54C\uB77C\uC6B0\uB124"
   rarity: 0
   maxHp: 17
   maxMana: 10
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 10
   resistance: 15
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

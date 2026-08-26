@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SlimeQueen
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_SLIME_QUEEN
-  displayName: 슬라임 퀸
+  displayName: "\uC2AC\uB77C\uC784 \uD038"
   rarity: 2
   maxHp: 60
   maxMana: 20
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 10
   resistance: 10
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 120

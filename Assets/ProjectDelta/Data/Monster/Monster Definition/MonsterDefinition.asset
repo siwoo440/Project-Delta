@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_TEST
   displayName: Test Monster
+  rarity: 0
   maxHp: 10
   maxMana: 0
   speed: 5
@@ -24,3 +25,4 @@ MonoBehaviour:
   charm: 0
   resistance: 0
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

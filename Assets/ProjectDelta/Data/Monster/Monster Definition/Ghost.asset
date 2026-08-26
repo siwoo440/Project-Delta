@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Ghost
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_GHOST
-  displayName: 고스트
+  displayName: "\uACE0\uC2A4\uD2B8"
   rarity: 0
   maxHp: 12
   maxMana: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 5
   resistance: 15
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

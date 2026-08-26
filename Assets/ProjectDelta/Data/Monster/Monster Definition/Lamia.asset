@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Lamia
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDefinition
   id: MON_LAMIA
-  displayName: 라미아
+  displayName: "\uB77C\uBBF8\uC544"
   rarity: 0
   maxHp: 18
   maxMana: 10
@@ -25,3 +25,4 @@ MonoBehaviour:
   charm: 10
   resistance: 10
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
+  experienceReward: 20

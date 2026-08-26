@@ -47,6 +47,24 @@ namespace ProjectDelta.Data
             data.BasicInfo.DungeonSeed =
                 context.Dungeon.CurrentDungeonSeed;
 
+            // 79일차: 런타임 성장 상태를 기존 RunData.PlayerStats에 저장한다.
+            data.PlayerStats.Level =
+                Math.Max(
+                    1,
+                    Math.Min(
+                        PlayerGrowthDefinition.DefaultMaxLevel,
+                        context.Player.Level));
+
+            data.PlayerStats.Experience =
+                Math.Max(
+                    0,
+                    context.Player.Experience);
+
+            data.PlayerStats.UnspentStatPoints =
+                Math.Max(
+                    0,
+                    context.Player.UnusedStatPoints);
+
             if (context.Dungeon.CurrentLayoutSnapshot != null)
             {
                 data.DungeonState.LayoutSnapshot =
@@ -110,6 +128,27 @@ namespace ProjectDelta.Data
                     : 1;
 
             context.Dungeon.SetFloor(savedFloor);
+
+            // 79일차: 구버전 저장의 Level=0도 Lv.1로 안전하게 복원한다.
+            if (savedRun.PlayerStats != null)
+            {
+                context.Player.Level =
+                    Math.Max(
+                        1,
+                        Math.Min(
+                            PlayerGrowthDefinition.DefaultMaxLevel,
+                            savedRun.PlayerStats.Level));
+
+                context.Player.Experience =
+                    Math.Max(
+                        0,
+                        savedRun.PlayerStats.Experience);
+
+                context.Player.UnusedStatPoints =
+                    Math.Max(
+                        0,
+                        savedRun.PlayerStats.UnspentStatPoints);
+            }
 
             if (savedRun.DungeonState != null
                 && savedRun.DungeonState.LayoutSnapshot != null)
