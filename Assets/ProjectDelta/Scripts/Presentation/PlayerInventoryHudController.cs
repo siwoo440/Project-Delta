@@ -602,8 +602,15 @@ namespace ProjectDelta.Presentation
                         ? definition.Description
                         : string.Empty;
 
+                string categoryDisplayName =
+                    definition != null
+                        ? ItemCategoryRules.GetDisplayName(
+                            definition.Category)
+                        : ItemCategoryRules.GetDisplayName(
+                            ItemCategory.Uncategorized);
+
                 selectedItemDescriptionText.text =
-                    $"보유 수량 ×{slot.Quantity}\n{baseDescription}".Trim();
+                    $"[{categoryDisplayName}]\n보유 수량 ×{slot.Quantity}\n{baseDescription}".Trim();
             }
         }
     }
