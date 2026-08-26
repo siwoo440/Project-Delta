@@ -631,7 +631,7 @@ namespace ProjectDelta.Presentation
             ApplyVital(
                 staminaFillImage,
                 staminaText,
-                "SP",
+                "정력",
                 player.CurrentStamina,
                 player.MaxStamina);
         }

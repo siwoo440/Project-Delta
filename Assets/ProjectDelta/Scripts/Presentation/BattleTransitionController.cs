@@ -158,11 +158,6 @@ namespace ProjectDelta.Presentation
         // 완전 검정 상태를 짧게 유지해 Battle HUD가 검은 화면 뒤에서 준비될 시간을 확보한다.
         public IEnumerator HoldBlack()
         {
-            if (BlackHoldSeconds <= 0f)
-            {
-                yield break;
-            }
-
             yield return new WaitForSecondsRealtime(
                 BlackHoldSeconds);
         }

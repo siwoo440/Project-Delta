@@ -3,17 +3,7 @@ using System.Collections.Generic;
 
 namespace ProjectDelta.Domain
 {
-    // Placeholders for the remaining RunContext sub-states (기획서 10.2).
-    // Each is filled in once its owning system exists:
-    //   DungeonRunState   - 3.1~3.2절 던전 생성
-    //   InventoryRunState - 6.4절 인벤토리·장비·유물
-    //   SkillRunState     - 6.3절 스킬과 행동 숙련도
-    //   CharacterRunState - 5장 몬스터·NPC
-    //   EventRunState     - 3.4~3.5절 이벤트
-    //   BattleRunState    - 4장 전투
-    //   RewardRunState    - 6.5절 아이템·보상
-    //   RunStatistics     - 회차 단위 진행 통계
-
+    // RunContext 아래의 회차 단위 하위 상태를 모아 둔다.
     public sealed class DungeonRunState
     {
         private readonly Dictionary<string, RoomInstance> rooms =
@@ -58,8 +48,7 @@ namespace ProjectDelta.Domain
             CurrentFloor = Math.Max(1, floor);
         }
 
-        // 39일차: 생성이 확정된 현재 층의 논리 던전과 Seed를 런 상태에 보관한다.
-        // 이후 자동 저장은 Presentation을 직접 참조하지 않고 이 상태만 읽으면 된다.
+        // 확정된 현재 층의 논리 던전과 Seed를 런 상태에 보관한다.
         public void SetGeneratedFloor(
             GeneratedDungeon dungeon,
             int seed)
@@ -115,7 +104,6 @@ namespace ProjectDelta.Domain
             return dungeon != null;
         }
 
-        // 37일차 Fog of War 규칙을 RunContext에도 기록한다.
         // 현재 방을 포함한 3x3 범위에 실제로 존재하는 방만 발견 처리한다.
         public void RevealAround(string currentRoomId)
         {
@@ -207,29 +195,138 @@ namespace ProjectDelta.Domain
             rooms.Values;
     }
 
-    // 25일차: 상자 상호작용 확인용 최소 인벤토리.
+    // 기존 상자·획득 코드가 사용하던 최소 아이템 표현을 유지한다.
     public sealed class InventoryItemStack
     {
         public string ItemId;
         public string DisplayName;
+        public int Quantity;
 
         public InventoryItemStack(
             string itemId,
             string displayName)
+            : this(
+                itemId,
+                displayName,
+                1)
+        {
+        }
+
+        public InventoryItemStack(
+            string itemId,
+            string displayName,
+            int quantity)
         {
             ItemId = itemId;
             DisplayName = displayName;
+            Quantity = Math.Max(1, quantity);
         }
     }
 
+    // 89일차: 실제 위치를 유지하는 하나의 인벤토리 슬롯이다.
+    public sealed class InventorySlotState
+    {
+        public string ItemId { get; private set; }
+
+        public string DisplayName { get; private set; }
+
+        public int Quantity { get; private set; }
+
+        public bool IsEmpty =>
+            string.IsNullOrEmpty(ItemId)
+            || Quantity <= 0;
+
+        public void Set(
+            string itemId,
+            string displayName,
+            int quantity)
+        {
+            if (string.IsNullOrEmpty(itemId)
+                || quantity <= 0)
+            {
+                Clear();
+                return;
+            }
+
+            ItemId = itemId;
+            DisplayName =
+                string.IsNullOrEmpty(displayName)
+                    ? itemId
+                    : displayName;
+            Quantity = quantity;
+        }
+
+        public void Clear()
+        {
+            ItemId = string.Empty;
+            DisplayName = string.Empty;
+            Quantity = 0;
+        }
+    }
+
+    // 89일차: 10칸 슬롯을 런타임 인벤토리의 단일 기준으로 사용한다.
     public sealed class InventoryRunState
     {
+        public const int BaseSlotCount = 10;
+
+        private readonly List<InventorySlotState> slots =
+            new List<InventorySlotState>();
+
         private readonly List<InventoryItemStack> items =
             new List<InventoryItemStack>();
 
+        public IReadOnlyList<InventorySlotState> Slots =>
+            slots;
+
+        // 기존 코드의 Items 조회와 Add 호출을 깨지 않기 위해 호환 목록을 유지한다.
         public IReadOnlyList<InventoryItemStack> Items =>
             items;
 
+        public int PermanentSlotBonus { get; private set; }
+
+        public int BagSlotBonus { get; private set; }
+
+        public int Capacity =>
+            CalculateCapacity(
+                PermanentSlotBonus,
+                BagSlotBonus);
+
+        public InventoryRunState()
+        {
+            EnsureCapacity();
+        }
+
+        public static int CalculateCapacity(
+            int permanentSlotBonus,
+            int bagSlotBonus)
+        {
+            return BaseSlotCount
+                + Math.Max(
+                    0,
+                    permanentSlotBonus)
+                + Math.Max(
+                    0,
+                    bagSlotBonus);
+        }
+
+        public void SetCapacityBonuses(
+            int permanentSlotBonus,
+            int bagSlotBonus)
+        {
+            PermanentSlotBonus =
+                Math.Max(
+                    0,
+                    permanentSlotBonus);
+
+            BagSlotBonus =
+                Math.Max(
+                    0,
+                    bagSlotBonus);
+
+            EnsureCapacity();
+        }
+
+        // 기존 상자 획득 코드는 그대로 이 메서드를 사용해 첫 빈 슬롯에 들어간다.
         public void Add(InventoryItemStack item)
         {
             if (item == null)
@@ -237,7 +334,229 @@ namespace ProjectDelta.Domain
                 return;
             }
 
-            items.Add(item);
+            TryAdd(
+                item.ItemId,
+                item.DisplayName,
+                item.Quantity,
+                out _);
+        }
+
+        public bool TryAdd(
+            string itemId,
+            string displayName,
+            int quantity,
+            out int slotIndex)
+        {
+            slotIndex = -1;
+
+            if (string.IsNullOrEmpty(itemId)
+                || quantity <= 0)
+            {
+                return false;
+            }
+
+            EnsureCapacity();
+
+            for (int index = 0;
+                 index < Capacity;
+                 index++)
+            {
+                InventorySlotState slot =
+                    slots[index];
+
+                if (!slot.IsEmpty)
+                {
+                    continue;
+                }
+
+                slot.Set(
+                    itemId,
+                    displayName,
+                    quantity);
+
+                slotIndex = index;
+
+                RebuildCompatibilityItems();
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool TryRemoveAt(int slotIndex)
+        {
+            if (!IsValidSlotIndex(slotIndex)
+                || slots[slotIndex].IsEmpty)
+            {
+                return false;
+            }
+
+            slots[slotIndex].Clear();
+
+            RebuildCompatibilityItems();
+            return true;
+        }
+
+        // 빈 슬롯으로 이동하거나 두 슬롯에 아이템이 있으면 서로 교환한다.
+        public bool TryMoveOrSwap(
+            int sourceIndex,
+            int destinationIndex)
+        {
+            if (!IsValidSlotIndex(sourceIndex)
+                || !IsValidSlotIndex(destinationIndex)
+                || sourceIndex == destinationIndex
+                || slots[sourceIndex].IsEmpty)
+            {
+                return false;
+            }
+
+            InventorySlotState source =
+                slots[sourceIndex];
+
+            InventorySlotState destination =
+                slots[destinationIndex];
+
+            string sourceItemId =
+                source.ItemId;
+
+            string sourceDisplayName =
+                source.DisplayName;
+
+            int sourceQuantity =
+                source.Quantity;
+
+            if (destination.IsEmpty)
+            {
+                destination.Set(
+                    sourceItemId,
+                    sourceDisplayName,
+                    sourceQuantity);
+
+                source.Clear();
+            }
+            else
+            {
+                string destinationItemId =
+                    destination.ItemId;
+
+                string destinationDisplayName =
+                    destination.DisplayName;
+
+                int destinationQuantity =
+                    destination.Quantity;
+
+                destination.Set(
+                    sourceItemId,
+                    sourceDisplayName,
+                    sourceQuantity);
+
+                source.Set(
+                    destinationItemId,
+                    destinationDisplayName,
+                    destinationQuantity);
+            }
+
+            RebuildCompatibilityItems();
+            return true;
+        }
+
+        public bool TryGetSlot(
+            int slotIndex,
+            out InventorySlotState slot)
+        {
+            if (!IsValidSlotIndex(slotIndex))
+            {
+                slot = null;
+                return false;
+            }
+
+            slot =
+                slots[slotIndex];
+
+            return true;
+        }
+
+        // 저장 데이터를 적용하기 전에 현재 슬롯을 초기화한다.
+        public void ResetForRestore(
+            int permanentSlotBonus,
+            int bagSlotBonus)
+        {
+            SetCapacityBonuses(
+                permanentSlotBonus,
+                bagSlotBonus);
+
+            for (int index = 0;
+                 index < slots.Count;
+                 index++)
+            {
+                slots[index].Clear();
+            }
+
+            RebuildCompatibilityItems();
+        }
+
+        // 저장된 슬롯 위치를 그대로 되살린다.
+        public bool RestoreSlot(
+            int slotIndex,
+            string itemId,
+            string displayName,
+            int quantity)
+        {
+            if (!IsValidSlotIndex(slotIndex))
+            {
+                return false;
+            }
+
+            slots[slotIndex].Set(
+                itemId,
+                displayName,
+                quantity);
+
+            RebuildCompatibilityItems();
+            return true;
+        }
+
+        private bool IsValidSlotIndex(int slotIndex)
+        {
+            return slotIndex >= 0
+                && slotIndex < Capacity
+                && slotIndex < slots.Count;
+        }
+
+        private void EnsureCapacity()
+        {
+            int requiredCount =
+                Capacity;
+
+            while (slots.Count < requiredCount)
+            {
+                slots.Add(
+                    new InventorySlotState());
+            }
+        }
+
+        private void RebuildCompatibilityItems()
+        {
+            items.Clear();
+
+            for (int index = 0;
+                 index < slots.Count;
+                 index++)
+            {
+                InventorySlotState slot =
+                    slots[index];
+
+                if (slot.IsEmpty)
+                {
+                    continue;
+                }
+
+                items.Add(
+                    new InventoryItemStack(
+                        slot.ItemId,
+                        slot.DisplayName,
+                        slot.Quantity));
+            }
         }
     }
 

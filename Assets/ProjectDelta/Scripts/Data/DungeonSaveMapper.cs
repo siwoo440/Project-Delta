@@ -142,11 +142,43 @@ namespace ProjectDelta.Data
                     data);
             }
 
-            foreach (InventoryItemStack item
-                     in context.Inventory.Items)
+            // 89일차: 슬롯 위치와 확장 보너스를 저장한다.
+            data.Inventory.PermanentSlotBonus =
+                context.Inventory.PermanentSlotBonus;
+
+            data.Inventory.BagSlotBonus =
+                context.Inventory.BagSlotBonus;
+
+            for (int slotIndex = 0;
+                 slotIndex < context.Inventory.Slots.Count;
+                 slotIndex++)
             {
-                data.Inventory.InventoryItemIds.Add(
-                    item.ItemId);
+                InventorySlotState slot =
+                    context.Inventory.Slots[slotIndex];
+
+                data.Inventory.Slots.Add(
+                    new RunInventorySlotData
+                    {
+                        ItemId =
+                            slot.IsEmpty
+                                ? string.Empty
+                                : slot.ItemId,
+                        DisplayName =
+                            slot.IsEmpty
+                                ? string.Empty
+                                : slot.DisplayName,
+                        Quantity =
+                            slot.IsEmpty
+                                ? 0
+                                : slot.Quantity
+                    });
+
+                if (!slot.IsEmpty)
+                {
+                    // 89일차 이전 저장 형식과 기존 조회 코드의 호환 목록도 함께 유지한다.
+                    data.Inventory.InventoryItemIds.Add(
+                        slot.ItemId);
+                }
             }
 
             return data;
@@ -260,8 +292,48 @@ namespace ProjectDelta.Data
                     savedGridPosition.x,
                     savedGridPosition.y);
 
-            if (savedRun.Inventory?.InventoryItemIds != null)
+            // 89일차: 새 슬롯 저장이 있으면 위치를 보존해 복원한다.
+            if (savedRun.Inventory?.Slots != null
+                && savedRun.Inventory.Slots.Count > 0)
             {
+                context.Inventory.ResetForRestore(
+                    savedRun.Inventory.PermanentSlotBonus,
+                    savedRun.Inventory.BagSlotBonus);
+
+                int restoreCount =
+                    Math.Min(
+                        context.Inventory.Capacity,
+                        savedRun.Inventory.Slots.Count);
+
+                for (int slotIndex = 0;
+                     slotIndex < restoreCount;
+                     slotIndex++)
+                {
+                    RunInventorySlotData slot =
+                        savedRun.Inventory.Slots[slotIndex];
+
+                    if (slot == null
+                        || string.IsNullOrEmpty(
+                            slot.ItemId)
+                        || slot.Quantity <= 0)
+                    {
+                        continue;
+                    }
+
+                    context.Inventory.RestoreSlot(
+                        slotIndex,
+                        slot.ItemId,
+                        slot.DisplayName,
+                        slot.Quantity);
+                }
+            }
+            else if (savedRun.Inventory?.InventoryItemIds != null)
+            {
+                // 89일차 이전 저장은 기존 ID 순서를 첫 빈 슬롯부터 옮겨 담는다.
+                context.Inventory.ResetForRestore(
+                    0,
+                    0);
+
                 foreach (string itemId
                          in savedRun.Inventory.InventoryItemIds)
                 {

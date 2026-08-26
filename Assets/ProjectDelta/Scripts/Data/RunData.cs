@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace ProjectDelta.Data
 {
-    // Progress for the single active run. Deleted on run end (기획서 9.1).
+    // 단일 활성 회차의 저장 데이터다. 회차 종료 시 제거된다.
     [Serializable]
     public sealed class RunData
     {
@@ -60,7 +60,7 @@ namespace ProjectDelta.Data
         public int MaxMana;
         public int CurrentMana;
 
-        // 83일차: 도주 후 현재 정력까지 그대로 이어가기 위한 저장 필드.
+        // 도주 후 현재 정력까지 그대로 이어가기 위한 저장 필드다.
         public int MaxStamina;
         public int CurrentStamina;
 
@@ -79,7 +79,6 @@ namespace ProjectDelta.Data
         public List<string> ActiveStatusEffectIds =
             new List<string>();
 
-        // 83일차: 상태 ID뿐 아니라 남은 지속·중첩·수치까지 저장한다.
         public List<PlayerStatusEffectRunState> ActiveStatusEffects =
             new List<PlayerStatusEffectRunState>();
 
@@ -107,9 +106,29 @@ namespace ProjectDelta.Data
         public int TargetStat;
     }
 
+    // 89일차: 저장 파일에서도 빈칸 위치를 포함한 슬롯 순서를 그대로 보존한다.
+    [Serializable]
+    public sealed class RunInventorySlotData
+    {
+        public string ItemId;
+        public string DisplayName;
+        public int Quantity;
+    }
+
     [Serializable]
     public sealed class RunInventory
     {
+        // 89일차: 앞으로 실제 보유 아이템의 저장 기준이 되는 슬롯 목록이다.
+        public List<RunInventorySlotData> Slots =
+            new List<RunInventorySlotData>();
+
+        // 135일차 영구 강화에서 사용할 슬롯 증가량을 미리 저장할 수 있게 한다.
+        public int PermanentSlotBonus;
+
+        // 99일차 가방 장비에서 사용할 슬롯 증가량을 미리 저장할 수 있게 한다.
+        public int BagSlotBonus;
+
+        // 89일차 이전 저장과 기존 코드를 읽기 위한 호환 목록을 유지한다.
         public List<string> InventoryItemIds =
             new List<string>();
 
@@ -150,10 +169,10 @@ namespace ProjectDelta.Data
         public List<RoomRunState> Rooms =
             new List<RoomRunState>();
 
-        // 39일차: 현재 층의 확정된 생성 그래프와 Seed 재현 정보.
+        // 현재 층의 확정된 생성 그래프와 Seed 재현 정보다.
         public ProjectDelta.Domain.DungeonLayoutSnapshot LayoutSnapshot;
 
-        // 37일차 Fog of War에서 한 번이라도 밝혀진 방 목록.
+        // Fog of War에서 한 번이라도 밝혀진 방 목록이다.
         public List<string> RevealedRoomIds =
             new List<string>();
     }
