@@ -1,6 +1,7 @@
 using System;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
+using UnityEngine;
 
 namespace ProjectDelta.Application
 {
@@ -41,6 +42,7 @@ namespace ProjectDelta.Application
         public void StartNewGame()
         {
             DefeatSceneState.Clear();
+            BattleEncounterCheckpointStore.Clear(); // 전투 체크포인트 초기화
 
             string runId =
                 Guid.NewGuid().ToString();
@@ -84,6 +86,9 @@ namespace ProjectDelta.Application
                 RunContext.Current,
                 savedRun);
 
+            BattleEncounterCheckpointStore.Restore(
+                savedRun.BattleEncounterCheckpoint); // 전투 직전 체크포인트 복원
+
             DungeonSaveMapper.BeginRestore(
                 savedRun);
 
@@ -93,19 +98,34 @@ namespace ProjectDelta.Application
 
         public void SaveDungeonProgress()
         {
-            if (_saveService == null
-                || RunContext.Current == null)
+            TryWriteDungeonProgress();
+        }
+
+        public bool SaveBattleEncounterCheckpoint(
+            EncounterContext encounterContext)
+        {
+            if (encounterContext == null)
             {
-                return;
+                return false;
             }
 
-            RunData data =
-                DungeonSaveMapper.BuildFromRunContext(
-                    RunContext.Current);
+            BattleEncounterCheckpointStore.Capture(
+                encounterContext.RoomId,
+                encounterContext.MonsterDefinitionId,
+                new Vector2Int(
+                    encounterContext.MonsterGridPosition.X,
+                    encounterContext.MonsterGridPosition.Z),
+                encounterContext.MonsterGroupDefinitionIds); // 전투 직전 체크포인트 생성
 
-            _saveService.WriteRun(
-                data,
-                "InProgress");
+            bool saved =
+                TryWriteDungeonProgress(); // 전투 시작 직전 자동 저장
+
+            if (saved)
+            {
+                BattleEncounterCheckpointStore.Clear(); // 전투 중 추가 저장 방지
+            }
+
+            return saved;
         }
 
         public void OpenSettings()
@@ -122,6 +142,7 @@ namespace ProjectDelta.Application
                 RunContext.End();
                 _saveService?.DeleteRun();
                 DungeonSaveMapper.ClearPendingRestore();
+                BattleEncounterCheckpointStore.Clear(); // 패배 체크포인트 제거
             }
 
             _log.Info("Entering DefeatScene");
@@ -136,12 +157,37 @@ namespace ProjectDelta.Application
                 RunContext.End();
                 _saveService?.DeleteRun();
                 DungeonSaveMapper.ClearPendingRestore();
+                BattleEncounterCheckpointStore.Clear(); // 런 포기 체크포인트 제거
             }
 
             DefeatSceneState.Clear();
 
             _log.Info("Returning to TitleScene");
             _sceneLoader.LoadSingle(SceneNames.Title);
+        }
+
+        private bool TryWriteDungeonProgress()
+        {
+            if (_saveService == null
+                || RunContext.Current == null)
+            {
+                return false;
+            }
+
+            RunData data =
+                DungeonSaveMapper.BuildFromRunContext(
+                    RunContext.Current);
+
+            BattleEncounterCheckpointStore.ApplyTo(
+                data); // 대기 중 전투 체크포인트 포함
+
+            _saveService.WriteRun(
+                data,
+                "InProgress");
+
+            AutoSaveNotification.RaiseSaved(); // 자동 저장 알림 전파
+
+            return true;
         }
 
         private void LoadWithLoadingScreen(

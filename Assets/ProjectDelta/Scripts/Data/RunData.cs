@@ -12,6 +12,8 @@ namespace ProjectDelta.Data
         public PlayerRunStats PlayerStats = new PlayerRunStats();
         public RunInventory Inventory = new RunInventory();
         public DungeonRunState DungeonState = new DungeonRunState();
+        public BattleEncounterCheckpointData BattleEncounterCheckpoint =
+            new BattleEncounterCheckpointData();
         public List<CharacterRunState> CharacterStates =
             new List<CharacterRunState>();
     }

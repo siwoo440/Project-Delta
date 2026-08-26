@@ -19,6 +19,9 @@ namespace ProjectDelta.Application
                     "현재 Encounter 정보가 없습니다.");
             }
 
+            ApplicationFlow.Current?.SaveBattleEncounterCheckpoint(
+                context); // 전투 시작 직전 자동 저장
+
             return EncounterCommandResult.Accept(
                 Id,
                 $"전투 선택 / Target {context.MonsterDefinitionId}");
