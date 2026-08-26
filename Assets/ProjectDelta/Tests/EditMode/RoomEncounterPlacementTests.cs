@@ -369,6 +369,174 @@ namespace ProjectDelta.Tests.EditMode
             }
         }
 
+        [Test]
+        public void BuildForFloor_EncounterOutsideFloorRange_IsExcluded()
+        {
+            // 78일차: minFloor·maxFloor로 층을 제한한 인카운터는 그 범위 밖 층에서 아예
+            // 배정 대상에서 빠져야 한다 - 스폰 확률 1이어도 마찬가지다.
+            GeneratedDungeon dungeon =
+                CreateLinearDungeon(5);
+
+            EncounterDefinition floorTwoOnly =
+                CreateEncounter(
+                    "ENC_FLOOR_TWO",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            SetPrivateField(
+                floorTwoOnly,
+                "minFloor",
+                2);
+
+            SetPrivateField(
+                floorTwoOnly,
+                "maxFloor",
+                2);
+
+            DungeonEncounterLayout layoutOnFloorOne =
+                new RoomEncounterPlacementService().BuildForFloor(
+                    dungeon,
+                    40001,
+                    1,
+                    new[] { floorTwoOnly });
+
+            Assert.AreEqual(
+                0,
+                layoutOnFloorOne.Assignments.Count);
+
+            DungeonEncounterLayout layoutOnFloorTwo =
+                new RoomEncounterPlacementService().BuildForFloor(
+                    dungeon,
+                    40001,
+                    2,
+                    new[] { floorTwoOnly });
+
+            Assert.Greater(
+                layoutOnFloorTwo.Assignments.Count,
+                0);
+        }
+
+        [Test]
+        public void BuildForFloor_DefaultFloorRange_AllowsEveryFloor()
+        {
+            // 78일차: 배치가 정해지지 않은 몬스터(기본값 minFloor=1, maxFloor=-1)는
+            // 모든 층에서 나와야 한다.
+            GeneratedDungeon dungeon =
+                CreateLinearDungeon(5);
+
+            EncounterDefinition unrestricted =
+                CreateEncounter(
+                    "ENC_ANY_FLOOR",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            foreach (int floor in new[] { 1, 2, 3, 4, 99 })
+            {
+                DungeonEncounterLayout layout =
+                    new RoomEncounterPlacementService().BuildForFloor(
+                        dungeon,
+                        40001,
+                        floor,
+                        new[] { unrestricted });
+
+                Assert.Greater(
+                    layout.Assignments.Count,
+                    0,
+                    $"floor {floor}");
+            }
+        }
+
+        [Test]
+        public void BuildForFloor_MultipleEncounters_NeverAssignSameRoomTwice()
+        {
+            // 78일차: 여러 인카운터가 같은 방을 놓고 경쟁하면, 먼저 처리된(Id 순서) 인카운터만
+            // 그 방을 가져가고 나머지는 건너뛴다 - 한 방에 두 인카운터가 겹쳐 배정되면 안 된다.
+            GeneratedDungeon dungeon =
+                CreateLinearDungeon(8);
+
+            EncounterDefinition first =
+                CreateEncounter(
+                    "ENC_A",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            EncounterDefinition second =
+                CreateEncounter(
+                    "ENC_B",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            DungeonEncounterLayout layout =
+                new RoomEncounterPlacementService().BuildForFloor(
+                    dungeon,
+                    40001,
+                    1,
+                    new[] { first, second });
+
+            HashSet<string> seenRoomIds =
+                new HashSet<string>();
+
+            foreach (RoomEncounterAssignment assignment in layout.Assignments)
+            {
+                Assert.IsTrue(
+                    seenRoomIds.Add(assignment.RoomId)); // 중복 배정이면 Add가 false를 반환
+            }
+        }
+
+        [Test]
+        public void IsAllowedOnFloor_DefaultValues_AllowsAllFloorsFromOne()
+        {
+            EncounterDefinition encounter =
+                CreateEncounter(
+                    "ENC_DEFAULT",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            Assert.IsTrue(
+                encounter.IsAllowedOnFloor(1));
+
+            Assert.IsTrue(
+                encounter.IsAllowedOnFloor(50));
+        }
+
+        [Test]
+        public void IsAllowedOnFloor_RestrictedRange_RejectsOutsideRange()
+        {
+            EncounterDefinition encounter =
+                CreateEncounter(
+                    "ENC_RANGE",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            SetPrivateField(
+                encounter,
+                "minFloor",
+                3);
+
+            SetPrivateField(
+                encounter,
+                "maxFloor",
+                4);
+
+            Assert.IsFalse(
+                encounter.IsAllowedOnFloor(2));
+
+            Assert.IsTrue(
+                encounter.IsAllowedOnFloor(3));
+
+            Assert.IsTrue(
+                encounter.IsAllowedOnFloor(4));
+
+            Assert.IsFalse(
+                encounter.IsAllowedOnFloor(5));
+        }
+
         private EncounterDefinition CreateEncounter(
             string encounterId,
             string monsterId,

@@ -8,6 +8,80 @@ namespace ProjectDelta.Application
     // 40일차: 생성된 방들에 0~1개의 Monster Encounter를 결정적으로 배정한다.
     public sealed class RoomEncounterPlacementService
     {
+        // 78일차: 한 층에 여러 EncounterDefinition을 동시에 쓴다 - 이 층에서 허용된
+        // (IsAllowedOnFloor) 인카운터만, Id 기준 안정적인 순서로 차례차례 방을 배정한다.
+        // 먼저 처리된 인카운터가 가져간 방은 excludedRoomIds에 누적돼 뒤에 처리되는
+        // 인카운터가 같은 방을 다시 배정하지 않는다 - 한 방에는 최대 하나의 인카운터만 배정된다.
+        public DungeonEncounterLayout BuildForFloor(
+            GeneratedDungeon dungeon,
+            int dungeonSeed,
+            int floor,
+            IEnumerable<EncounterDefinition> encounters,
+            IEnumerable<string> excludedRoomIds = null)
+        {
+            DungeonEncounterLayout merged =
+                new DungeonEncounterLayout();
+
+            if (dungeon == null
+                || encounters == null)
+            {
+                return merged;
+            }
+
+            HashSet<string> excluded =
+                new HashSet<string>(
+                    StringComparer.Ordinal);
+
+            if (excludedRoomIds != null)
+            {
+                foreach (string roomId in excludedRoomIds)
+                {
+                    if (!string.IsNullOrEmpty(roomId))
+                    {
+                        excluded.Add(roomId);
+                    }
+                }
+            }
+
+            List<EncounterDefinition> ordered =
+                new List<EncounterDefinition>();
+
+            foreach (EncounterDefinition encounter in encounters)
+            {
+                if (encounter != null
+                    && encounter.IsAllowedOnFloor(floor))
+                {
+                    ordered.Add(encounter);
+                }
+            }
+
+            ordered.Sort(
+                (left, right) =>
+                    string.CompareOrdinal(
+                        left.Id,
+                        right.Id)); // 처리 순서를 고정해 같은 Seed면 항상 같은 결과가 나오게 한다
+
+            for (int index = 0; index < ordered.Count; index++)
+            {
+                DungeonEncounterLayout partial =
+                    Build(
+                        dungeon,
+                        dungeonSeed,
+                        ordered[index],
+                        excluded);
+
+                foreach (RoomEncounterAssignment assignment in partial.Assignments)
+                {
+                    if (merged.TryAdd(assignment))
+                    {
+                        excluded.Add(assignment.RoomId);
+                    }
+                }
+            }
+
+            return merged;
+        }
+
         public DungeonEncounterLayout Build(
             GeneratedDungeon dungeon,
             int dungeonSeed,

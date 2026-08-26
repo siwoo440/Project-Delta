@@ -10,18 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7406e57c31f446df91b3bf1ec9552824, type: 3}
-  m_Name: EncounterDefinition
+  m_Name: Mimic
   m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.EncounterDefinition
-  id: ENC_TEST_MONSTER
-  monster: {fileID: 11400000, guid: 7bec9ffe90f14a9e9037f8ad9f5bea7e, type: 2}
-  roomSpawnChance: 0.35
+  id: ENC_MIMIC
+  monster: {fileID: 11400000, guid: deb03b1ac10f477b84a86d2a448e4e43, type: 2}
+  roomSpawnChance: 0.1
   enabled: 1
-  additionalMonsterPool:
-  - monster: {fileID: 11400000, guid: 7bec9ffe90f14a9e9037f8ad9f5bea7e, type: 2}
-    weight: 5
-  - monster: {fileID: 11400000, guid: 9ffb57e8f4c94fcca28dc8835e9781d1, type: 2}
-    weight: 1
+  additionalMonsterPool: []
   minGroupSize: 1
-  maxGroupSize: 3
+  maxGroupSize: 1
   minFloor: 1
-  maxFloor: 1
+  maxFloor: -1

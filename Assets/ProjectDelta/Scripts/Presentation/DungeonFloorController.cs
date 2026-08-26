@@ -38,6 +38,12 @@ namespace ProjectDelta.Presentation
         [Header("40일차 인카운터 배치")]
         [SerializeField] private EncounterDefinition defaultMonsterEncounter;
 
+        // 78일차: 던전 전체가 defaultMonsterEncounter 하나만 쓰던 구조를 확장한다 - 이 배열에
+        // 넣은 인카운터도 defaultMonsterEncounter와 함께 층마다(EncounterDefinition.IsAllowedOnFloor
+        // 기준으로) 방 배정 대상이 된다.
+        [SerializeField] private EncounterDefinition[] additionalFloorEncounters =
+            new EncounterDefinition[0];
+
         private DungeonRunState dungeonState;
         private RoomView spawnedRoomView; // 기존 자리표시자 호환
         private Transform generatedFloorRoot;
@@ -63,48 +69,57 @@ namespace ProjectDelta.Presentation
 
         // 76일차: 몬스터 그룹 구성(RoomEncounterAssignment.MonsterDefinitionIds)은 ID 문자열만
         // 들고 있으므로, 실제 전투를 만들 때 그 ID로 MonsterDefinition 에셋을 다시 찾아야 한다.
-        // 지금은 던전 전체가 defaultMonsterEncounter 하나만 쓰므로, 이 인카운터의 기본 몬스터와
-        // 추가 후보 풀만 뒤지면 충분하다 - 여러 EncounterDefinition을 쓰게 되면 DataRepository
-        // 기반 조회로 교체한다 (47~54일차 주석에 이미 예정돼 있던 방향).
+        // 78일차: 던전이 defaultMonsterEncounter 하나가 아니라 여러 EncounterDefinition을
+        // 쓰게 되면서, 이 층에 설정된 인카운터 전체(기본 몬스터 + 추가 후보 풀)를 뒤진다 -
+        // 인카운터 종류가 더 늘어나면 DataRepository 기반 조회로 교체한다
+        // (47~54일차 주석에 이미 예정돼 있던 방향).
         public bool TryFindMonsterDefinition(
             string monsterDefinitionId,
             out MonsterDefinition monsterDefinition)
         {
             monsterDefinition = null;
 
-            if (string.IsNullOrEmpty(monsterDefinitionId)
-                || defaultMonsterEncounter == null)
+            if (string.IsNullOrEmpty(monsterDefinitionId))
             {
                 return false;
             }
 
-            if (defaultMonsterEncounter.Monster != null
-                && defaultMonsterEncounter.Monster.Id == monsterDefinitionId)
+            List<EncounterDefinition> encounters =
+                CollectFloorEncounters();
+
+            for (int encounterIndex = 0; encounterIndex < encounters.Count; encounterIndex++)
             {
-                monsterDefinition =
-                    defaultMonsterEncounter.Monster;
+                EncounterDefinition encounter =
+                    encounters[encounterIndex];
 
-                return true;
-            }
-
-            EncounterMonsterEntry[] pool =
-                defaultMonsterEncounter.AdditionalMonsterPool;
-
-            if (pool == null)
-            {
-                return false;
-            }
-
-            for (int index = 0; index < pool.Length; index++)
-            {
-                if (pool[index] != null
-                    && pool[index].Monster != null
-                    && pool[index].Monster.Id == monsterDefinitionId)
+                if (encounter.Monster != null
+                    && encounter.Monster.Id == monsterDefinitionId)
                 {
                     monsterDefinition =
-                        pool[index].Monster;
+                        encounter.Monster;
 
                     return true;
+                }
+
+                EncounterMonsterEntry[] pool =
+                    encounter.AdditionalMonsterPool;
+
+                if (pool == null)
+                {
+                    continue;
+                }
+
+                for (int poolIndex = 0; poolIndex < pool.Length; poolIndex++)
+                {
+                    if (pool[poolIndex] != null
+                        && pool[poolIndex].Monster != null
+                        && pool[poolIndex].Monster.Id == monsterDefinitionId)
+                    {
+                        monsterDefinition =
+                            pool[poolIndex].Monster;
+
+                        return true;
+                    }
                 }
             }
 
@@ -336,7 +351,8 @@ namespace ProjectDelta.Presentation
 
             BuildEncounterLayout(
                 run.Dungeon,
-                run.SuccessfulSeed);
+                run.SuccessfulSeed,
+                floor);
 
             if (movePlayerToEntry && movementController != null)
             {
@@ -429,7 +445,8 @@ namespace ProjectDelta.Presentation
 
             BuildEncounterLayout(
                 dungeon,
-                savedSeed);
+                savedSeed,
+                floor);
 
             if (movementController != null)
             {
@@ -849,20 +866,27 @@ namespace ProjectDelta.Presentation
                 macroCoordinate.Z * worldSize);
         }
 
+        // 78일차: floor를 받아 이 층에서 실제로 허용된 인카운터만(EncounterDefinition.
+        // IsAllowedOnFloor) 배정 대상으로 쓴다.
         private void BuildEncounterLayout(
             GeneratedDungeon dungeon,
-            int seed)
+            int seed,
+            int floor)
         {
+            List<EncounterDefinition> encounters =
+                CollectFloorEncounters();
+
             RoomEncounterPlacementService service =
                 new RoomEncounterPlacementService();
 
             currentEncounterLayout =
-                service.Build(
+                service.BuildForFloor(
                     dungeon,
                     seed,
-                    defaultMonsterEncounter);
+                    floor,
+                    encounters);
 
-            if (defaultMonsterEncounter == null)
+            if (encounters.Count == 0)
             {
                 Debug.LogWarning(
                     "[Project Delta] 40일차 EncounterDefinition이 지정되지 않아 몬스터 방 배정을 건너뜁니다.",
@@ -871,12 +895,39 @@ namespace ProjectDelta.Presentation
             }
 
             Debug.Log(
-                $"[Project Delta] 40일차 Encounter 배치 완료 / Seed {seed} / MonsterRooms {currentEncounterLayout.Count}",
+                $"[Project Delta] 78일차 Encounter 배치 완료 / Floor {floor} / Seed {seed} / MonsterRooms {currentEncounterLayout.Count}",
                 this);
 
             SpawnEncounterMonsters(
                 dungeon,
                 seed);
+        }
+
+        // 78일차: defaultMonsterEncounter(항상 포함)와 additionalFloorEncounters를 하나로 합친다.
+        private List<EncounterDefinition> CollectFloorEncounters()
+        {
+            List<EncounterDefinition> encounters =
+                new List<EncounterDefinition>();
+
+            if (defaultMonsterEncounter != null)
+            {
+                encounters.Add(
+                    defaultMonsterEncounter);
+            }
+
+            if (additionalFloorEncounters != null)
+            {
+                for (int index = 0; index < additionalFloorEncounters.Length; index++)
+                {
+                    if (additionalFloorEncounters[index] != null)
+                    {
+                        encounters.Add(
+                            additionalFloorEncounters[index]);
+                    }
+                }
+            }
+
+            return encounters;
         }
 
         private void SpawnEncounterMonsters(
