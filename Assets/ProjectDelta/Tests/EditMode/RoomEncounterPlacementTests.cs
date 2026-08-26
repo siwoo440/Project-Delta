@@ -314,6 +314,61 @@ namespace ProjectDelta.Tests.EditMode
                     .Count);
         }
 
+        [Test]
+        public void Build_FixedGroupSize_FillsMonsterDefinitionIdsForEverySlot()
+        {
+            // 76일차: 그룹 마리 수 설정이 실제 배치 결과(MonsterDefinitionIds)에 반영되는지 확인한다.
+            GeneratedDungeon dungeon =
+                CreateLinearDungeon(5);
+
+            EncounterDefinition encounter =
+                CreateEncounter(
+                    "ENC_TEST",
+                    "MON_TEST",
+                    1f,
+                    true);
+
+            SetPrivateField(
+                encounter,
+                "minGroupSize",
+                3);
+
+            SetPrivateField(
+                encounter,
+                "maxGroupSize",
+                3);
+
+            DungeonEncounterLayout layout =
+                new RoomEncounterPlacementService().Build(
+                    dungeon,
+                    40001,
+                    encounter);
+
+            Assert.Greater(
+                layout.Assignments.Count,
+                0);
+
+            foreach (RoomEncounterAssignment assignment
+                     in layout.Assignments)
+            {
+                Assert.AreEqual(
+                    3,
+                    assignment.MonsterDefinitionIds.Count);
+
+                foreach (string monsterDefinitionId in assignment.MonsterDefinitionIds)
+                {
+                    Assert.AreEqual(
+                        "MON_TEST",
+                        monsterDefinitionId); // 추가 후보 풀이 없으면 전부 같은 종으로 채워짐
+
+                }
+
+                Assert.AreEqual(
+                    "MON_TEST",
+                    assignment.MonsterDefinitionId); // 대표도 같은 종
+            }
+        }
+
         private EncounterDefinition CreateEncounter(
             string encounterId,
             string monsterId,

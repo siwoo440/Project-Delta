@@ -61,6 +61,56 @@ namespace ProjectDelta.Presentation
         public IReadOnlyDictionary<string, ExplorationMonsterMarker> SpawnedMonsters => spawnedMonsters;
         public DungeonEncounterLayout CurrentEncounterLayout => currentEncounterLayout;
 
+        // 76일차: 몬스터 그룹 구성(RoomEncounterAssignment.MonsterDefinitionIds)은 ID 문자열만
+        // 들고 있으므로, 실제 전투를 만들 때 그 ID로 MonsterDefinition 에셋을 다시 찾아야 한다.
+        // 지금은 던전 전체가 defaultMonsterEncounter 하나만 쓰므로, 이 인카운터의 기본 몬스터와
+        // 추가 후보 풀만 뒤지면 충분하다 - 여러 EncounterDefinition을 쓰게 되면 DataRepository
+        // 기반 조회로 교체한다 (47~54일차 주석에 이미 예정돼 있던 방향).
+        public bool TryFindMonsterDefinition(
+            string monsterDefinitionId,
+            out MonsterDefinition monsterDefinition)
+        {
+            monsterDefinition = null;
+
+            if (string.IsNullOrEmpty(monsterDefinitionId)
+                || defaultMonsterEncounter == null)
+            {
+                return false;
+            }
+
+            if (defaultMonsterEncounter.Monster != null
+                && defaultMonsterEncounter.Monster.Id == monsterDefinitionId)
+            {
+                monsterDefinition =
+                    defaultMonsterEncounter.Monster;
+
+                return true;
+            }
+
+            EncounterMonsterEntry[] pool =
+                defaultMonsterEncounter.AdditionalMonsterPool;
+
+            if (pool == null)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < pool.Length; index++)
+            {
+                if (pool[index] != null
+                    && pool[index].Monster != null
+                    && pool[index].Monster.Id == monsterDefinitionId)
+                {
+                    monsterDefinition =
+                        pool[index].Monster;
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void Awake()
         {
             GetDungeonState();
@@ -1046,7 +1096,8 @@ namespace ProjectDelta.Presentation
             monsterMarker.Configure(
                 assignment.RoomId,
                 assignment.MonsterDefinitionId,
-                spawnPosition);
+                spawnPosition,
+                assignment.MonsterDefinitionIds); // 76일차: 실제 전투에 쓸 그룹 전체 구성
 
             RoomContentMarker contentMarker =
                 monsterObject.AddComponent<RoomContentMarker>();

@@ -118,12 +118,29 @@ namespace ProjectDelta.Application
                     continue;
                 }
 
+                // 76일차: 이 방에 실제로 몇 마리의 어떤 몬스터가 배치되는지 결정론적으로 뽑는다.
+                MonsterGroupCompositionService.Result group =
+                    MonsterGroupCompositionService.Build(
+                        encounter,
+                        dungeonSeed,
+                        room.RoomId);
+
+                string[] monsterDefinitionIds =
+                    new string[group.Slots.Count];
+
+                for (int slotIndex = 0; slotIndex < group.Slots.Count; slotIndex++)
+                {
+                    monsterDefinitionIds[slotIndex] =
+                        group.Slots[slotIndex].Id;
+                }
+
                 result.TryAdd(
                     new RoomEncounterAssignment(
                         room.RoomId,
                         RoomContentType.Monster,
                         encounter.Id,
-                        encounter.Monster.Id));
+                        monsterDefinitionIds,
+                        group.Representative.Id));
             }
 
             return result;
@@ -131,72 +148,16 @@ namespace ProjectDelta.Application
 
         // string.GetHashCode()는 런타임/플랫폼마다 값이 달라질 수 있으므로 사용하지 않는다.
         // Seed + RoomId + EncounterId만으로 항상 같은 0~1 난수를 만든다.
+        // 76일차: 해시 혼합 로직 자체는 DeterministicRollHash로 옮겼다 - 결과값은 그대로다.
         public static float CalculateStableRoll(
             int dungeonSeed,
             string roomId,
             string encounterDefinitionId)
         {
-            unchecked
-            {
-                uint hash = 2166136261u;
-
-                MixInt(
-                    ref hash,
-                    dungeonSeed);
-
-                MixString(
-                    ref hash,
-                    roomId);
-
-                MixString(
-                    ref hash,
-                    encounterDefinitionId);
-
-                return (hash & 0x00FFFFFFu)
-                    / 16777216f;
-            }
-        }
-
-        private static void MixInt(
-            ref uint hash,
-            int value)
-        {
-            unchecked
-            {
-                uint data =
-                    (uint)value;
-
-                for (int i = 0; i < 4; i++)
-                {
-                    hash ^= data & 0xFFu;
-                    hash *= 16777619u;
-                    data >>= 8;
-                }
-            }
-        }
-
-        private static void MixString(
-            ref uint hash,
-            string value)
-        {
-            unchecked
-            {
-                if (string.IsNullOrEmpty(value))
-                {
-                    hash ^= 0u;
-                    hash *= 16777619u;
-                    return;
-                }
-
-                for (int i = 0; i < value.Length; i++)
-                {
-                    char character =
-                        value[i];
-
-                    hash ^= character;
-                    hash *= 16777619u;
-                }
-            }
+            return DeterministicRollHash.ComputeRoll01(
+                dungeonSeed,
+                roomId,
+                encounterDefinitionId);
         }
     }
 }

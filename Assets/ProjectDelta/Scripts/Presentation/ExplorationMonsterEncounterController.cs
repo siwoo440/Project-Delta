@@ -248,7 +248,8 @@ namespace ProjectDelta.Presentation
                     playerState.CurrentGridPosition,
                     monster.RoomId,
                     monster.GridPosition,
-                    monster.MonsterDefinitionId))
+                    monster.MonsterDefinitionId,
+                    monster.MonsterGroupDefinitionIds)) // 76일차: 실제 전투에 쓸 그룹 전체 구성
             {
                 return false;
             }
@@ -376,28 +377,40 @@ namespace ProjectDelta.Presentation
                     playerRunState.CurrentMana,
                     playerRunState.CurrentStamina);
 
-            // 47일차: 적 슬롯 4칸 레이아웃을 확인하기 위해 접촉한 몬스터를 1번 슬롯에 두고
-            // 같은 정의로 4명을 채운다. 실제 적 구성(EncounterDefinition에 연결된 몬스터 조회)은
-            // DataRepository가 도입되는 이후 일차에서 교체한다.
+            // 76일차: 던전 생성 시 결정론적으로 뽑혀 있던 실제 그룹 구성(자리별 몬스터)을 그대로
+            // 불러와 적을 만든다. 47일차부터 쓰던 "같은 정의로 4명 복제" 플레이스홀더를 대체한다 -
+            // 각 자리의 몬스터 ID를 floorController에서 실제 MonsterDefinition으로 조회하고,
+            // 찾지 못하면(테스트 씬 등 인카운터 데이터가 없는 상황) testMonsterDefinition으로
+            // 대체해 기존 동작과 호환한다.
+            IReadOnlyList<string> groupDefinitionIds =
+                session.Context.MonsterGroupDefinitionIds;
+
             BattleParticipant[] enemies =
-                new BattleParticipant[BattleContext.MaxEnemySlots];
+                new BattleParticipant[groupDefinitionIds.Count];
 
             for (int slotIndex = 0; slotIndex < enemies.Length; slotIndex++)
             {
+                string slotMonsterDefinitionId =
+                    groupDefinitionIds[slotIndex];
+
+                MonsterDefinition slotMonster =
+                    ResolveMonsterDefinition(
+                        slotMonsterDefinitionId);
+
                 enemies[slotIndex] =
                     new BattleParticipant(
-                        $"{session.Context.MonsterDefinitionId}#{slotIndex + 1}",
-                        session.Context.MonsterDefinitionId,
+                        $"{slotMonsterDefinitionId}#{slotIndex + 1}",
+                        slotMonsterDefinitionId,
                         BattleTeam.Enemy,
-                        testMonsterDefinition.MaxHp,
-                        testMonsterDefinition.Speed,
-                        testMonsterDefinition.Attack,
-                        testMonsterDefinition.Defense,
-                        testMonsterDefinition.Accuracy,
-                        testMonsterDefinition.Evasion,
-                        testMonsterDefinition.Charm,
-                        testMonsterDefinition.Resistance,
-                        testMonsterDefinition.MaxMana);
+                        slotMonster.MaxHp,
+                        slotMonster.Speed,
+                        slotMonster.Attack,
+                        slotMonster.Defense,
+                        slotMonster.Accuracy,
+                        slotMonster.Evasion,
+                        slotMonster.Charm,
+                        slotMonster.Resistance,
+                        slotMonster.MaxMana);
             }
 
             BattleContext context =
@@ -420,7 +433,7 @@ namespace ProjectDelta.Presentation
             BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
 
             Debug.Log(
-                $"[Project Delta] 54일차 Battle Starting / Player {finalStats.MaxHealth}HP / Enemy {session.Context.MonsterDefinitionId} x{enemies.Length} {testMonsterDefinition.MaxHp}HP",
+                $"[Project Delta] 76일차 Battle Starting / Player {finalStats.MaxHealth}HP / Enemy Group {string.Join(",", groupDefinitionIds)} (대표 {session.Context.MonsterDefinitionId})",
                 this);
 
             if (!battleSession.TryStartRound())
@@ -438,6 +451,23 @@ namespace ProjectDelta.Presentation
 
             // 56일차: "다음 턴" 버튼을 누르지 않아도 바로 행동할 수 있도록 첫 행동자를 자동으로 불러온다.
             TestAdvanceBattleTurn();
+        }
+
+        // 76일차: 그룹 슬롯의 몬스터 ID를 실제 MonsterDefinition으로 옮긴다. floorController가
+        // 없거나(테스트 씬 등) 해당 ID를 찾지 못하면 testMonsterDefinition으로 대체해 기존
+        // 단일 테스트 몬스터 흐름과 호환한다.
+        private MonsterDefinition ResolveMonsterDefinition(
+            string monsterDefinitionId)
+        {
+            if (floorController != null
+                && floorController.TryFindMonsterDefinition(
+                    monsterDefinitionId,
+                    out MonsterDefinition resolved))
+            {
+                return resolved;
+            }
+
+            return testMonsterDefinition;
         }
 
         // 56일차: 여러 Enemy가 연속으로 행동할 때 한 프레임에 몰아서 처리하면 화면에서 아무것도
@@ -548,9 +578,15 @@ namespace ProjectDelta.Presentation
                         pendingReason);
                 }
 
+                // 76일차: 그룹에 여러 종이 섞일 수 있으므로, testMonsterDefinition 고정이 아니라
+                // 이 actor가 실제로 어떤 몬스터인지(DefinitionId)로 AI Profile을 찾는다.
+                MonsterDefinition actorMonsterDefinition =
+                    ResolveMonsterDefinition(
+                        actor.DefinitionId);
+
                 MonsterAiProfile profile =
-                    testMonsterDefinition != null
-                        ? testMonsterDefinition.AiProfile
+                    actorMonsterDefinition != null
+                        ? actorMonsterDefinition.AiProfile
                         : null;
 
                 bool skillsBlocked =

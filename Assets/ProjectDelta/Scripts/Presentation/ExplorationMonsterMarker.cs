@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ProjectDelta.Domain;
 using UnityEngine;
 
@@ -12,7 +13,15 @@ namespace ProjectDelta.Presentation
             "MonsterBillboardVisual";
 
         [SerializeField] private string roomId;
+
+        // 76일차: 탐험 화면에 보이는 "대표" 몬스터 ID (그룹 중 등급이 가장 높은 몬스터).
         [SerializeField] private string monsterDefinitionId;
+
+        // 76일차: 실제 전투에 들어갈 그룹 전체 구성 - 자리(0번이 1번 자리) 순서대로 정렬돼
+        // 있다. monsterDefinitionId는 이 목록 중 하나(대표)를 가리킨다.
+        [SerializeField] private List<string> monsterGroupDefinitionIds =
+            new List<string>();
+
         [SerializeField] private int gridX;
         [SerializeField] private int gridZ;
         [SerializeField] private float billboardHeight = 2f;
@@ -29,6 +38,9 @@ namespace ProjectDelta.Presentation
 
         public string MonsterDefinitionId =>
             monsterDefinitionId;
+
+        public IReadOnlyList<string> MonsterGroupDefinitionIds =>
+            monsterGroupDefinitionIds;
 
         public GridPosition GridPosition =>
             new GridPosition(
@@ -54,13 +66,30 @@ namespace ProjectDelta.Presentation
         public void Configure(
             string targetRoomId,
             string targetMonsterDefinitionId,
-            GridPosition position)
+            GridPosition position,
+            IReadOnlyList<string> groupMonsterDefinitionIds = null)
         {
             roomId =
                 targetRoomId;
 
             monsterDefinitionId =
                 targetMonsterDefinitionId;
+
+            monsterGroupDefinitionIds.Clear();
+
+            // 76일차: 그룹 구성이 주어지지 않으면(기존 단일 몬스터 호출부) 대표 하나로 채운다.
+            if (groupMonsterDefinitionIds != null
+                && groupMonsterDefinitionIds.Count > 0)
+            {
+                monsterGroupDefinitionIds.AddRange(
+                    groupMonsterDefinitionIds);
+            }
+            else if (!string.IsNullOrEmpty(
+                         targetMonsterDefinitionId))
+            {
+                monsterGroupDefinitionIds.Add(
+                    targetMonsterDefinitionId);
+            }
 
             gridX =
                 position.X;

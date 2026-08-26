@@ -1,3 +1,4 @@
+using System.Collections.Generic; // IReadOnlyList 사용
 using ProjectDelta.Domain; // GridPosition 사용
 
 namespace ProjectDelta.Application // 애플리케이션 네임스페이스
@@ -23,7 +24,8 @@ namespace ProjectDelta.Application // 애플리케이션 네임스페이스
             GridPosition playerPosition,
             string monsterRoomId,
             GridPosition monsterPosition,
-            string monsterDefinitionId)
+            string monsterDefinitionId,
+            IReadOnlyList<string> monsterGroupDefinitionIds = null)
         {
             if (State != EncounterState.Idle) // 중복 Encounter 확인
             {
@@ -53,7 +55,8 @@ namespace ProjectDelta.Application // 애플리케이션 네임스페이스
                 new EncounterContext(
                     monsterRoomId,
                     monsterDefinitionId,
-                    monsterPosition); // Encounter Context 생성
+                    monsterPosition,
+                    monsterGroupDefinitionIds); // Encounter Context 생성 (76일차: 그룹 구성 포함)
 
             State =
                 EncounterState.Starting; // 시작 상태 전환
