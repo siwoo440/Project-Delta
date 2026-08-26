@@ -68,6 +68,7 @@ namespace ProjectDelta.Presentation
         private bool ownsExplorationControlLock;
         private bool movementLockBeforeEncounter;
         private EncounterResult pendingVictoryEncounterResult; // 72일차 승리 후 보상 선택 전 Encounter 결과 보관
+        private bool hasAppliedBattleDropRewards; // 81일차 자동 드롭 보상 중복 지급 방지
 
         public bool IsEncounterActive =>
             session.State != EncounterState.Idle;
@@ -202,6 +203,7 @@ namespace ProjectDelta.Presentation
             BattleRewardState.Clear(); // 72일차 보상 상태 정리
             LastBattleGrowthResult = null; // 79일차 성장 결과 정리
             LastBattleDropResult = null; // 80일차 드롭 결과 정리
+            hasAppliedBattleDropRewards = false; // 81일차 자동 드롭 보상 상태 정리
             wasMoving = false;
         }
 
@@ -446,6 +448,7 @@ namespace ProjectDelta.Presentation
             pendingVictoryEncounterResult = null; // 72일차 이전 보상 결과 초기화
             LastBattleGrowthResult = null; // 79일차 이전 전투 성장 결과 초기화
             LastBattleDropResult = null; // 80일차 이전 전투 드롭 결과 초기화
+            hasAppliedBattleDropRewards = false; // 81일차 새 전투 자동 드롭 지급 상태 초기화
             BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
 
             Debug.Log(
@@ -1581,6 +1584,18 @@ namespace ProjectDelta.Presentation
                     RunContext.Current.Player))
             {
                 return false;
+            }
+
+            // 81일차: 80일차에서 이미 한 번 굴린 드롭 결과만 실제 런 상태에 지급한다.
+            // 선택 보상 확정 성공 뒤 한 번만 실행되어 UI 재표시·중복 클릭으로 재지급되지 않는다.
+            if (!hasAppliedBattleDropRewards)
+            {
+                BattleRewardPayoutService.ApplyAutomaticDrops(
+                    RunContext.Current,
+                    LastBattleDropResult);
+
+                hasAppliedBattleDropRewards =
+                    true;
             }
 
             EncounterResult result =

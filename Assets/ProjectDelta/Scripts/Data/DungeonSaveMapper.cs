@@ -65,6 +65,12 @@ namespace ProjectDelta.Data
                     0,
                     context.Player.UnusedStatPoints);
 
+            // 81일차: 전투 드롭 골드와 기존 선택 보상 골드를 런 저장에 포함한다.
+            data.PlayerStats.Gold =
+                Math.Max(
+                    0,
+                    context.Player.Gold);
+
             if (context.Dungeon.CurrentLayoutSnapshot != null)
             {
                 data.DungeonState.LayoutSnapshot =
@@ -148,6 +154,11 @@ namespace ProjectDelta.Data
                     Math.Max(
                         0,
                         savedRun.PlayerStats.UnspentStatPoints);
+
+                context.Player.Gold =
+                    Math.Max(
+                        0,
+                        savedRun.PlayerStats.Gold);
             }
 
             if (savedRun.DungeonState != null
