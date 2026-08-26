@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using ProjectDelta.Domain;
 using UnityEngine;
 
@@ -18,8 +20,6 @@ namespace ProjectDelta.Data
         [TextArea(2, 4)]
         private string description;
 
-        // 모든 실제 아이템은 7개 분류 중 하나를 지정한다.
-        // 기존 에셋의 안전한 마이그레이션을 위해 기본값은 미분류다.
         [SerializeField]
         private ItemCategory category =
             ItemCategory.Uncategorized;
@@ -27,6 +27,16 @@ namespace ProjectDelta.Data
         [SerializeField]
         [Min(1)]
         private int maxStackSize = 1;
+
+        // 93일차: 아이템을 사용할 수 있는 상황.
+        [SerializeField]
+        private ItemUseContext useContext =
+            ItemUseContext.Both;
+
+        // 93일차: 하나의 아이템이 적용하는 실제 사용 효과 목록.
+        [SerializeField]
+        private ItemUseEffectDefinition[] useEffects =
+            Array.Empty<ItemUseEffectDefinition>();
 
         public string DisplayName =>
             displayName;
@@ -44,5 +54,12 @@ namespace ProjectDelta.Data
             Mathf.Max(
                 1,
                 maxStackSize);
+
+        public ItemUseContext UseContext =>
+            useContext;
+
+        public IReadOnlyList<ItemUseEffectDefinition> UseEffects =>
+            useEffects
+            ?? Array.Empty<ItemUseEffectDefinition>();
     }
 }

@@ -541,6 +541,14 @@ namespace ProjectDelta.Presentation
             int chestIndex,
             string itemKey)
         {
+            string canonicalItemId =
+                RuntimeItemDefinitionLookup.ResolveCanonicalItemId(
+                    itemKey);
+
+            string displayName =
+                RuntimeItemDefinitionLookup.ResolveDisplayName(
+                    itemKey);
+
             int maxStackSize =
                 RuntimeItemDefinitionLookup.ResolveMaxStackSize(
                     itemKey);
@@ -548,8 +556,8 @@ namespace ProjectDelta.Presentation
             InventoryAcquisitionPlan plan =
                 InventoryAcquisitionService.Preview(
                     inventory,
-                    itemKey,
-                    itemKey,
+                    canonicalItemId,
+                    displayName,
                     1,
                     maxStackSize);
 

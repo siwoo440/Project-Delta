@@ -1241,6 +1241,122 @@ namespace ProjectDelta.Presentation
         // SkillDefinition을 넘겨도 동작한다. TargetType이 Self면 대상 선택 없이 시전자 자신을
         // 대상으로 삼고(피해 판정 없이 상태만 적용), Enemy면 지금 선택된 대상에게 공격과 같은
         // 방식으로 명중·피해를 판정한다.
+        // 93일차: 인벤토리 소비 아이템을 정식 전투 행동 1회로 사용한다.
+        public ItemUseResult ConfirmUseInventoryItem(
+            int slotIndex,
+            ItemDefinition definition)
+        {
+            if (RunContext.Current == null
+                || battleSession.Context == null
+                || battleSession.State
+                    != BattleState.AwaitingAction)
+            {
+                return ItemUseResult.Failed(
+                    ItemUseFailureReason.BattleActionUnavailable);
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            if (actor == null
+                || actor.Team
+                    != BattleTeam.Player
+                || actor
+                    != battleSession.Context.Player)
+            {
+                return ItemUseResult.Failed(
+                    ItemUseFailureReason.NotPlayerTurn);
+            }
+
+            ItemUseResult preview =
+                ItemUseService.PreviewBattle(
+                    RunContext.Current.Inventory,
+                    slotIndex,
+                    actor,
+                    definition);
+
+            if (!preview.Success)
+            {
+                return preview;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return ItemUseResult.Failed(
+                    ItemUseFailureReason.BattleActionUnavailable);
+            }
+
+            ItemUseResult resolved =
+                ItemUseService.CommitBattle(
+                    RunContext.Current.Inventory,
+                    slotIndex,
+                    actor,
+                    definition);
+
+            if (!resolved.Success)
+            {
+                TestAdvanceBattleTurn();
+                return resolved;
+            }
+
+            string itemName =
+                definition != null
+                && !string.IsNullOrEmpty(
+                    definition.DisplayName)
+                    ? definition.DisplayName
+                    : "아이템";
+
+            string itemUseLog =
+                $"PLAYER : {itemName} 사용 / HP +{resolved.HpRecovered} / MP +{resolved.ManaRecovered} / 정력 +{resolved.StaminaRecovered}";
+
+            LastBattleActionResult =
+                BattleActionResult.Accept(
+                    "UseItem",
+                    new[]
+                    {
+                        itemUseLog
+                    },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    true,
+                    null);
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                TestAdvanceBattleTurn();
+                return resolved;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return resolved;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolved;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return resolved;
+            }
+
+            TestAdvanceBattleTurn();
+
+            return resolved;
+        }
+
         public BattleActionResult ConfirmSkill(
             SkillDefinition skill)
         {

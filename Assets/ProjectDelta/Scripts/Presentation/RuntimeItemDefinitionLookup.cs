@@ -1,11 +1,9 @@
-using System.Reflection;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using UnityEngine;
 
 namespace ProjectDelta.Presentation
 {
-    // 기존 상자 문자열 데이터와 91일차 ItemDefinition을 연결하기 위한 런타임 조회 도우미다.
     public static class RuntimeItemDefinitionLookup
     {
         public static bool TryFind(
@@ -36,12 +34,13 @@ namespace ProjectDelta.Presentation
                     continue;
                 }
 
-                if (candidate.name
+                if ((!string.IsNullOrEmpty(
+                            candidate.Id)
+                        && candidate.Id
+                            == itemKey)
+                    || candidate.name
                         == itemKey
                     || candidate.DisplayName
-                        == itemKey
-                    || ReadDefinitionId(
-                        candidate)
                         == itemKey)
                 {
                     definition =
@@ -52,6 +51,36 @@ namespace ProjectDelta.Presentation
             }
 
             return false;
+        }
+
+        public static string ResolveCanonicalItemId(
+            string itemKey)
+        {
+            if (TryFind(
+                    itemKey,
+                    out ItemDefinition definition)
+                && !string.IsNullOrEmpty(
+                    definition.Id))
+            {
+                return definition.Id;
+            }
+
+            return itemKey;
+        }
+
+        public static string ResolveDisplayName(
+            string itemKey)
+        {
+            if (TryFind(
+                    itemKey,
+                    out ItemDefinition definition)
+                && !string.IsNullOrEmpty(
+                    definition.DisplayName))
+            {
+                return definition.DisplayName;
+            }
+
+            return itemKey;
         }
 
         public static int ResolveMaxStackSize(
@@ -72,70 +101,6 @@ namespace ProjectDelta.Presentation
                     out ItemDefinition definition)
                 ? definition.Category
                 : ItemCategory.Uncategorized;
-        }
-
-        private static string ReadDefinitionId(
-            ItemDefinition definition)
-        {
-            PropertyInfo property =
-                definition.GetType().GetProperty(
-                    "DefinitionId",
-                    BindingFlags.Public
-                    | BindingFlags.Instance);
-
-            if (property != null
-                && property.PropertyType
-                    == typeof(string))
-            {
-                return property.GetValue(
-                    definition) as string;
-            }
-
-            property =
-                definition.GetType().GetProperty(
-                    "Id",
-                    BindingFlags.Public
-                    | BindingFlags.Instance);
-
-            if (property != null
-                && property.PropertyType
-                    == typeof(string))
-            {
-                return property.GetValue(
-                    definition) as string;
-            }
-
-            FieldInfo field =
-                definition.GetType().GetField(
-                    "definitionId",
-                    BindingFlags.Public
-                    | BindingFlags.NonPublic
-                    | BindingFlags.Instance);
-
-            if (field != null
-                && field.FieldType
-                    == typeof(string))
-            {
-                return field.GetValue(
-                    definition) as string;
-            }
-
-            field =
-                definition.GetType().GetField(
-                    "id",
-                    BindingFlags.Public
-                    | BindingFlags.NonPublic
-                    | BindingFlags.Instance);
-
-            if (field != null
-                && field.FieldType
-                    == typeof(string))
-            {
-                return field.GetValue(
-                    definition) as string;
-            }
-
-            return string.Empty;
         }
     }
 }
