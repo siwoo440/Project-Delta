@@ -563,7 +563,8 @@ namespace ProjectDelta.Presentation
                 // 56일차: 방금 행동(슬롯이 튀어오르는 연출 포함)이 화면에 보이도록 잠깐 대기한 뒤
                 // 다음 행동자로 넘어간다.
                 yield return new WaitForSeconds(
-                    EnemyActionVisibleDelaySeconds);
+                    BattleSpeedState.ScaleDuration(
+                        EnemyActionVisibleDelaySeconds));
             }
 
             autoAdvanceRoutine = null;

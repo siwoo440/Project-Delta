@@ -584,12 +584,14 @@ namespace ProjectDelta.Presentation
             yield return AnimatePortraitPosition(
                 portraitRestPosition,
                 upPosition,
-                bumpDuration);
+                BattleSpeedState.ScaleDuration(
+                    bumpDuration));
 
             yield return AnimatePortraitPosition(
                 upPosition,
                 portraitRestPosition,
-                bumpDuration);
+                BattleSpeedState.ScaleDuration(
+                    bumpDuration));
 
             portraitRectTransform.anchoredPosition =
                 portraitRestPosition;
@@ -651,24 +653,32 @@ namespace ProjectDelta.Presentation
             damageFeedbackText.gameObject.SetActive(
                 true);
 
-            if (damageVisibleDuration > 0f)
+            float scaledVisibleDuration =
+                BattleSpeedState.ScaleDuration(
+                    damageVisibleDuration);
+
+            if (scaledVisibleDuration > 0f)
             {
                 yield return new WaitForSecondsRealtime(
-                    damageVisibleDuration);
+                    scaledVisibleDuration);
             }
+
+            float scaledFadeDuration =
+                BattleSpeedState.ScaleDuration(
+                    damageFadeDuration);
 
             float elapsed =
                 0f;
 
-            while (elapsed < damageFadeDuration)
+            while (elapsed < scaledFadeDuration)
             {
                 elapsed +=
                     Time.unscaledDeltaTime;
 
                 float ratio =
-                    damageFadeDuration > 0f
+                    scaledFadeDuration > 0f
                         ? Mathf.Clamp01(
-                            elapsed / damageFadeDuration)
+                            elapsed / scaledFadeDuration)
                         : 1f;
 
                 Color color =
