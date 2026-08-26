@@ -255,12 +255,6 @@ namespace ProjectDelta.Tests.EditMode
                     1,
                     out int firstAmount);
 
-            bool secondRemoved =
-                inventory.TryRemoveQuantityAt(
-                    0,
-                    1,
-                    out int secondAmount);
-
             Assert.That(
                 firstRemoved,
                 Is.True);
@@ -272,6 +266,12 @@ namespace ProjectDelta.Tests.EditMode
             Assert.That(
                 inventory.Slots[0].Quantity,
                 Is.EqualTo(1));
+
+            bool secondRemoved =
+                inventory.TryRemoveQuantityAt(
+                    0,
+                    1,
+                    out int secondAmount);
 
             Assert.That(
                 secondRemoved,

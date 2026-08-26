@@ -22,6 +22,15 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public bool Completed { get; private set; } // 콘텐츠 처리 상태 (기획서 3.3.3절 "이벤트가 완료되면 해당 방은 일반적으로 빈 방으로 전환한다")
         public bool ChestOpened { get; private set; } // 25일차 상자 개봉 여부 (26일차: 저장 대상에 포함)
 
+        // 95일차: 상자 개봉 여부와 실제 남은 내용물을 분리해 관리한다.
+        private readonly List<string> chestRemainingItems =
+            new List<string>();
+
+        public bool HasChestContentsSnapshot { get; private set; }
+
+        public IReadOnlyList<string> ChestRemainingItems =>
+            chestRemainingItems;
+
         private RoomInstance(string roomId, string definitionId, RoomGridLayout layout) // 방 인스턴스 생성자
         {
             RoomId = roomId; // 방 식별자 저장
@@ -52,6 +61,73 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public void MarkChestOpened()
         {
             ChestOpened = true; // 상자 개봉 상태로 전환
+        }
+
+        // 95일차: 새 방에서 상자 원본 목록을 최초 한 번만 런타임 상태로 등록한다.
+        public void InitializeChestContents(
+            IEnumerable<string> itemKeys)
+        {
+            if (HasChestContentsSnapshot)
+            {
+                return;
+            }
+
+            ReplaceChestContents(
+                itemKeys);
+        }
+
+        // 95일차: 저장 데이터의 남은 상자 목록을 그대로 복원한다.
+        public void RestoreChestContents(
+            IEnumerable<string> itemKeys)
+        {
+            ReplaceChestContents(
+                itemKeys);
+        }
+
+        // 95일차: 실제 획득 성공 시에만 상자 런타임 상태에서 제거한다.
+        public bool TryTakeChestItem(
+            int index,
+            out string itemKey)
+        {
+            if (!HasChestContentsSnapshot
+                || index < 0
+                || index >= chestRemainingItems.Count)
+            {
+                itemKey =
+                    null;
+
+                return false;
+            }
+
+            itemKey =
+                chestRemainingItems[index];
+
+            chestRemainingItems.RemoveAt(
+                index);
+
+            return true;
+        }
+
+        private void ReplaceChestContents(
+            IEnumerable<string> itemKeys)
+        {
+            chestRemainingItems.Clear();
+
+            if (itemKeys != null)
+            {
+                foreach (string itemKey in itemKeys)
+                {
+                    if (!string.IsNullOrEmpty(
+                            itemKey))
+                    {
+                        chestRemainingItems.Add(
+                            itemKey);
+                    }
+                }
+            }
+
+            HasChestContentsSnapshot =
+                true;
         }
 
         // 26일차: 저장 데이터를 불러올 때 "최초 1회" 판정 없이 상태를 그대로 덮어씌운다.

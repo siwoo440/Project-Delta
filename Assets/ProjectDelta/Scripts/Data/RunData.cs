@@ -113,6 +113,10 @@ namespace ProjectDelta.Data
         public string ItemId;
         public string DisplayName;
         public int Quantity;
+
+        // 95일차: HUD가 초기화되기 전 이어하기에서도 Stack 수량이 잘리지 않도록 저장한다.
+        // 0은 95일차 이전 저장 데이터로 간주한다.
+        public int MaxStackSize;
     }
 
     [Serializable]
@@ -192,6 +196,14 @@ namespace ProjectDelta.Data
         public bool SecretFound;
         public bool TrapTriggered;
         public bool ChestOpened;
+
+        // 95일차: 이전 저장과 "새 저장에서 남은 아이템 0개"를 구분하기 위한 표식.
+        public bool HasChestContentsSnapshot;
+
+        // 현재 상자에 실제로 남아 있는 아이템 키를 순서대로 저장한다.
+        public List<string> ChestRemainingItems =
+            new List<string>();
+
         public bool IsStairs;
         public bool StairsDiscovered;
         public bool RestRoomUsed;

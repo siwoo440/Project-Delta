@@ -170,7 +170,12 @@ namespace ProjectDelta.Data
                         Quantity =
                             slot.IsEmpty
                                 ? 0
-                                : slot.Quantity
+                                : slot.Quantity,
+                        // 95일차: HUD 초기화와 무관하게 저장 자체가 Stack 규칙을 보존한다.
+                        MaxStackSize =
+                            slot.IsEmpty
+                                ? 0
+                                : slot.MaxStackSize
                     });
 
                 if (!slot.IsEmpty)
@@ -320,11 +325,25 @@ namespace ProjectDelta.Data
                         continue;
                     }
 
-                    context.Inventory.RestoreSlot(
-                        slotIndex,
-                        slot.ItemId,
-                        slot.DisplayName,
-                        slot.Quantity);
+                    // 95일차 이후 저장은 저장된 Stack 상한을 직접 사용한다.
+                    if (slot.MaxStackSize > 0)
+                    {
+                        context.Inventory.RestoreSlot(
+                            slotIndex,
+                            slot.ItemId,
+                            slot.DisplayName,
+                            slot.Quantity,
+                            slot.MaxStackSize);
+                    }
+                    else
+                    {
+                        // 이전 저장은 기존 resolver 경로를 유지해 하위 호환한다.
+                        context.Inventory.RestoreSlot(
+                            slotIndex,
+                            slot.ItemId,
+                            slot.DisplayName,
+                            slot.Quantity);
+                    }
                 }
             }
             else if (savedRun.Inventory?.InventoryItemIds != null)
@@ -571,6 +590,10 @@ namespace ProjectDelta.Data
                                 == node.RoomId
                     };
 
+                SaveChestContents(
+                    roomInstance,
+                    roomData);
+
                 foreach (CardinalDirection direction
                          in node.Connections.Keys)
                 {
@@ -603,7 +626,7 @@ namespace ProjectDelta.Data
             foreach (RoomInstance room
                      in context.Dungeon.AllRooms)
             {
-                data.DungeonState.Rooms.Add(
+                RoomRunState roomData =
                     new RoomRunState
                     {
                         RoomId = room.RoomId,
@@ -613,7 +636,39 @@ namespace ProjectDelta.Data
                                 room.RoomId),
                         Completed = room.Completed,
                         ChestOpened = room.ChestOpened
-                    });
+                    };
+
+                SaveChestContents(
+                    room,
+                    roomData);
+
+                data.DungeonState.Rooms.Add(
+                    roomData);
+            }
+        }
+
+        private static void SaveChestContents(
+            RoomInstance roomInstance,
+            RoomRunState roomData)
+        {
+            if (roomInstance == null
+                || roomData == null
+                || !roomInstance.HasChestContentsSnapshot)
+            {
+                return;
+            }
+
+            roomData.HasChestContentsSnapshot =
+                true;
+
+            roomData.ChestRemainingItems.Clear();
+
+            for (int index = 0;
+                 index < roomInstance.ChestRemainingItems.Count;
+                 index++)
+            {
+                roomData.ChestRemainingItems.Add(
+                    roomInstance.ChestRemainingItems[index]);
             }
         }
 

@@ -1,66 +1,136 @@
-using System.Collections.Generic; // 목록 기능 사용
-using UnityEngine; // Unity 기본 기능 사용
+using System.Collections.Generic;
+using ProjectDelta.Data;
+using ProjectDelta.Domain;
+using UnityEngine;
 
-namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
+namespace ProjectDelta.Presentation
 {
     // 25일차: 상자 하나가 실제로 담고 있는 아이템 목록과 개봉 상태를 보유한다.
-    // RoomContentMarker(빈 자리 표시 전용, 19일차 원칙)와 별도 컴포넌트로 분리해서
-    // "이 자리에 상자가 있다"는 표시와 "이 상자의 실제 내용물" 상태를 나눈다.
-    // 같은 GameObject에 RoomContentMarker(ContentType = Chest)와 함께 붙인다.
-    public sealed class ChestContentMarker : MonoBehaviour // 상자 내용물 보유
+    // 95일차: 실제 남은 목록은 RoomInstance에도 동기화하여 저장·복원한다.
+    public sealed class ChestContentMarker : MonoBehaviour
     {
-        [SerializeField] private List<string> itemDisplayNames = new List<string>(); // 인스펙터에서 채우는 상자 내용물 (자리표시자 수준 아이템 이름)
+        [SerializeField]
+        private List<string> itemDisplayNames =
+            new List<string>();
 
-        private readonly List<string> remainingItems = new List<string>(); // 아직 꺼내지 않은 아이템
-        private bool initialized; // 최초 목록 복사 여부
+        // RoomInstance가 없는 테스트/예외 상황에서만 사용하는 호환 목록.
+        private readonly List<string> fallbackRemainingItems =
+            new List<string>();
 
-        public IReadOnlyList<string> RemainingItems // 남은 아이템 목록 공개
+        private bool initialized;
+        private RoomInstance roomInstance;
+
+        public IReadOnlyList<string> RemainingItems
         {
             get
             {
-                EnsureInitialized(); // 최초 접근 시 목록 준비
-                return remainingItems; // 남은 아이템 목록 반환
+                EnsureInitialized();
+
+                return roomInstance != null
+                    ? roomInstance.ChestRemainingItems
+                    : fallbackRemainingItems;
             }
         }
 
-        // 26일차: RoomPassageController.Awake()가 저장 상태를 RoomInstance에 먼저 복원해둔 뒤에
-        // 실행되도록 Start()에서 확인한다 (Unity는 같은 프레임의 모든 Awake()를 Start()보다 먼저 끝낸다).
+        // RoomPassageController.Awake()가 저장 상태를 먼저 복원한 뒤 Start()에서 상자 목록을 연결한다.
         private void Start()
         {
-            RoomPassageController passageController = GetComponentInParent<RoomPassageController>(); // 이 상자가 속한 방의 통로 컨트롤러 검색
-
-            if (passageController != null && passageController.CurrentInstance != null && passageController.CurrentInstance.ChestOpened) // 저장된 상태가 "이미 개봉함"인지 확인
-            {
-                EnsureInitialized(); // 목록 준비
-                remainingItems.Clear(); // 26일차: 부분 개봉 상태는 저장하지 않아 통째로 빈 상자로 복원 (테스트용 단순화)
-            }
+            EnsureInitialized();
         }
 
-        private void EnsureInitialized() // 인스펙터 목록을 런타임 목록으로 최초 1회 복사
+        private void EnsureInitialized()
         {
-            if (initialized) // 이미 초기화되었는지 확인
+            if (initialized)
             {
-                return; // 중복 초기화 중단
+                return;
             }
 
-            remainingItems.AddRange(itemDisplayNames); // 인스펙터 목록 복사
-            initialized = true; // 초기화 완료 표시
+            RoomPassageController passageController =
+                GetComponentInParent<RoomPassageController>();
+
+            roomInstance =
+                passageController != null
+                    ? passageController.CurrentInstance
+                    : null;
+
+            if (roomInstance == null)
+            {
+                fallbackRemainingItems.Clear();
+                fallbackRemainingItems.AddRange(
+                    itemDisplayNames);
+
+                initialized =
+                    true;
+
+                return;
+            }
+
+            // 새 저장 형식은 실제 남은 목록을 그대로 복원한다.
+            if (DungeonSaveMapper.TryGetRoomState(
+                    roomInstance.RoomId,
+                    out RoomRunState savedState)
+                && savedState != null
+                && savedState.HasChestContentsSnapshot)
+            {
+                roomInstance.RestoreChestContents(
+                    savedState.ChestRemainingItems);
+
+                initialized =
+                    true;
+
+                return;
+            }
+
+            // 95일차 이전 저장은 남은 목록을 알 수 없다.
+            // 기존 규칙과 호환되도록 이미 열린 상자는 빈 상자로 복원한다.
+            if (roomInstance.ChestOpened)
+            {
+                roomInstance.RestoreChestContents(
+                    System.Array.Empty<string>());
+
+                initialized =
+                    true;
+
+                return;
+            }
+
+            // 새 게임/미개봉 상자는 Inspector의 원본 목록을 런타임 상태로 등록한다.
+            roomInstance.InitializeChestContents(
+                itemDisplayNames);
+
+            initialized =
+                true;
         }
 
-        // 지정한 순번의 아이템을 꺼낸다. 성공하면 true와 꺼낸 아이템 이름을 반환한다.
-        public bool TryTake(int index, out string displayName) // 아이템 꺼내기 시도
+        public bool TryTake(
+            int index,
+            out string displayName)
         {
-            EnsureInitialized(); // 목록 준비 확인
+            EnsureInitialized();
 
-            if (index < 0 || index >= remainingItems.Count) // 순번 범위 확인
+            if (roomInstance != null)
             {
-                displayName = null; // 결과 이름 초기화
-                return false; // 꺼내기 실패 반환
+                return roomInstance.TryTakeChestItem(
+                    index,
+                    out displayName);
             }
 
-            displayName = remainingItems[index]; // 꺼낼 아이템 이름 조회
-            remainingItems.RemoveAt(index); // 목록에서 제거
-            return true; // 꺼내기 성공 반환
+            if (index < 0
+                || index >= fallbackRemainingItems.Count)
+            {
+                displayName =
+                    null;
+
+                return false;
+            }
+
+            displayName =
+                fallbackRemainingItems[index];
+
+            fallbackRemainingItems.RemoveAt(
+                index);
+
+            return true;
         }
     }
 }
