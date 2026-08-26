@@ -670,6 +670,18 @@ namespace ProjectDelta.Domain
                 int sourceMaxStackSize =
                     source.MaxStackSize;
 
+                string destinationItemId =
+                    destination.ItemId;
+
+                string destinationDisplayName =
+                    destination.DisplayName;
+
+                int destinationQuantity =
+                    destination.Quantity;
+
+                int destinationMaxStackSize =
+                    destination.MaxStackSize;
+
                 destination.Set(
                     sourceItemId,
                     sourceDisplayName,
@@ -677,10 +689,10 @@ namespace ProjectDelta.Domain
                     sourceMaxStackSize);
 
                 source.Set(
-                    destination.ItemId,
-                    destination.DisplayName,
-                    destination.Quantity,
-                    destination.MaxStackSize);
+                    destinationItemId,
+                    destinationDisplayName,
+                    destinationQuantity,
+                    destinationMaxStackSize);
             }
 
             RebuildCompatibilityItems();

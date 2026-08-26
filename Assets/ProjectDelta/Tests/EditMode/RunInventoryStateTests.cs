@@ -205,15 +205,20 @@ namespace ProjectDelta.Tests.EditMode
             inventory.TryAdd(
                 "POTION",
                 "포션",
-                4,
+                5,
                 5,
                 out _);
 
             inventory.TryAdd(
                 "POTION",
                 "포션",
-                3,
+                4,
                 5,
+                out _);
+
+            inventory.TryRemoveQuantityAt(
+                0,
+                2,
                 out _);
 
             Assert.That(

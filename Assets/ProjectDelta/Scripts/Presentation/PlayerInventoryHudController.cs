@@ -62,9 +62,29 @@ namespace ProjectDelta.Presentation
             -1;
 
         private Button useButton;
+        private Button moveButton;
+        private Button discardButton;
+
+        private Text moveButtonText;
+
+        private GameObject discardConfirmPanel;
+        private Text discardConfirmText;
+        private Button discardOneButton;
+        private Button discardAllButton;
+        private Button discardCancelButton;
+
+        private bool isMoveMode;
+        private int moveSourceSlotIndex =
+            -1;
+
         private ExplorationMonsterEncounterController encounterController;
+
         private string lastUseMessage =
             string.Empty;
+
+        private bool IsDiscardConfirmOpen =>
+            discardConfirmPanel != null
+            && discardConfirmPanel.activeSelf;
 
         private void Awake()
         {
@@ -100,14 +120,26 @@ namespace ProjectDelta.Presentation
 
             ResizeSlotArrayLengths();
             AutoBindQuantityTexts();
-            EnsureUseButton();
+            EnsureActionUi();
             HookButtons();
 
             selectedSlotIndex =
                 -1;
 
+            isMoveMode =
+                false;
+
+            moveSourceSlotIndex =
+                -1;
+
             lastUseMessage =
                 string.Empty;
+
+            if (discardConfirmPanel != null)
+            {
+                discardConfirmPanel.SetActive(
+                    false);
+            }
 
             ShowSelectedItemPanel(
                 false);
@@ -250,6 +282,463 @@ namespace ProjectDelta.Presentation
             }
         }
 
+        private void EnsureActionUi()
+        {
+            if (selectedItemPanel == null)
+            {
+                return;
+            }
+
+            useButton =
+                EnsureActionButton(
+                    "UseButton",
+                    "사용",
+                    -210f);
+
+            moveButton =
+                EnsureActionButton(
+                    "MoveButton",
+                    "이동",
+                    -110f);
+
+            discardButton =
+                EnsureActionButton(
+                    "DiscardButton",
+                    "버리기",
+                    -10f);
+
+            moveButtonText =
+                moveButton != null
+                    ? FindButtonText(
+                        moveButton)
+                    : null;
+
+            EnsureDiscardConfirmPanel();
+        }
+
+        private Button EnsureActionButton(
+            string objectName,
+            string label,
+            float anchoredX)
+        {
+            Button button =
+                FindButtonByName(
+                    objectName);
+
+            if (button == null)
+            {
+                GameObject buttonObject =
+                    new GameObject(
+                        objectName,
+                        typeof(RectTransform),
+                        typeof(Image),
+                        typeof(Button));
+
+                buttonObject.transform.SetParent(
+                    selectedItemPanel.transform,
+                    false);
+
+                Image background =
+                    buttonObject.GetComponent<Image>();
+
+                background.color =
+                    new Color(
+                        0.18f,
+                        0.18f,
+                        0.18f,
+                        0.95f);
+
+                button =
+                    buttonObject.GetComponent<Button>();
+            }
+
+            RectTransform rectTransform =
+                button.GetComponent<RectTransform>();
+
+            rectTransform.anchorMin =
+                new Vector2(
+                    1f,
+                    0f);
+
+            rectTransform.anchorMax =
+                new Vector2(
+                    1f,
+                    0f);
+
+            rectTransform.pivot =
+                new Vector2(
+                    1f,
+                    0f);
+
+            rectTransform.sizeDelta =
+                new Vector2(
+                    90f,
+                    32f);
+
+            rectTransform.anchoredPosition =
+                new Vector2(
+                    anchoredX,
+                    10f);
+
+            Text text =
+                EnsureButtonText(
+                    button,
+                    label);
+
+            text.text =
+                label;
+
+            return button;
+        }
+
+        private Button FindButtonByName(
+            string objectName)
+        {
+            if (selectedItemPanel == null)
+            {
+                return null;
+            }
+
+            Button[] buttons =
+                selectedItemPanel.GetComponentsInChildren<Button>(
+                    true);
+
+            for (int index = 0;
+                 index < buttons.Length;
+                 index++)
+            {
+                Button button =
+                    buttons[index];
+
+                if (button != null
+                    && button.name
+                        == objectName)
+                {
+                    return button;
+                }
+            }
+
+            return null;
+        }
+
+        private static Text FindButtonText(
+            Button button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            Transform textTransform =
+                button.transform.Find(
+                    "Text");
+
+            return textTransform != null
+                ? textTransform.GetComponent<Text>()
+                : button.GetComponentInChildren<Text>(
+                    true);
+        }
+
+        private static Text EnsureButtonText(
+            Button button,
+            string label)
+        {
+            Text text =
+                FindButtonText(
+                    button);
+
+            if (text != null)
+            {
+                return text;
+            }
+
+            GameObject textObject =
+                new GameObject(
+                    "Text",
+                    typeof(RectTransform),
+                    typeof(Text));
+
+            textObject.transform.SetParent(
+                button.transform,
+                false);
+
+            RectTransform textRect =
+                textObject.GetComponent<RectTransform>();
+
+            textRect.anchorMin =
+                Vector2.zero;
+
+            textRect.anchorMax =
+                Vector2.one;
+
+            textRect.offsetMin =
+                Vector2.zero;
+
+            textRect.offsetMax =
+                Vector2.zero;
+
+            text =
+                textObject.GetComponent<Text>();
+
+            text.text =
+                label;
+
+            text.alignment =
+                TextAnchor.MiddleCenter;
+
+            text.fontSize =
+                16;
+
+            text.color =
+                Color.white;
+
+            text.raycastTarget =
+                false;
+
+            text.font =
+                Resources.GetBuiltinResource<Font>(
+                    "LegacyRuntime.ttf");
+
+            return text;
+        }
+
+        private void EnsureDiscardConfirmPanel()
+        {
+            Transform existing =
+                selectedItemPanel.transform.Find(
+                    "DiscardConfirmPanel");
+
+            if (existing != null)
+            {
+                discardConfirmPanel =
+                    existing.gameObject;
+            }
+            else
+            {
+                discardConfirmPanel =
+                    new GameObject(
+                        "DiscardConfirmPanel",
+                        typeof(RectTransform),
+                        typeof(Image));
+
+                discardConfirmPanel.transform.SetParent(
+                    selectedItemPanel.transform,
+                    false);
+            }
+
+            RectTransform panelRect =
+                discardConfirmPanel.GetComponent<RectTransform>();
+
+            panelRect.anchorMin =
+                new Vector2(
+                    0.5f,
+                    0.5f);
+
+            panelRect.anchorMax =
+                new Vector2(
+                    0.5f,
+                    0.5f);
+
+            panelRect.pivot =
+                new Vector2(
+                    0.5f,
+                    0.5f);
+
+            panelRect.sizeDelta =
+                new Vector2(
+                    360f,
+                    150f);
+
+            panelRect.anchoredPosition =
+                Vector2.zero;
+
+            Image panelImage =
+                discardConfirmPanel.GetComponent<Image>();
+
+            panelImage.color =
+                new Color(
+                    0.06f,
+                    0.06f,
+                    0.06f,
+                    0.98f);
+
+            discardConfirmText =
+                EnsureDiscardConfirmText();
+
+            discardOneButton =
+                EnsureDiscardPanelButton(
+                    "DiscardOneButton",
+                    "1개 버리기",
+                    -110f);
+
+            discardAllButton =
+                EnsureDiscardPanelButton(
+                    "DiscardAllButton",
+                    "전부 버리기",
+                    0f);
+
+            discardCancelButton =
+                EnsureDiscardPanelButton(
+                    "DiscardCancelButton",
+                    "취소",
+                    110f);
+
+            discardConfirmPanel.transform.SetAsLastSibling();
+
+            discardConfirmPanel.SetActive(
+                false);
+        }
+
+        private Text EnsureDiscardConfirmText()
+        {
+            Transform existing =
+                discardConfirmPanel.transform.Find(
+                    "MessageText");
+
+            Text text;
+
+            if (existing != null)
+            {
+                text =
+                    existing.GetComponent<Text>();
+            }
+            else
+            {
+                GameObject textObject =
+                    new GameObject(
+                        "MessageText",
+                        typeof(RectTransform),
+                        typeof(Text));
+
+                textObject.transform.SetParent(
+                    discardConfirmPanel.transform,
+                    false);
+
+                text =
+                    textObject.GetComponent<Text>();
+            }
+
+            RectTransform rectTransform =
+                text.GetComponent<RectTransform>();
+
+            rectTransform.anchorMin =
+                new Vector2(
+                    0f,
+                    0f);
+
+            rectTransform.anchorMax =
+                new Vector2(
+                    1f,
+                    1f);
+
+            rectTransform.offsetMin =
+                new Vector2(
+                    15f,
+                    58f);
+
+            rectTransform.offsetMax =
+                new Vector2(
+                    -15f,
+                    -15f);
+
+            text.alignment =
+                TextAnchor.MiddleCenter;
+
+            text.fontSize =
+                16;
+
+            text.color =
+                Color.white;
+
+            text.font =
+                Resources.GetBuiltinResource<Font>(
+                    "LegacyRuntime.ttf");
+
+            text.raycastTarget =
+                false;
+
+            return text;
+        }
+
+        private Button EnsureDiscardPanelButton(
+            string objectName,
+            string label,
+            float anchoredX)
+        {
+            Transform existing =
+                discardConfirmPanel.transform.Find(
+                    objectName);
+
+            Button button;
+
+            if (existing != null)
+            {
+                button =
+                    existing.GetComponent<Button>();
+            }
+            else
+            {
+                GameObject buttonObject =
+                    new GameObject(
+                        objectName,
+                        typeof(RectTransform),
+                        typeof(Image),
+                        typeof(Button));
+
+                buttonObject.transform.SetParent(
+                    discardConfirmPanel.transform,
+                    false);
+
+                button =
+                    buttonObject.GetComponent<Button>();
+
+                Image image =
+                    buttonObject.GetComponent<Image>();
+
+                image.color =
+                    new Color(
+                        0.18f,
+                        0.18f,
+                        0.18f,
+                        1f);
+            }
+
+            RectTransform rectTransform =
+                button.GetComponent<RectTransform>();
+
+            rectTransform.anchorMin =
+                new Vector2(
+                    0.5f,
+                    0f);
+
+            rectTransform.anchorMax =
+                new Vector2(
+                    0.5f,
+                    0f);
+
+            rectTransform.pivot =
+                new Vector2(
+                    0.5f,
+                    0f);
+
+            rectTransform.sizeDelta =
+                new Vector2(
+                    100f,
+                    34f);
+
+            rectTransform.anchoredPosition =
+                new Vector2(
+                    anchoredX,
+                    15f);
+
+            EnsureButtonText(
+                button,
+                label).text =
+                label;
+
+            return button;
+        }
+
         private void HookButtons()
         {
             if (slotButtons != null)
@@ -277,144 +766,62 @@ namespace ProjectDelta.Presentation
                 }
             }
 
-            if (useButton != null)
-            {
-                useButton.onClick.RemoveAllListeners();
+            HookButton(
+                useButton,
+                OnUseButtonClicked);
 
-                useButton.onClick.AddListener(
-                    OnUseButtonClicked);
-            }
+            HookButton(
+                moveButton,
+                OnMoveButtonClicked);
+
+            HookButton(
+                discardButton,
+                OnDiscardButtonClicked);
+
+            HookButton(
+                discardOneButton,
+                OnDiscardOneClicked);
+
+            HookButton(
+                discardAllButton,
+                OnDiscardAllClicked);
+
+            HookButton(
+                discardCancelButton,
+                CloseDiscardConfirmPanel);
         }
 
-        private void EnsureUseButton()
+        private static void HookButton(
+            Button button,
+            UnityEngine.Events.UnityAction action)
         {
-            if (selectedItemPanel == null)
+            if (button == null)
             {
                 return;
             }
 
-            Button[] existingButtons =
-                selectedItemPanel.GetComponentsInChildren<Button>(
-                    true);
+            button.onClick.RemoveAllListeners();
 
-            for (int index = 0;
-                 index < existingButtons.Length;
-                 index++)
-            {
-                if (existingButtons[index] != null
-                    && existingButtons[index].name
-                        == "UseButton")
-                {
-                    useButton =
-                        existingButtons[index];
-
-                    return;
-                }
-            }
-
-            GameObject buttonObject =
-                new GameObject(
-                    "UseButton",
-                    typeof(RectTransform),
-                    typeof(Image),
-                    typeof(Button));
-
-            buttonObject.transform.SetParent(
-                selectedItemPanel.transform,
-                false);
-
-            RectTransform rectTransform =
-                buttonObject.GetComponent<RectTransform>();
-
-            rectTransform.anchorMin =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.anchorMax =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.pivot =
-                new Vector2(
-                    1f,
-                    0f);
-
-            rectTransform.sizeDelta =
-                new Vector2(
-                    90f,
-                    32f);
-
-            rectTransform.anchoredPosition =
-                new Vector2(
-                    -10f,
-                    10f);
-
-            Image background =
-                buttonObject.GetComponent<Image>();
-
-            background.color =
-                new Color(
-                    0.18f,
-                    0.18f,
-                    0.18f,
-                    0.95f);
-
-            useButton =
-                buttonObject.GetComponent<Button>();
-
-            GameObject textObject =
-                new GameObject(
-                    "Text",
-                    typeof(RectTransform),
-                    typeof(Text));
-
-            textObject.transform.SetParent(
-                buttonObject.transform,
-                false);
-
-            RectTransform textRect =
-                textObject.GetComponent<RectTransform>();
-
-            textRect.anchorMin =
-                Vector2.zero;
-
-            textRect.anchorMax =
-                Vector2.one;
-
-            textRect.offsetMin =
-                Vector2.zero;
-
-            textRect.offsetMax =
-                Vector2.zero;
-
-            Text text =
-                textObject.GetComponent<Text>();
-
-            text.text =
-                "사용";
-
-            text.alignment =
-                TextAnchor.MiddleCenter;
-
-            text.fontSize =
-                16;
-
-            text.color =
-                Color.white;
-
-            text.raycastTarget =
-                false;
-
-            text.font =
-                Resources.GetBuiltinResource<Font>(
-                    "LegacyRuntime.ttf");
+            button.onClick.AddListener(
+                action);
         }
 
         private void OnSlotClicked(
             int slotIndex)
         {
+            if (IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
+            if (isMoveMode)
+            {
+                HandleMoveDestination(
+                    slotIndex);
+
+                return;
+            }
+
             InventoryRunState inventory =
                 GetInventory();
 
@@ -425,14 +832,7 @@ namespace ProjectDelta.Presentation
                 || slot == null
                 || slot.IsEmpty)
             {
-                selectedSlotIndex =
-                    -1;
-
-                lastUseMessage =
-                    string.Empty;
-
-                ShowSelectedItemPanel(
-                    false);
+                ClearSelection();
 
                 return;
             }
@@ -448,6 +848,12 @@ namespace ProjectDelta.Presentation
 
         private void OnUseButtonClicked()
         {
+            if (isMoveMode
+                || IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
             InventoryRunState inventory =
                 GetInventory();
 
@@ -509,6 +915,267 @@ namespace ProjectDelta.Presentation
             lastUseMessage =
                 BuildUseResultMessage(
                     result);
+
+            RefreshInventory();
+        }
+
+        private void OnMoveButtonClicked()
+        {
+            if (IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
+            if (isMoveMode)
+            {
+                CancelMoveMode();
+                return;
+            }
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            if (inventory == null
+                || selectedSlotIndex < 0
+                || !inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState slot)
+                || slot == null
+                || slot.IsEmpty)
+            {
+                return;
+            }
+
+            isMoveMode =
+                true;
+
+            moveSourceSlotIndex =
+                selectedSlotIndex;
+
+            lastUseMessage =
+                "이동할 슬롯을 선택하세요. 같은 슬롯을 다시 누르면 취소됩니다.";
+
+            RefreshInventory();
+        }
+
+        private void HandleMoveDestination(
+            int destinationSlotIndex)
+        {
+            if (!isMoveMode)
+            {
+                return;
+            }
+
+            if (destinationSlotIndex
+                == moveSourceSlotIndex)
+            {
+                CancelMoveMode();
+                return;
+            }
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            InventoryInteractionResult result =
+                InventoryInteractionService.Move(
+                    inventory,
+                    moveSourceSlotIndex,
+                    destinationSlotIndex);
+
+            if (!result.Success)
+            {
+                lastUseMessage =
+                    "해당 슬롯으로 이동할 수 없습니다.";
+
+                RefreshInventory();
+                return;
+            }
+
+            ApplicationFlow.Current?.SaveDungeonProgress();
+
+            selectedSlotIndex =
+                destinationSlotIndex;
+
+            isMoveMode =
+                false;
+
+            moveSourceSlotIndex =
+                -1;
+
+            lastUseMessage =
+                "아이템 이동을 완료했습니다.";
+
+            RefreshInventory();
+        }
+
+        private void CancelMoveMode()
+        {
+            isMoveMode =
+                false;
+
+            moveSourceSlotIndex =
+                -1;
+
+            lastUseMessage =
+                string.Empty;
+
+            RefreshInventory();
+        }
+
+        private void OnDiscardButtonClicked()
+        {
+            if (isMoveMode
+                || IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            if (inventory == null
+                || selectedSlotIndex < 0
+                || !inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState slot)
+                || slot == null
+                || slot.IsEmpty)
+            {
+                return;
+            }
+
+            ItemDefinition definition =
+                ResolveDefinition(
+                    slot);
+
+            ItemCategory category =
+                definition != null
+                    ? definition.Category
+                    : ItemCategory.Uncategorized;
+
+            if (!ItemCategoryRules.CanDiscard(
+                    category))
+            {
+                lastUseMessage =
+                    "이 아이템은 버릴 수 없습니다.";
+
+                RefreshSelectedItem();
+                return;
+            }
+
+            if (discardConfirmText != null)
+            {
+                string displayName =
+                    definition != null
+                    && !string.IsNullOrEmpty(
+                        definition.DisplayName)
+                        ? definition.DisplayName
+                        : slot.DisplayName;
+
+                discardConfirmText.text =
+                    $"{displayName} ×{slot.Quantity}\n버릴 수량을 선택하세요.";
+            }
+
+            discardConfirmPanel.SetActive(
+                true);
+
+            discardConfirmPanel.transform.SetAsLastSibling();
+
+            RefreshInventory();
+        }
+
+        private void OnDiscardOneClicked()
+        {
+            ExecuteDiscard(
+                false);
+        }
+
+        private void OnDiscardAllClicked()
+        {
+            ExecuteDiscard(
+                true);
+        }
+
+        private void ExecuteDiscard(
+            bool discardAll)
+        {
+            InventoryRunState inventory =
+                GetInventory();
+
+            if (inventory == null
+                || selectedSlotIndex < 0
+                || !inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState slot)
+                || slot == null
+                || slot.IsEmpty)
+            {
+                CloseDiscardConfirmPanel();
+                return;
+            }
+
+            ItemDefinition definition =
+                ResolveDefinition(
+                    slot);
+
+            ItemCategory category =
+                definition != null
+                    ? definition.Category
+                    : ItemCategory.Uncategorized;
+
+            InventoryInteractionResult result =
+                discardAll
+                    ? InventoryInteractionService.DiscardAll(
+                        inventory,
+                        selectedSlotIndex,
+                        category)
+                    : InventoryInteractionService.DiscardOne(
+                        inventory,
+                        selectedSlotIndex,
+                        category);
+
+            if (!result.Success)
+            {
+                lastUseMessage =
+                    result.FailureReason
+                        == InventoryInteractionFailureReason.DiscardNotAllowed
+                            ? "이 아이템은 버릴 수 없습니다."
+                            : "아이템을 버리지 못했습니다.";
+
+                CloseDiscardConfirmPanel();
+                RefreshInventory();
+                return;
+            }
+
+            ApplicationFlow.Current?.SaveDungeonProgress();
+
+            CloseDiscardConfirmPanel();
+
+            if (!inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState remainingSlot)
+                || remainingSlot == null
+                || remainingSlot.IsEmpty)
+            {
+                ClearSelection();
+                return;
+            }
+
+            lastUseMessage =
+                discardAll
+                    ? "아이템을 전부 버렸습니다."
+                    : "아이템 1개를 버렸습니다.";
+
+            RefreshInventory();
+        }
+
+        private void CloseDiscardConfirmPanel()
+        {
+            if (discardConfirmPanel != null)
+            {
+                discardConfirmPanel.SetActive(
+                    false);
+            }
 
             RefreshInventory();
         }
@@ -591,17 +1258,20 @@ namespace ProjectDelta.Presentation
             int index,
             InventorySlotState slot)
         {
+            bool hasItem =
+                slot != null
+                && !slot.IsEmpty;
+
             if (slotNumberTexts != null
                 && index < slotNumberTexts.Length
                 && slotNumberTexts[index] != null)
             {
                 slotNumberTexts[index].text =
-                    (index + 1).ToString();
+                    isMoveMode
+                    && index == moveSourceSlotIndex
+                        ? $"▶ {index + 1}"
+                        : (index + 1).ToString();
             }
-
-            bool hasItem =
-                slot != null
-                && !slot.IsEmpty;
 
             ItemDefinition definition =
                 hasItem
@@ -649,7 +1319,9 @@ namespace ProjectDelta.Presentation
                 && slotButtons[index] != null)
             {
                 slotButtons[index].interactable =
-                    hasItem;
+                    !IsDiscardConfirmOpen
+                    && (hasItem
+                        || isMoveMode);
             }
 
             if (slotBackgrounds != null
@@ -674,12 +1346,7 @@ namespace ProjectDelta.Presentation
                 || slot == null
                 || slot.IsEmpty)
             {
-                selectedSlotIndex =
-                    -1;
-
-                ShowSelectedItemPanel(
-                    false);
-
+                ClearSelection();
                 return;
             }
 
@@ -740,17 +1407,52 @@ namespace ProjectDelta.Presentation
                     description;
             }
 
-            RefreshUseButton(
+            RefreshActionButtons(
                 inventory,
-                slot,
                 definition);
         }
 
-        private void RefreshUseButton(
+        private void RefreshActionButtons(
             InventoryRunState inventory,
-            InventorySlotState slot,
             ItemDefinition definition)
         {
+            bool modalOpen =
+                IsDiscardConfirmOpen;
+
+            if (moveButton != null)
+            {
+                moveButton.gameObject.SetActive(
+                    true);
+
+                moveButton.interactable =
+                    !modalOpen;
+
+                if (moveButtonText != null)
+                {
+                    moveButtonText.text =
+                        isMoveMode
+                            ? "이동 취소"
+                            : "이동";
+                }
+            }
+
+            ItemCategory category =
+                definition != null
+                    ? definition.Category
+                    : ItemCategory.Uncategorized;
+
+            if (discardButton != null)
+            {
+                discardButton.gameObject.SetActive(
+                    true);
+
+                discardButton.interactable =
+                    !modalOpen
+                    && !isMoveMode
+                    && ItemCategoryRules.CanDiscard(
+                        category);
+            }
+
             if (useButton == null)
             {
                 return;
@@ -759,13 +1461,22 @@ namespace ProjectDelta.Presentation
             bool categoryAllowsUse =
                 definition != null
                 && ItemCategoryRules.CanUse(
-                    definition.Category);
+                    category);
 
             useButton.gameObject.SetActive(
                 categoryAllowsUse);
 
             if (!categoryAllowsUse)
             {
+                return;
+            }
+
+            if (modalOpen
+                || isMoveMode)
+            {
+                useButton.interactable =
+                    false;
+
                 return;
             }
 
@@ -946,6 +1657,32 @@ namespace ProjectDelta.Presentation
             return changes.Count > 0
                 ? $"사용 완료 : {string.Join(" / ", changes)}"
                 : "아이템을 사용했습니다.";
+        }
+
+        private void ClearSelection()
+        {
+            selectedSlotIndex =
+                -1;
+
+            isMoveMode =
+                false;
+
+            moveSourceSlotIndex =
+                -1;
+
+            lastUseMessage =
+                string.Empty;
+
+            if (discardConfirmPanel != null)
+            {
+                discardConfirmPanel.SetActive(
+                    false);
+            }
+
+            ShowSelectedItemPanel(
+                false);
+
+            RefreshInventory();
         }
 
         private void ShowSelectedItemPanel(
