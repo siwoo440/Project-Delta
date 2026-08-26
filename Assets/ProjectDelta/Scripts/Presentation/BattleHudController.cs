@@ -6,8 +6,6 @@ using UnityEngine.UI;
 namespace ProjectDelta.Presentation
 {
     // 47일차: 전투 화면 레이아웃을 담당한다.
-    // 오른쪽 = 플레이어 상태 일러스트, 위쪽 = 적 슬롯 1~4(맨 왼쪽이 1번),
-    // 왼쪽 가운데 아래 = 행동 버튼 자리, 그 위 = 캐릭터 체력바.
     [DisallowMultipleComponent]
     public sealed class BattleHudController : MonoBehaviour
     {
@@ -32,13 +30,13 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Image staminaFillImage;
         [SerializeField] private Text staminaText;
 
-        // 49일차: 공격, 52일차: 방어 버튼을 실제로 연결한다.
         [Header("Action Buttons")]
         [SerializeField] private Button attackButton;
         [SerializeField] private Button defendButton;
 
-        // 이후 일차에 실제 Command가 연결될 나머지 행동 버튼 자리 (행동·아이템·도주·유혹).
-        // 유혹은 기획서에 있는 행동으로, 자리만 먼저 만들어두고 이후 일차에서 구현한다.
+        // 83일차: 기존 씬에는 전용 직렬화 참조가 없으므로 actionButtons에서 자동 탐색한다.
+        [SerializeField] private Button fleeButton;
+
         [SerializeField] private Button[] actionButtons =
             new Button[0];
 
@@ -47,17 +45,16 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Button testWinButton;
         [SerializeField] private Button testLoseButton;
 
-        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완하기 위한
-        // 마지막으로 재생한 행동 순번. encounterController.LastActionSequence와 달라지면
-        // 그 사이에 새 행동이 있었다는 뜻이라 해당 슬롯에 튀어오르는 연출을 재생한다.
         private int lastPlayedActionSequence;
 
         private void Awake()
         {
             ResolveEncounterController();
+            ResolveFleeButtonReference();
             BindButtons();
             BindEnemySlotClicks();
-            SetHudVisible(false);
+            SetHudVisible(
+                false);
         }
 
         private void OnDestroy()
@@ -69,7 +66,6 @@ namespace ProjectDelta.Presentation
         {
             ResolveEncounterController();
 
-            // 종료 결과를 확인할 수 있도록 Finished 상태에서도 전투 화면을 유지한다.
             bool shouldShow =
                 encounterController != null
                 && encounterController.HasBattle;
@@ -99,6 +95,19 @@ namespace ProjectDelta.Presentation
                 FindFirstObjectByType<ExplorationMonsterEncounterController>();
         }
 
+        private void ResolveFleeButtonReference()
+        {
+            if (fleeButton != null)
+            {
+                return;
+            }
+
+            fleeButton =
+                BattleHudActionButtonResolver.ResolveFleeButton(
+                    fleeButton,
+                    actionButtons);
+        }
+
         private void BindButtons()
         {
             if (testNextTurnButton != null)
@@ -119,7 +128,6 @@ namespace ProjectDelta.Presentation
                     OnTestLoseClicked);
             }
 
-            // 49일차: 공격, 52일차: 방어 버튼을 연결한다. 나머지는 이후 일차에 연결한다.
             if (attackButton != null)
             {
                 attackButton.onClick.AddListener(
@@ -131,9 +139,15 @@ namespace ProjectDelta.Presentation
                 defendButton.onClick.AddListener(
                     OnDefendButtonClicked);
             }
+
+            // 83일차: 69일차에 구현된 ConfirmFlee를 실제 HUD 버튼에 연결한다.
+            if (fleeButton != null)
+            {
+                fleeButton.onClick.AddListener(
+                    OnFleeButtonClicked);
+            }
         }
 
-        // 49일차: 적 슬롯 클릭 시 해당 슬롯 인덱스를 대상으로 선택한다.
         private void BindEnemySlotClicks()
         {
             if (enemySlots == null)
@@ -141,7 +155,9 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            for (int slotIndex = 0; slotIndex < enemySlots.Length; slotIndex++)
+            for (int slotIndex = 0;
+                 slotIndex < enemySlots.Length;
+                 slotIndex++)
             {
                 BattleParticipantSlotView slot =
                     enemySlots[slotIndex];
@@ -152,7 +168,7 @@ namespace ProjectDelta.Presentation
                 }
 
                 int capturedSlotIndex =
-                    slotIndex; // 클로저 캡처용 지역 변수
+                    slotIndex;
 
                 slot.SetOnClick(
                     () => OnEnemySlotClicked(
@@ -191,6 +207,12 @@ namespace ProjectDelta.Presentation
                 defendButton.onClick.RemoveListener(
                     OnDefendButtonClicked);
             }
+
+            if (fleeButton != null)
+            {
+                fleeButton.onClick.RemoveListener(
+                    OnFleeButtonClicked);
+            }
         }
 
         private void OnTestNextTurnClicked()
@@ -223,7 +245,6 @@ namespace ProjectDelta.Presentation
             encounterController.TestLoseBattle();
         }
 
-        // 49일차: 적 슬롯을 클릭하면 해당 참가자를 공격 대상으로 지정(재지정)한다.
         private void OnEnemySlotClicked(
             int slotIndex)
         {
@@ -247,7 +268,6 @@ namespace ProjectDelta.Presentation
                 enemy);
         }
 
-        // 49일차: 지정된 대상으로 공격을 확정한다.
         private void OnAttackButtonClicked()
         {
             if (encounterController == null)
@@ -268,6 +288,16 @@ namespace ProjectDelta.Presentation
             encounterController.ConfirmDefend();
         }
 
+        private void OnFleeButtonClicked()
+        {
+            if (encounterController == null)
+            {
+                return;
+            }
+
+            encounterController.ConfirmFlee();
+        }
+
         private void RefreshBattleState()
         {
             if (battleStateText == null)
@@ -278,7 +308,6 @@ namespace ProjectDelta.Presentation
             BattleResult result =
                 encounterController.LastBattleResult;
 
-            // 종료된 전투는 상태 대신 결과를 보여준다.
             if (result != null)
             {
                 battleStateText.text =
@@ -287,7 +316,6 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            // 48일차: 가장 최근에 행동한(또는 행동 중인) 참가자를 함께 보여준다.
             BattleParticipant actor =
                 encounterController.CurrentBattleActor;
 
@@ -296,15 +324,13 @@ namespace ProjectDelta.Presentation
                     ? $" / Actor {actor.InstanceId} (Speed {actor.Speed})"
                     : string.Empty;
 
-            // 49일차: 대상 지정·공격 확정 결과 메시지를 함께 보여준다.
-            // 59일차: 문자열 메시지 하나 대신 로그 목록(Logs)을 담는 BattleActionResult로 바뀌었다.
             BattleActionResult actionResult =
                 encounterController.LastBattleActionResult;
 
             string commandText =
                 actionResult != null
-                    && actionResult.Logs != null
-                    && actionResult.Logs.Count > 0
+                && actionResult.Logs != null
+                && actionResult.Logs.Count > 0
                     ? $"\n{string.Join("\n", actionResult.Logs)}"
                     : string.Empty;
 
@@ -333,8 +359,6 @@ namespace ProjectDelta.Presentation
                 context);
         }
 
-        // 56일차: 적 턴이 버튼 없이 자동으로 진행돼 행동이 눈에 안 보이는 문제를 보완한다.
-        // 슬롯을 최신 상태로 바인딩한 뒤에 호출해야 방금 행동한 참가자의 슬롯을 정확히 찾을 수 있다.
         private void PlayActionBumpIfNewActionHappened(
             BattleContext context)
         {
@@ -370,7 +394,9 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            for (int slotIndex = 0; slotIndex < enemySlots.Length; slotIndex++)
+            for (int slotIndex = 0;
+                 slotIndex < enemySlots.Length;
+                 slotIndex++)
             {
                 if (context.TryGetEnemyAtSlot(
                         slotIndex,
@@ -392,14 +418,15 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            // 49일차: 지금 선택 가능한 대상·선택된 대상을 슬롯에 반영한다.
             IReadOnlyList<BattleParticipant> validTargets =
                 encounterController.GetValidBattleTargets();
 
             BattleParticipant selectedTarget =
                 encounterController.SelectedBattleTarget;
 
-            for (int slotIndex = 0; slotIndex < enemySlots.Length; slotIndex++)
+            for (int slotIndex = 0;
+                 slotIndex < enemySlots.Length;
+                 slotIndex++)
             {
                 BattleParticipantSlotView slot =
                     enemySlots[slotIndex];
@@ -437,7 +464,9 @@ namespace ProjectDelta.Presentation
             IReadOnlyList<BattleParticipant> participants,
             BattleParticipant participant)
         {
-            for (int index = 0; index < participants.Count; index++)
+            for (int index = 0;
+                 index < participants.Count;
+                 index++)
             {
                 if (participants[index] == participant)
                 {
@@ -448,7 +477,6 @@ namespace ProjectDelta.Presentation
             return false;
         }
 
-        // 45일차 탐험 빌보드와 같은 Resources 경로에서 몬스터 일러스트를 가져온다.
         private static Sprite LoadMonsterPortrait(
             string monsterDefinitionId)
         {
@@ -456,7 +484,8 @@ namespace ProjectDelta.Presentation
                 MonsterBillboardView.BuildResourcePath(
                     monsterDefinitionId);
 
-            return string.IsNullOrEmpty(resourcePath)
+            return string.IsNullOrEmpty(
+                    resourcePath)
                 ? null
                 : Resources.Load<Sprite>(
                     resourcePath);
@@ -472,8 +501,6 @@ namespace ProjectDelta.Presentation
                     ? context.Player
                     : null;
 
-            // 54일차: HP·MP·SP 모두 전투 참가자 데이터가 기준이다 (전투 중에는 참가자 값이
-            // 최신이고, PlayerRunState는 전투가 끝날 때만 되돌아 맞춰진다).
             if (player == null)
             {
                 return;
@@ -529,10 +556,13 @@ namespace ProjectDelta.Presentation
 
         private void RefreshButtons()
         {
-            // 행동·방어·아이템·도주는 50~54일차에 연결되므로 지금은 자리만 유지한다.
+            ResolveFleeButtonReference();
+
+            // 아직 구현되지 않은 공용 행동 버튼은 기본적으로 비활성화한다.
             if (actionButtons != null)
             {
-                foreach (Button actionButton in actionButtons)
+                foreach (Button actionButton
+                         in actionButtons)
                 {
                     if (actionButton != null)
                     {
@@ -542,19 +572,34 @@ namespace ProjectDelta.Presentation
                 }
             }
 
-            // 49일차: 대상이 지정된 AwaitingAction 상태에서만 공격을 확정할 수 있다.
             if (attackButton != null)
             {
                 attackButton.interactable =
-                    encounterController.CurrentBattleState == BattleState.AwaitingAction
-                    && encounterController.SelectedBattleTarget != null;
+                    encounterController.CurrentBattleState
+                        == BattleState.AwaitingAction
+                    && encounterController.SelectedBattleTarget
+                        != null;
             }
 
-            // 52일차: 방어는 대상 선택이 필요 없어 AwaitingAction이기만 하면 바로 확정할 수 있다.
             if (defendButton != null)
             {
                 defendButton.interactable =
-                    encounterController.CurrentBattleState == BattleState.AwaitingAction;
+                    encounterController.CurrentBattleState
+                        == BattleState.AwaitingAction;
+            }
+
+            // 83일차: 도주는 플레이어 행동 차례에서만 활성화한다.
+            // actionButtons 전체 비활성화 뒤 다시 설정하므로 매 프레임 false로 덮이던 문제를 해소한다.
+            if (fleeButton != null)
+            {
+                BattleParticipant actor =
+                    encounterController.CurrentBattleActor;
+
+                fleeButton.interactable =
+                    encounterController.CurrentBattleState
+                        == BattleState.AwaitingAction
+                    && actor != null
+                    && actor.Team == BattleTeam.Player;
             }
 
             bool isBattleActive =
@@ -562,10 +607,11 @@ namespace ProjectDelta.Presentation
 
             if (testNextTurnButton != null)
             {
-                // 48일차: 이번 라운드에 아직 행동할 참가자가 남아있을 때(RoundStart 또는 ResolvingAction)만 진행 가능.
                 testNextTurnButton.interactable =
-                    encounterController.CurrentBattleState == BattleState.RoundStart
-                    || encounterController.CurrentBattleState == BattleState.ResolvingAction;
+                    encounterController.CurrentBattleState
+                        == BattleState.RoundStart
+                    || encounterController.CurrentBattleState
+                        == BattleState.ResolvingAction;
             }
 
             if (testWinButton != null)

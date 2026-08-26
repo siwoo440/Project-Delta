@@ -15,17 +15,18 @@ namespace ProjectDelta.Presentation
 
         private ExplorationMonsterEncounterController encounterController;
         private DungeonFloorController floorController;
-        private EncounterResult observedEncounterResult;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (SceneManager.GetActiveScene().name != SceneNames.Dungeon)
+            if (SceneManager.GetActiveScene().name
+                != SceneNames.Dungeon)
             {
                 return;
             }
 
-            if (FindFirstObjectByType<BattleCheckpointCoordinator>() != null)
+            if (FindFirstObjectByType<BattleCheckpointCoordinator>()
+                != null)
             {
                 return;
             }
@@ -34,12 +35,12 @@ namespace ProjectDelta.Presentation
                 new GameObject(
                     "BattleCheckpointCoordinator");
 
-            coordinatorObject.AddComponent<BattleCheckpointCoordinator>(); // 전투 체크포인트 관리자 생성
+            coordinatorObject.AddComponent<BattleCheckpointCoordinator>();
         }
 
         private IEnumerator Start()
         {
-            yield return null; // 던전·몬스터 복원 완료 대기
+            yield return null;
 
             ResolveReferences();
 
@@ -49,37 +50,8 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        private void Update()
-        {
-            if (encounterController == null)
-            {
-                ResolveReferences();
-            }
-
-            if (encounterController == null)
-            {
-                return;
-            }
-
-            EncounterResult currentResult =
-                encounterController.LastEncounterResult;
-
-            if (ReferenceEquals(
-                    currentResult,
-                    observedEncounterResult))
-            {
-                return;
-            }
-
-            observedEncounterResult =
-                currentResult;
-
-            if (currentResult != null
-                && currentResult.Outcome == EncounterOutcome.Escaped)
-            {
-                ApplicationFlow.Current?.SaveDungeonProgress(); // 도주 완료 후 자동 저장
-            }
-        }
+        // 83일차: 도주는 이제 Encounter 완료 처리 자체가 SaveDungeonProgress()를 호출한다.
+        // 82일차의 별도 Escaped 감시 저장은 제거해 자동 저장·토스트가 두 번 발생하지 않게 한다.
 
         private IEnumerator RestorePendingBattle()
         {
@@ -164,9 +136,12 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
-            if (marker.MonsterDefinitionId != checkpoint.MonsterDefinitionId
-                || marker.GridPosition.X != checkpoint.MonsterGridPosition.x
-                || marker.GridPosition.Z != checkpoint.MonsterGridPosition.y)
+            if (marker.MonsterDefinitionId
+                    != checkpoint.MonsterDefinitionId
+                || marker.GridPosition.X
+                    != checkpoint.MonsterGridPosition.x
+                || marker.GridPosition.Z
+                    != checkpoint.MonsterGridPosition.y)
             {
                 return false;
             }

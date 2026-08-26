@@ -7,11 +7,14 @@ namespace ProjectDelta.Application
         public string MonsterDefinitionId { get; }
         public EncounterOutcome Outcome { get; }
 
+        // 83일차: 도주 성공도 보상 없이 현재 인카운터를 끝내고 몬스터를 제거한다.
         public bool CompletesRoom =>
-            Outcome == EncounterOutcome.MonsterDefeated;
+            Outcome == EncounterOutcome.MonsterDefeated
+            || Outcome == EncounterOutcome.Escaped;
 
         public bool RemovesMonster =>
-            Outcome == EncounterOutcome.MonsterDefeated;
+            Outcome == EncounterOutcome.MonsterDefeated
+            || Outcome == EncounterOutcome.Escaped;
 
         public EncounterResult(
             string roomId,

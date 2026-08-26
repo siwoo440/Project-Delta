@@ -8,12 +8,21 @@ namespace ProjectDelta.Data
     [Serializable]
     public sealed class RunData
     {
-        public RunBasicInfo BasicInfo = new RunBasicInfo();
-        public PlayerRunStats PlayerStats = new PlayerRunStats();
-        public RunInventory Inventory = new RunInventory();
-        public DungeonRunState DungeonState = new DungeonRunState();
+        public RunBasicInfo BasicInfo =
+            new RunBasicInfo();
+
+        public PlayerRunStats PlayerStats =
+            new PlayerRunStats();
+
+        public RunInventory Inventory =
+            new RunInventory();
+
+        public DungeonRunState DungeonState =
+            new DungeonRunState();
+
         public BattleEncounterCheckpointData BattleEncounterCheckpoint =
             new BattleEncounterCheckpointData();
+
         public List<CharacterRunState> CharacterStates =
             new List<CharacterRunState>();
     }
@@ -45,10 +54,16 @@ namespace ProjectDelta.Data
         public int Experience;
         public int UnspentStatPoints;
         public int SpentStatPoints;
+
         public int MaxHealth;
         public int CurrentHealth;
         public int MaxMana;
         public int CurrentMana;
+
+        // 83일차: 도주 후 현재 정력까지 그대로 이어가기 위한 저장 필드.
+        public int MaxStamina;
+        public int CurrentStamina;
+
         public int MaxArousal;
         public int CurrentArousal;
         public int Attack;
@@ -57,17 +72,39 @@ namespace ProjectDelta.Data
         public int Charm;
         public int Evasion;
         public int Resistance;
+
         public List<string> RunStatModifierIds =
             new List<string>();
+
         public List<string> ActiveStatusEffectIds =
             new List<string>();
+
+        // 83일차: 상태 ID뿐 아니라 남은 지속·중첩·수치까지 저장한다.
+        public List<PlayerStatusEffectRunState> ActiveStatusEffects =
+            new List<PlayerStatusEffectRunState>();
+
         public int Gold;
+
         public List<string> AcquiredRunSkillIds =
             new List<string>();
+
         public List<string> EquippedSkillIds =
             new List<string>();
+
         public List<string> StartingSkillIds =
             new List<string>();
+    }
+
+    [Serializable]
+    public sealed class PlayerStatusEffectRunState
+    {
+        public string DefinitionId;
+        public string SourceInstanceId;
+        public int RemainingDuration;
+        public int StackCount;
+        public int AppliedValue;
+        public int EffectKind;
+        public int TargetStat;
     }
 
     [Serializable]
@@ -75,22 +112,31 @@ namespace ProjectDelta.Data
     {
         public List<string> InventoryItemIds =
             new List<string>();
+
         public List<string> ConsumableStackIds =
             new List<string>();
+
         public List<string> ExplorationToolIds =
             new List<string>();
+
         public List<string> KeyItemIds =
             new List<string>();
+
         public List<string> TreasureIds =
             new List<string>();
+
         public List<string> EquippedItemIds =
             new List<string>();
+
         public List<string> EquipmentRolledOptionIds =
             new List<string>();
+
         public List<string> BagIds =
             new List<string>();
+
         public List<string> RelicIds =
             new List<string>();
+
         public List<string> CursedItemIds =
             new List<string>();
     }
@@ -117,8 +163,10 @@ namespace ProjectDelta.Data
     {
         public string RoomId;
         public Vector2Int Coordinate;
+
         public List<int> ConnectedDirections =
             new List<int>();
+
         public bool Visited;
         public bool Discovered;
         public bool Completed;

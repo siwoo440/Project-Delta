@@ -36,7 +36,7 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
-        public void TryCreateTestResult_Escape_ReturnsEscapedWithoutCompletingRoom()
+        public void TryCreateTestResult_Escape_ReturnsEscapedAndCompletesRoom()
         {
             EncounterContext context =
                 CreateContext();
@@ -57,10 +57,10 @@ namespace ProjectDelta.Tests.EditMode
                 EncounterOutcome.Escaped,
                 result.Outcome);
 
-            Assert.IsFalse(
+            Assert.IsTrue(
                 result.CompletesRoom);
 
-            Assert.IsFalse(
+            Assert.IsTrue(
                 result.RemovesMonster);
         }
 

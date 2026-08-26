@@ -20,47 +20,77 @@ namespace ProjectDelta.Domain
         public int CurrentMana;
         public int CurrentStamina;
 
-        public List<string> StatusEffects = new List<string>();
+        // 기존 ID 목록은 호환성을 위해 유지한다.
+        public List<string> StatusEffects =
+            new List<string>();
+
+        // 83일차: 도주 후 탐험까지 이어지는 상태이상의 실제 남은 값.
+        public List<PersistentStatusEffectState> PersistentStatusEffects =
+            new List<PersistentStatusEffectState>();
 
         public int Gold;
-        public int KeyCount; // 현재 보유 열쇠 수
+        public int KeyCount;
         public string CurrentRoomId;
-        public GridPosition CurrentGridPosition = GridPosition.Zero; // 현재 방 내부 그리드 위치
+        public GridPosition CurrentGridPosition =
+            GridPosition.Zero;
 
         public StatBlock GetFinalStats()
         {
-            return StatBlock.Sum(BaseStats, AllocatedStats, TemporaryStats);
+            return StatBlock.Sum(
+                BaseStats,
+                AllocatedStats,
+                TemporaryStats);
         }
 
-        // 54일차: 기획서 6.1 기본 능력치 표를 그대로 옮긴 시작 상태.
-        // PlayerBaseDefinition ScriptableObject가 생기기 전까지 여기서 상수로 관리한다.
-        // ApplicationFlow.StartNewGame() -> RunContext.Begin()에서 호출한다.
         public static PlayerRunState CreateDefault()
         {
-            var state = new PlayerRunState
-            {
-                Level = 1,
-                BaseStats = new StatBlock
+            var state =
+                new PlayerRunState
                 {
-                    MaxHealth = 100,
-                    MaxMana = 50,
-                    MaxStamina = 100,
-                    Attack = 50,
-                    Defense = 40,
-                    Speed = 50,
-                    Charm = 50,
-                    Evasion = 40,
-                    Resistance = 50
-                }
-            };
+                    Level = 1,
+                    BaseStats =
+                        new StatBlock
+                        {
+                            MaxHealth = 100,
+                            MaxMana = 50,
+                            MaxStamina = 100,
+                            Attack = 50,
+                            Defense = 40,
+                            Speed = 50,
+                            Charm = 50,
+                            Evasion = 40,
+                            Resistance = 50
+                        }
+                };
 
-            StatBlock finalStats = state.GetFinalStats();
-            state.CurrentHp = finalStats.MaxHealth;
-            state.CurrentMana = finalStats.MaxMana;
-            state.CurrentStamina = finalStats.MaxStamina;
+            StatBlock finalStats =
+                state.GetFinalStats();
+
+            state.CurrentHp =
+                finalStats.MaxHealth;
+
+            state.CurrentMana =
+                finalStats.MaxMana;
+
+            state.CurrentStamina =
+                finalStats.MaxStamina;
 
             return state;
         }
+    }
+
+    [Serializable]
+    public sealed class PersistentStatusEffectState
+    {
+        public string DefinitionId;
+        public string SourceInstanceId;
+        public int RemainingDuration;
+        public int StackCount;
+        public int AppliedValue;
+
+        // Domain이 Data/Application enum에 의존하지 않도록 정수 값으로 보관한다.
+        public int EffectKind;
+        public int TargetStat;
     }
 
     // Mirrors the 6.1절 기본 능력치 table: 3 resource caps + 6 combat stats.
@@ -77,20 +107,40 @@ namespace ProjectDelta.Domain
         public int Evasion;
         public int Resistance;
 
-        public static StatBlock Sum(params StatBlock[] blocks)
+        public static StatBlock Sum(
+            params StatBlock[] blocks)
         {
-            var result = new StatBlock();
+            var result =
+                new StatBlock();
+
             foreach (var block in blocks)
             {
-                result.MaxHealth += block.MaxHealth;
-                result.MaxMana += block.MaxMana;
-                result.MaxStamina += block.MaxStamina;
-                result.Attack += block.Attack;
-                result.Defense += block.Defense;
-                result.Speed += block.Speed;
-                result.Charm += block.Charm;
-                result.Evasion += block.Evasion;
-                result.Resistance += block.Resistance;
+                result.MaxHealth +=
+                    block.MaxHealth;
+
+                result.MaxMana +=
+                    block.MaxMana;
+
+                result.MaxStamina +=
+                    block.MaxStamina;
+
+                result.Attack +=
+                    block.Attack;
+
+                result.Defense +=
+                    block.Defense;
+
+                result.Speed +=
+                    block.Speed;
+
+                result.Charm +=
+                    block.Charm;
+
+                result.Evasion +=
+                    block.Evasion;
+
+                result.Resistance +=
+                    block.Resistance;
             }
 
             return result;

@@ -16,11 +16,10 @@ namespace ProjectDelta.Data
         {
             if (context == null)
             {
-                throw new ArgumentNullException(nameof(context));
+                throw new ArgumentNullException(
+                    nameof(context));
             }
 
-            // 방 진입 직후 자동 저장에서도 주변 8칸 공개 정보가 빠지지 않게
-            // 저장 직전에 현재 방 기준 발견 상태를 한 번 동기화한다.
             context.Dungeon.RevealAround(
                 context.Player.CurrentRoomId);
 
@@ -47,7 +46,6 @@ namespace ProjectDelta.Data
             data.BasicInfo.DungeonSeed =
                 context.Dungeon.CurrentDungeonSeed;
 
-            // 79일차: 런타임 성장 상태를 기존 RunData.PlayerStats에 저장한다.
             data.PlayerStats.Level =
                 Math.Max(
                     1,
@@ -65,11 +63,51 @@ namespace ProjectDelta.Data
                     0,
                     context.Player.UnusedStatPoints);
 
-            // 81일차: 전투 드롭 골드와 기존 선택 보상 골드를 런 저장에 포함한다.
             data.PlayerStats.Gold =
                 Math.Max(
                     0,
                     context.Player.Gold);
+
+            // 83일차: 도주 후 받은 피해와 소모 자원을 그대로 이어하기 위해 현재 자원을 저장한다.
+            StatBlock finalStats =
+                context.Player.GetFinalStats();
+
+            data.PlayerStats.MaxHealth =
+                Math.Max(
+                    0,
+                    finalStats.MaxHealth);
+
+            data.PlayerStats.CurrentHealth =
+                Clamp(
+                    context.Player.CurrentHp,
+                    0,
+                    data.PlayerStats.MaxHealth);
+
+            data.PlayerStats.MaxMana =
+                Math.Max(
+                    0,
+                    finalStats.MaxMana);
+
+            data.PlayerStats.CurrentMana =
+                Clamp(
+                    context.Player.CurrentMana,
+                    0,
+                    data.PlayerStats.MaxMana);
+
+            data.PlayerStats.MaxStamina =
+                Math.Max(
+                    0,
+                    finalStats.MaxStamina);
+
+            data.PlayerStats.CurrentStamina =
+                Clamp(
+                    context.Player.CurrentStamina,
+                    0,
+                    data.PlayerStats.MaxStamina);
+
+            SavePersistentStatusEffects(
+                context.Player,
+                data.PlayerStats);
 
             if (context.Dungeon.CurrentLayoutSnapshot != null)
             {
@@ -120,12 +158,14 @@ namespace ProjectDelta.Data
         {
             if (context == null)
             {
-                throw new ArgumentNullException(nameof(context));
+                throw new ArgumentNullException(
+                    nameof(context));
             }
 
             if (savedRun == null)
             {
-                throw new ArgumentNullException(nameof(savedRun));
+                throw new ArgumentNullException(
+                    nameof(savedRun));
             }
 
             int savedFloor =
@@ -133,9 +173,9 @@ namespace ProjectDelta.Data
                     ? savedRun.BasicInfo.CurrentFloor
                     : 1;
 
-            context.Dungeon.SetFloor(savedFloor);
+            context.Dungeon.SetFloor(
+                savedFloor);
 
-            // 79일차: 구버전 저장의 Level=0도 Lv.1로 안전하게 복원한다.
             if (savedRun.PlayerStats != null)
             {
                 context.Player.Level =
@@ -159,6 +199,14 @@ namespace ProjectDelta.Data
                     Math.Max(
                         0,
                         savedRun.PlayerStats.Gold);
+
+                RestorePlayerResources(
+                    context.Player,
+                    savedRun.PlayerStats);
+
+                RestorePersistentStatusEffects(
+                    context.Player,
+                    savedRun.PlayerStats);
             }
 
             if (savedRun.DungeonState != null
@@ -178,8 +226,6 @@ namespace ProjectDelta.Data
                     savedRun.DungeonState.RevealedRoomIds);
             }
 
-            // 구버전 저장 데이터가 RoomRunState.Discovered만 갖고 있어도
-            // 발견 정보를 복원할 수 있도록 함께 병합한다.
             if (savedRun.DungeonState?.Rooms != null)
             {
                 for (int i = 0;
@@ -191,7 +237,8 @@ namespace ProjectDelta.Data
 
                     if (room != null
                         && room.Discovered
-                        && !string.IsNullOrEmpty(room.RoomId))
+                        && !string.IsNullOrEmpty(
+                            room.RoomId))
                     {
                         revealedRoomIds.Add(
                             room.RoomId);
@@ -241,7 +288,8 @@ namespace ProjectDelta.Data
                      in savedRun.DungeonState.Rooms)
             {
                 if (room != null
-                    && !string.IsNullOrEmpty(room.RoomId))
+                    && !string.IsNullOrEmpty(
+                        room.RoomId))
                 {
                     pendingRoomStates[room.RoomId] =
                         room;
@@ -261,13 +309,142 @@ namespace ProjectDelta.Data
                 return true;
             }
 
-            state = null;
+            state =
+                null;
+
             return false;
         }
 
         public static void ClearPendingRestore()
         {
-            pendingRoomStates = null;
+            pendingRoomStates =
+                null;
+        }
+
+        private static void SavePersistentStatusEffects(
+            PlayerRunState player,
+            PlayerRunStats stats)
+        {
+            stats.ActiveStatusEffectIds.Clear();
+            stats.ActiveStatusEffects.Clear();
+
+            if (player.PersistentStatusEffects == null)
+            {
+                return;
+            }
+
+            for (int index = 0;
+                 index < player.PersistentStatusEffects.Count;
+                 index++)
+            {
+                PersistentStatusEffectState status =
+                    player.PersistentStatusEffects[index];
+
+                if (status == null
+                    || status.RemainingDuration <= 0
+                    || string.IsNullOrEmpty(
+                        status.DefinitionId))
+                {
+                    continue;
+                }
+
+                stats.ActiveStatusEffectIds.Add(
+                    status.DefinitionId);
+
+                stats.ActiveStatusEffects.Add(
+                    new PlayerStatusEffectRunState
+                    {
+                        DefinitionId = status.DefinitionId,
+                        SourceInstanceId = status.SourceInstanceId,
+                        RemainingDuration = status.RemainingDuration,
+                        StackCount = Math.Max(1, status.StackCount),
+                        AppliedValue = status.AppliedValue,
+                        EffectKind = status.EffectKind,
+                        TargetStat = status.TargetStat
+                    });
+            }
+        }
+
+        private static void RestorePlayerResources(
+            PlayerRunState player,
+            PlayerRunStats stats)
+        {
+            // 83일차 이전 저장은 MaxHealth/MaxMana가 0이므로 기본 자원을 그대로 유지한다.
+            if (stats.MaxHealth <= 0)
+            {
+                return;
+            }
+
+            StatBlock finalStats =
+                player.GetFinalStats();
+
+            player.CurrentHp =
+                Clamp(
+                    stats.CurrentHealth,
+                    0,
+                    Math.Max(
+                        0,
+                        finalStats.MaxHealth));
+
+            player.CurrentMana =
+                Clamp(
+                    stats.CurrentMana,
+                    0,
+                    Math.Max(
+                        0,
+                        finalStats.MaxMana));
+
+            player.CurrentStamina =
+                Clamp(
+                    stats.CurrentStamina,
+                    0,
+                    Math.Max(
+                        0,
+                        finalStats.MaxStamina));
+        }
+
+        private static void RestorePersistentStatusEffects(
+            PlayerRunState player,
+            PlayerRunStats stats)
+        {
+            player.PersistentStatusEffects.Clear();
+            player.StatusEffects.Clear();
+
+            if (stats.ActiveStatusEffects == null)
+            {
+                return;
+            }
+
+            for (int index = 0;
+                 index < stats.ActiveStatusEffects.Count;
+                 index++)
+            {
+                PlayerStatusEffectRunState saved =
+                    stats.ActiveStatusEffects[index];
+
+                if (saved == null
+                    || saved.RemainingDuration <= 0
+                    || string.IsNullOrEmpty(
+                        saved.DefinitionId))
+                {
+                    continue;
+                }
+
+                player.PersistentStatusEffects.Add(
+                    new PersistentStatusEffectState
+                    {
+                        DefinitionId = saved.DefinitionId,
+                        SourceInstanceId = saved.SourceInstanceId,
+                        RemainingDuration = saved.RemainingDuration,
+                        StackCount = Math.Max(1, saved.StackCount),
+                        AppliedValue = saved.AppliedValue,
+                        EffectKind = saved.EffectKind,
+                        TargetStat = saved.TargetStat
+                    });
+
+                player.StatusEffects.Add(
+                    saved.DefinitionId);
+            }
         }
 
         private static void SaveGeneratedRooms(
@@ -285,7 +462,9 @@ namespace ProjectDelta.Data
                         left.RoomId,
                         right.RoomId));
 
-            for (int i = 0; i < rooms.Count; i++)
+            for (int i = 0;
+                 i < rooms.Count;
+                 i++)
             {
                 RoomNode node =
                     rooms[i];
@@ -364,6 +543,23 @@ namespace ProjectDelta.Data
                         ChestOpened = room.ChestOpened
                     });
             }
+        }
+
+        private static int Clamp(
+            int value,
+            int min,
+            int max)
+        {
+            if (max < min)
+            {
+                return min;
+            }
+
+            return Math.Max(
+                min,
+                Math.Min(
+                    max,
+                    value));
         }
     }
 }
