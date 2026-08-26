@@ -10,14 +10,16 @@ namespace ProjectDelta.Data
         [SerializeField]
         private string displayName;
 
-        // 89일차: 인벤토리 슬롯과 선택 아이템 영역에서 사용할 이미지다.
         [SerializeField]
         private Sprite icon;
 
-        // 89일차: 선택한 아이템을 플레이어 UI 위에 표시할 때 사용할 설명이다.
         [SerializeField]
         [TextArea(2, 4)]
         private string description;
+
+        [SerializeField]
+        [Min(1)]
+        private int maxStackSize = 1;
 
         public string DisplayName =>
             displayName;
@@ -27,5 +29,10 @@ namespace ProjectDelta.Data
 
         public string Description =>
             description;
+
+        public int MaxStackSize =>
+            Mathf.Max(
+                1,
+                maxStackSize);
     }
 }

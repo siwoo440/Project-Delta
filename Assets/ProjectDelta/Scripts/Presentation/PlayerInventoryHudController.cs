@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using UnityEngine;
@@ -7,16 +8,13 @@ using UnityEngine.UI;
 
 namespace ProjectDelta.Presentation
 {
-    // 89일차: 플레이어 정보와 5x2 인벤토리 슬롯을 한 패널에서 표시한다.
     public sealed class PlayerInventoryHudController : MonoBehaviour
     {
-        private const int VisibleSlotCount = 10;
-
         [SerializeField]
         private Text levelText;
 
         [SerializeField]
-        private Text hpText;
+        private Text healthText;
 
         [SerializeField]
         private Text manaText;
@@ -40,49 +38,31 @@ namespace ProjectDelta.Presentation
         private Text selectedItemDescriptionText;
 
         [SerializeField]
-        private Button[] slotButtons =
-            Array.Empty<Button>();
+        private Button[] slotButtons;
 
         [SerializeField]
-        private Image[] slotBackgrounds =
-            Array.Empty<Image>();
+        private Image[] slotBackgrounds;
 
         [SerializeField]
-        private Image[] slotItemIcons =
-            Array.Empty<Image>();
+        private Image[] slotIcons;
 
         [SerializeField]
-        private Text[] slotNumberTexts =
-            Array.Empty<Text>();
+        private Text[] slotNumberTexts;
 
         [SerializeField]
-        private ItemDefinition[] itemDefinitions =
-            Array.Empty<ItemDefinition>();
+        private Text[] slotQuantityTexts;
 
-        private readonly Dictionary<string, ItemDefinition> itemDefinitionById =
-            new Dictionary<string, ItemDefinition>(
-                StringComparer.Ordinal);
+        [SerializeField]
+        private ItemDefinition[] itemDefinitions;
 
-        private int selectedSlotIndex =
-            -1;
+        private readonly Dictionary<string, ItemDefinition> itemLookup =
+            new Dictionary<string, ItemDefinition>();
 
-        private Color normalSlotColor =
-            new Color(
-                0.15f,
-                0.17f,
-                0.22f,
-                0.96f);
-
-        private Color selectedSlotColor =
-            new Color(
-                0.42f,
-                0.52f,
-                0.72f,
-                1f);
+        private int selectedSlotIndex = -1;
 
         public void Configure(
             Text configuredLevelText,
-            Text configuredHpText,
+            Text configuredHealthText,
             Text configuredManaText,
             Text configuredStaminaText,
             Text configuredCombatStatsText,
@@ -92,84 +72,105 @@ namespace ProjectDelta.Presentation
             Text configuredSelectedItemDescriptionText,
             Button[] configuredSlotButtons,
             Image[] configuredSlotBackgrounds,
-            Image[] configuredSlotItemIcons,
+            Image[] configuredSlotIcons,
             Text[] configuredSlotNumberTexts,
             ItemDefinition[] configuredItemDefinitions)
         {
-            levelText =
-                configuredLevelText;
+            Configure(
+                configuredLevelText,
+                configuredHealthText,
+                configuredManaText,
+                configuredStaminaText,
+                configuredCombatStatsText,
+                configuredSelectedItemPanel,
+                configuredSelectedItemIcon,
+                configuredSelectedItemNameText,
+                configuredSelectedItemDescriptionText,
+                configuredSlotButtons,
+                configuredSlotBackgrounds,
+                configuredSlotIcons,
+                configuredSlotNumberTexts,
+                null,
+                configuredItemDefinitions);
+        }
 
-            hpText =
-                configuredHpText;
+        public void Configure(
+            Text configuredLevelText,
+            Text configuredHealthText,
+            Text configuredManaText,
+            Text configuredStaminaText,
+            Text configuredCombatStatsText,
+            GameObject configuredSelectedItemPanel,
+            Image configuredSelectedItemIcon,
+            Text configuredSelectedItemNameText,
+            Text configuredSelectedItemDescriptionText,
+            Button[] configuredSlotButtons,
+            Image[] configuredSlotBackgrounds,
+            Image[] configuredSlotIcons,
+            Text[] configuredSlotNumberTexts,
+            Text[] configuredSlotQuantityTexts,
+            ItemDefinition[] configuredItemDefinitions)
+        {
+            levelText = configuredLevelText;
+            healthText = configuredHealthText;
+            manaText = configuredManaText;
+            staminaText = configuredStaminaText;
+            combatStatsText = configuredCombatStatsText;
+            selectedItemPanel = configuredSelectedItemPanel;
+            selectedItemIcon = configuredSelectedItemIcon;
+            selectedItemNameText = configuredSelectedItemNameText;
+            selectedItemDescriptionText = configuredSelectedItemDescriptionText;
+            slotButtons = configuredSlotButtons;
+            slotBackgrounds = configuredSlotBackgrounds;
+            slotIcons = configuredSlotIcons;
+            slotNumberTexts = configuredSlotNumberTexts;
+            slotQuantityTexts = configuredSlotQuantityTexts;
+            itemDefinitions = configuredItemDefinitions;
 
-            manaText =
-                configuredManaText;
-
-            staminaText =
-                configuredStaminaText;
-
-            combatStatsText =
-                configuredCombatStatsText;
-
-            selectedItemPanel =
-                configuredSelectedItemPanel;
-
-            selectedItemIcon =
-                configuredSelectedItemIcon;
-
-            selectedItemNameText =
-                configuredSelectedItemNameText;
-
-            selectedItemDescriptionText =
-                configuredSelectedItemDescriptionText;
-
-            slotButtons =
-                configuredSlotButtons
-                ?? Array.Empty<Button>();
-
-            slotBackgrounds =
-                configuredSlotBackgrounds
-                ?? Array.Empty<Image>();
-
-            slotItemIcons =
-                configuredSlotItemIcons
-                ?? Array.Empty<Image>();
-
-            slotNumberTexts =
-                configuredSlotNumberTexts
-                ?? Array.Empty<Text>();
-
-            itemDefinitions =
-                configuredItemDefinitions
-                ?? Array.Empty<ItemDefinition>();
-
-            RebuildDefinitionLookup();
-            BindSlotButtons();
-            HideSelectedItem();
-            RefreshAll();
+            Initialize();
         }
 
         private void Awake()
         {
-            RebuildDefinitionLookup();
-            BindSlotButtons();
-            HideSelectedItem();
+            Initialize();
         }
 
         private void OnEnable()
         {
-            RefreshAll();
+            Refresh();
         }
 
         private void Update()
         {
-            RefreshPlayerInfo();
-            RefreshInventory();
+            Refresh();
         }
 
-        private void RebuildDefinitionLookup()
+        private void Initialize()
         {
-            itemDefinitionById.Clear();
+            AutoBindQuantityTexts();
+            RebuildItemLookup();
+            HookButtons();
+
+            if (selectedItemPanel != null)
+            {
+                selectedItemPanel.SetActive(
+                    false);
+            }
+
+            InventoryRunState.MaxStackResolver =
+                ResolveMaxStackSizeByItemId;
+
+            Refresh();
+        }
+
+        private void RebuildItemLookup()
+        {
+            itemLookup.Clear();
+
+            if (itemDefinitions == null)
+            {
+                return;
+            }
 
             for (int index = 0;
                  index < itemDefinitions.Length;
@@ -178,20 +179,144 @@ namespace ProjectDelta.Presentation
                 ItemDefinition definition =
                     itemDefinitions[index];
 
-                if (definition == null
-                    || string.IsNullOrEmpty(
-                        definition.Id))
+                if (definition == null)
                 {
                     continue;
                 }
 
-                itemDefinitionById[definition.Id] =
-                    definition;
+                string definitionId =
+                    TryReadDefinitionId(
+                        definition);
+
+                if (string.IsNullOrEmpty(definitionId))
+                {
+                    definitionId =
+                        definition.name;
+                }
+
+                if (!itemLookup.ContainsKey(definitionId))
+                {
+                    itemLookup.Add(
+                        definitionId,
+                        definition);
+                }
             }
         }
 
-        private void BindSlotButtons()
+        private int ResolveMaxStackSizeByItemId(string itemId)
         {
+            if (string.IsNullOrEmpty(itemId))
+            {
+                return 1;
+            }
+
+            return itemLookup.TryGetValue(
+                itemId,
+                out ItemDefinition definition)
+                ? Math.Max(
+                    1,
+                    definition.MaxStackSize)
+                : 1;
+        }
+
+        private string TryReadDefinitionId(ItemDefinition definition)
+        {
+            PropertyInfo property =
+                definition.GetType().GetProperty(
+                    "DefinitionId",
+                    BindingFlags.Public | BindingFlags.Instance);
+
+            if (property != null
+                && property.PropertyType == typeof(string))
+            {
+                return property.GetValue(
+                    definition) as string;
+            }
+
+            property =
+                definition.GetType().GetProperty(
+                    "Id",
+                    BindingFlags.Public | BindingFlags.Instance);
+
+            if (property != null
+                && property.PropertyType == typeof(string))
+            {
+                return property.GetValue(
+                    definition) as string;
+            }
+
+            FieldInfo field =
+                definition.GetType().GetField(
+                    "definitionId",
+                    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+
+            if (field != null
+                && field.FieldType == typeof(string))
+            {
+                return field.GetValue(
+                    definition) as string;
+            }
+
+            field =
+                definition.GetType().GetField(
+                    "id",
+                    BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+
+            if (field != null
+                && field.FieldType == typeof(string))
+            {
+                return field.GetValue(
+                    definition) as string;
+            }
+
+            return string.Empty;
+        }
+
+        private void AutoBindQuantityTexts()
+        {
+            if (slotButtons == null
+                || slotButtons.Length <= 0)
+            {
+                return;
+            }
+
+            if (slotQuantityTexts != null
+                && slotQuantityTexts.Length == slotButtons.Length)
+            {
+                return;
+            }
+
+            slotQuantityTexts =
+                new Text[slotButtons.Length];
+
+            for (int index = 0;
+                 index < slotButtons.Length;
+                 index++)
+            {
+                if (slotButtons[index] == null)
+                {
+                    continue;
+                }
+
+                Transform target =
+                    slotButtons[index].transform.Find(
+                        "SlotQuantityText");
+
+                if (target != null)
+                {
+                    slotQuantityTexts[index] =
+                        target.GetComponent<Text>();
+                }
+            }
+        }
+
+        private void HookButtons()
+        {
+            if (slotButtons == null)
+            {
+                return;
+            }
+
             for (int index = 0;
                  index < slotButtons.Length;
                  index++)
@@ -209,20 +334,27 @@ namespace ProjectDelta.Presentation
 
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(
-                    () =>
-                        SelectSlot(
-                            capturedIndex));
+                    () => SelectSlot(
+                        capturedIndex));
             }
         }
 
-        private void RefreshAll()
+        private void SelectSlot(int slotIndex)
         {
-            RefreshPlayerInfo();
-            RefreshInventory();
+            selectedSlotIndex =
+                slotIndex;
+
             RefreshSelectedItem();
         }
 
-        private void RefreshPlayerInfo()
+        private void Refresh()
+        {
+            RefreshPlayerTexts();
+            RefreshSlots();
+            RefreshSelectedItem();
+        }
+
+        private void RefreshPlayerTexts()
         {
             RunContext context =
                 RunContext.Current;
@@ -230,248 +362,248 @@ namespace ProjectDelta.Presentation
             if (context == null
                 || context.Player == null)
             {
-                SetText(
-                    levelText,
-                    "Lv. -");
-
-                SetText(
-                    hpText,
-                    "HP  - / -");
-
-                SetText(
-                    manaText,
-                    "MP  - / -");
-
-                SetText(
-                    staminaText,
-                    "정력  - / -");
-
-                SetText(
-                    combatStatsText,
-                    "ATK -   DEF -   SPD -");
-
                 return;
             }
 
-            StatBlock stats =
+            object player =
+                context.Player;
+
+            object finalStats =
                 context.Player.GetFinalStats();
 
-            SetText(
-                levelText,
-                $"Lv. {context.Player.Level}");
+            if (levelText != null)
+            {
+                levelText.text =
+                    $"Lv. {ReadInt(player, "Level", 1)}";
+            }
 
-            SetText(
-                hpText,
-                $"HP  {context.Player.CurrentHp} / {stats.MaxHealth}");
+            if (combatStatsText != null)
+            {
+                combatStatsText.text =
+                    $"ATK {ReadInt(finalStats, "Attack", 0)}   DEF {ReadInt(finalStats, "Defense", 0)}   SPD {ReadInt(finalStats, "Speed", 0)}";
+            }
 
-            SetText(
-                manaText,
-                $"MP  {context.Player.CurrentMana} / {stats.MaxMana}");
+            if (healthText != null)
+            {
+                healthText.text =
+                    $"HP {ReadInt(player, "CurrentHp", 0)} / {ReadInt(finalStats, "MaxHealth", 0)}";
+            }
 
-            SetText(
-                staminaText,
-                $"정력  {context.Player.CurrentStamina} / {stats.MaxStamina}");
+            if (manaText != null)
+            {
+                manaText.text =
+                    $"MP {ReadInt(player, "CurrentMana", 0)} / {ReadInt(finalStats, "MaxMana", 0)}";
+            }
 
-            SetText(
-                combatStatsText,
-                $"ATK {stats.Attack}   DEF {stats.Defense}   SPD {stats.Speed}");
+            if (staminaText != null)
+            {
+                staminaText.text =
+                    $"정력 {ReadInt(player, "CurrentStamina", 0)} / {ReadInt(finalStats, "MaxStamina", 0)}";
+            }
         }
 
-        private void RefreshInventory()
+        private int ReadInt(
+            object target,
+            string memberName,
+            int fallback)
         {
-            InventoryRunState inventory =
-                RunContext.Current?.Inventory;
+            if (target == null)
+            {
+                return fallback;
+            }
+
+            Type type =
+                target.GetType();
+
+            PropertyInfo property =
+                type.GetProperty(
+                    memberName,
+                    BindingFlags.Public | BindingFlags.Instance);
+
+            if (property != null
+                && property.PropertyType == typeof(int))
+            {
+                return (int)property.GetValue(
+                    target);
+            }
+
+            FieldInfo field =
+                type.GetField(
+                    memberName,
+                    BindingFlags.Public | BindingFlags.Instance);
+
+            if (field != null
+                && field.FieldType == typeof(int))
+            {
+                return (int)field.GetValue(
+                    target);
+            }
+
+            return fallback;
+        }
+
+        private void RefreshSlots()
+        {
+            RunContext context =
+                RunContext.Current;
+
+            if (context == null
+                || context.Inventory == null
+                || slotButtons == null)
+            {
+                return;
+            }
 
             for (int index = 0;
-                 index < VisibleSlotCount;
+                 index < slotButtons.Length;
                  index++)
             {
                 InventorySlotState slot =
-                    null;
-
-                bool hasSlot =
-                    inventory != null
-                    && inventory.TryGetSlot(
-                        index,
-                        out slot);
-
-                bool hasItem =
-                    hasSlot
-                    && slot != null
-                    && !slot.IsEmpty;
-
-                Image icon =
-                    index < slotItemIcons.Length
-                        ? slotItemIcons[index]
+                    index < context.Inventory.Slots.Count
+                        ? context.Inventory.Slots[index]
                         : null;
 
-                if (icon != null)
-                {
-                    Sprite sprite =
-                        hasItem
-                            ? ResolveDefinition(
-                                slot.ItemId)?.Icon
-                            : null;
-
-                    icon.sprite =
-                        sprite;
-
-                    icon.enabled =
-                        sprite != null;
-                }
-
-                if (index < slotNumberTexts.Length
+                if (slotNumberTexts != null
+                    && index < slotNumberTexts.Length
                     && slotNumberTexts[index] != null)
                 {
                     slotNumberTexts[index].text =
                         (index + 1).ToString();
                 }
 
-                if (index < slotBackgrounds.Length
+                if (slotQuantityTexts != null
+                    && index < slotQuantityTexts.Length
+                    && slotQuantityTexts[index] != null)
+                {
+                    slotQuantityTexts[index].text =
+                        slot != null
+                        && !slot.IsEmpty
+                        && slot.Quantity > 1
+                            ? $"×{slot.Quantity}"
+                            : string.Empty;
+                }
+
+                if (slotIcons != null
+                    && index < slotIcons.Length
+                    && slotIcons[index] != null)
+                {
+                    bool hasItem =
+                        slot != null
+                        && !slot.IsEmpty;
+
+                    slotIcons[index].enabled =
+                        hasItem;
+
+                    if (hasItem)
+                    {
+                        slotIcons[index].sprite =
+                            ResolveIcon(
+                                slot.ItemId);
+                        slotIcons[index].color =
+                            Color.white;
+                    }
+                }
+
+                if (slotBackgrounds != null
+                    && index < slotBackgrounds.Length
                     && slotBackgrounds[index] != null)
                 {
+                    bool selected =
+                        index == selectedSlotIndex;
+
                     slotBackgrounds[index].color =
-                        selectedSlotIndex == index
-                        && hasItem
-                            ? selectedSlotColor
-                            : normalSlotColor;
-                }
-            }
-
-            if (selectedSlotIndex >= 0)
-            {
-                if (inventory == null
-                    || !inventory.TryGetSlot(
-                        selectedSlotIndex,
-                        out InventorySlotState selectedSlot)
-                    || selectedSlot == null
-                    || selectedSlot.IsEmpty)
-                {
-                    selectedSlotIndex =
-                        -1;
-
-                    HideSelectedItem();
+                        selected
+                            ? new Color(
+                                0.27f,
+                                0.36f,
+                                0.55f,
+                                1f)
+                            : new Color(
+                                0.14f,
+                                0.16f,
+                                0.21f,
+                                1f);
                 }
             }
         }
 
-        private void SelectSlot(int slotIndex)
+        private Sprite ResolveIcon(string itemId)
         {
-            InventoryRunState inventory =
-                RunContext.Current?.Inventory;
-
-            if (inventory == null
-                || !inventory.TryGetSlot(
-                    slotIndex,
-                    out InventorySlotState slot)
-                || slot == null
-                || slot.IsEmpty)
-            {
-                selectedSlotIndex =
-                    -1;
-
-                HideSelectedItem();
-                RefreshInventory();
-                return;
-            }
-
-            selectedSlotIndex =
-                slotIndex;
-
-            RefreshSelectedItem();
-            RefreshInventory();
+            return itemLookup.TryGetValue(
+                itemId,
+                out ItemDefinition definition)
+                ? definition.Icon
+                : null;
         }
 
         private void RefreshSelectedItem()
         {
-            if (selectedSlotIndex < 0)
+            RunContext context =
+                RunContext.Current;
+
+            if (selectedItemPanel == null
+                || context == null
+                || context.Inventory == null
+                || selectedSlotIndex < 0
+                || selectedSlotIndex >= context.Inventory.Slots.Count)
             {
-                HideSelectedItem();
+                if (selectedItemPanel != null)
+                {
+                    selectedItemPanel.SetActive(
+                        false);
+                }
+
                 return;
             }
 
-            InventoryRunState inventory =
-                RunContext.Current?.Inventory;
+            InventorySlotState slot =
+                context.Inventory.Slots[selectedSlotIndex];
 
-            if (inventory == null
-                || !inventory.TryGetSlot(
-                    selectedSlotIndex,
-                    out InventorySlotState slot)
-                || slot == null
+            if (slot == null
                 || slot.IsEmpty)
             {
-                HideSelectedItem();
+                selectedItemPanel.SetActive(
+                    false);
                 return;
             }
 
-            ItemDefinition definition =
-                ResolveDefinition(
-                    slot.ItemId);
+            selectedItemPanel.SetActive(
+                true);
 
-            if (selectedItemPanel != null)
-            {
-                selectedItemPanel.SetActive(
-                    true);
-            }
+            ItemDefinition definition =
+                itemLookup.TryGetValue(
+                    slot.ItemId,
+                    out ItemDefinition found)
+                    ? found
+                    : null;
 
             if (selectedItemIcon != null)
             {
                 selectedItemIcon.sprite =
-                    definition?.Icon;
-
+                    definition != null
+                        ? definition.Icon
+                        : null;
                 selectedItemIcon.enabled =
                     selectedItemIcon.sprite != null;
             }
 
-            SetText(
-                selectedItemNameText,
-                definition != null
-                    && !string.IsNullOrEmpty(
-                        definition.DisplayName)
-                        ? definition.DisplayName
-                        : slot.DisplayName);
+            if (selectedItemNameText != null)
+            {
+                selectedItemNameText.text =
+                    string.IsNullOrEmpty(slot.DisplayName)
+                        ? slot.ItemId
+                        : slot.DisplayName;
+            }
 
-            SetText(
-                selectedItemDescriptionText,
-                definition != null
-                    && !string.IsNullOrEmpty(
-                        definition.Description)
+            if (selectedItemDescriptionText != null)
+            {
+                string baseDescription =
+                    definition != null
                         ? definition.Description
-                        : "아이템 설명이 아직 등록되지 않았습니다.");
-        }
+                        : string.Empty;
 
-        private void HideSelectedItem()
-        {
-            if (selectedItemPanel != null)
-            {
-                selectedItemPanel.SetActive(
-                    false);
-            }
-        }
-
-        private ItemDefinition ResolveDefinition(
-            string itemId)
-        {
-            if (string.IsNullOrEmpty(itemId))
-            {
-                return null;
-            }
-
-            itemDefinitionById.TryGetValue(
-                itemId,
-                out ItemDefinition definition);
-
-            return definition;
-        }
-
-        private static void SetText(
-            Text target,
-            string value)
-        {
-            if (target != null)
-            {
-                target.text =
-                    value;
+                selectedItemDescriptionText.text =
+                    $"보유 수량 ×{slot.Quantity}\n{baseDescription}".Trim();
             }
         }
     }

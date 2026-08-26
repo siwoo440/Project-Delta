@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 namespace ProjectDelta.Domain
 {
-    // RunContext 아래의 회차 단위 하위 상태를 모아 둔다.
     public sealed class DungeonRunState
     {
         private readonly Dictionary<string, RoomInstance> rooms =
@@ -45,17 +44,20 @@ namespace ProjectDelta.Domain
 
         public void SetFloor(int floor)
         {
-            CurrentFloor = Math.Max(1, floor);
+            CurrentFloor =
+                Math.Max(
+                    1,
+                    floor);
         }
 
-        // 확정된 현재 층의 논리 던전과 Seed를 런 상태에 보관한다.
         public void SetGeneratedFloor(
             GeneratedDungeon dungeon,
             int seed)
         {
             if (dungeon == null)
             {
-                throw new ArgumentNullException(nameof(dungeon));
+                throw new ArgumentNullException(
+                    nameof(dungeon));
             }
 
             currentGeneratedDungeon = dungeon;
@@ -67,7 +69,6 @@ namespace ProjectDelta.Domain
                     seed);
         }
 
-        // 저장 데이터에서 동일한 방 좌표·연결·Entry/Stairs를 다시 만든다.
         public void RestoreGeneratedFloor(
             DungeonLayoutSnapshot snapshot,
             int savedSeed)
@@ -100,11 +101,9 @@ namespace ProjectDelta.Domain
         {
             dungeon = currentGeneratedDungeon;
             seed = CurrentDungeonSeed;
-
             return dungeon != null;
         }
 
-        // 현재 방을 포함한 3x3 범위에 실제로 존재하는 방만 발견 처리한다.
         public void RevealAround(string currentRoomId)
         {
             if (string.IsNullOrEmpty(currentRoomId)
@@ -131,7 +130,8 @@ namespace ProjectDelta.Domain
                 if (distanceX <= 1
                     && distanceZ <= 1)
                 {
-                    revealedRoomIds.Add(room.RoomId);
+                    revealedRoomIds.Add(
+                        room.RoomId);
                 }
             }
         }
@@ -152,7 +152,8 @@ namespace ProjectDelta.Domain
                         roomId,
                         out _))
                 {
-                    revealedRoomIds.Add(roomId);
+                    revealedRoomIds.Add(
+                        roomId);
                 }
             }
         }
@@ -195,12 +196,12 @@ namespace ProjectDelta.Domain
             rooms.Values;
     }
 
-    // 기존 상자·획득 코드가 사용하던 최소 아이템 표현을 유지한다.
     public sealed class InventoryItemStack
     {
         public string ItemId;
         public string DisplayName;
         public int Quantity;
+        public int MaxStackSize;
 
         public InventoryItemStack(
             string itemId,
@@ -208,6 +209,7 @@ namespace ProjectDelta.Domain
             : this(
                 itemId,
                 displayName,
+                1,
                 1)
         {
         }
@@ -216,14 +218,33 @@ namespace ProjectDelta.Domain
             string itemId,
             string displayName,
             int quantity)
+            : this(
+                itemId,
+                displayName,
+                quantity,
+                1)
+        {
+        }
+
+        public InventoryItemStack(
+            string itemId,
+            string displayName,
+            int quantity,
+            int maxStackSize)
         {
             ItemId = itemId;
             DisplayName = displayName;
-            Quantity = Math.Max(1, quantity);
+            Quantity =
+                Math.Max(
+                    1,
+                    quantity);
+            MaxStackSize =
+                Math.Max(
+                    1,
+                    maxStackSize);
         }
     }
 
-    // 89일차: 실제 위치를 유지하는 하나의 인벤토리 슬롯이다.
     public sealed class InventorySlotState
     {
         public string ItemId { get; private set; }
@@ -232,14 +253,21 @@ namespace ProjectDelta.Domain
 
         public int Quantity { get; private set; }
 
+        public int MaxStackSize { get; private set; } = 1;
+
         public bool IsEmpty =>
             string.IsNullOrEmpty(ItemId)
             || Quantity <= 0;
 
+        public bool CanStackMore =>
+            !IsEmpty
+            && Quantity < MaxStackSize;
+
         public void Set(
             string itemId,
             string displayName,
-            int quantity)
+            int quantity,
+            int maxStackSize)
         {
             if (string.IsNullOrEmpty(itemId)
                 || quantity <= 0)
@@ -253,7 +281,61 @@ namespace ProjectDelta.Domain
                 string.IsNullOrEmpty(displayName)
                     ? itemId
                     : displayName;
-            Quantity = quantity;
+            MaxStackSize =
+                Math.Max(
+                    1,
+                    maxStackSize);
+            Quantity =
+                Math.Min(
+                    Math.Max(
+                        1,
+                        quantity),
+                    MaxStackSize);
+        }
+
+        public int AddQuantity(int amount)
+        {
+            if (IsEmpty
+                || amount <= 0)
+            {
+                return amount;
+            }
+
+            int available =
+                Math.Max(
+                    0,
+                    MaxStackSize - Quantity);
+
+            int added =
+                Math.Min(
+                    available,
+                    amount);
+
+            Quantity += added;
+            return amount - added;
+        }
+
+        public int RemoveQuantity(int amount)
+        {
+            if (IsEmpty
+                || amount <= 0)
+            {
+                return 0;
+            }
+
+            int removed =
+                Math.Min(
+                    Quantity,
+                    amount);
+
+            Quantity -= removed;
+
+            if (Quantity <= 0)
+            {
+                Clear();
+            }
+
+            return removed;
         }
 
         public void Clear()
@@ -261,10 +343,28 @@ namespace ProjectDelta.Domain
             ItemId = string.Empty;
             DisplayName = string.Empty;
             Quantity = 0;
+            MaxStackSize = 1;
         }
     }
 
-    // 89일차: 10칸 슬롯을 런타임 인벤토리의 단일 기준으로 사용한다.
+    public sealed class InventoryAddResult
+    {
+        public string ItemId { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public int RequestedQuantity { get; set; }
+
+        public int AddedQuantity { get; set; }
+
+        public int RemainingQuantity { get; set; }
+
+        public int FirstChangedSlotIndex { get; set; } = -1;
+
+        public bool IsComplete =>
+            RemainingQuantity <= 0;
+    }
+
     public sealed class InventoryRunState
     {
         public const int BaseSlotCount = 10;
@@ -275,10 +375,11 @@ namespace ProjectDelta.Domain
         private readonly List<InventoryItemStack> items =
             new List<InventoryItemStack>();
 
+        public static Func<string, int> MaxStackResolver { get; set; }
+
         public IReadOnlyList<InventorySlotState> Slots =>
             slots;
 
-        // 기존 코드의 Items 조회와 Add 호출을 깨지 않기 위해 호환 목록을 유지한다.
         public IReadOnlyList<InventoryItemStack> Items =>
             items;
 
@@ -309,6 +410,18 @@ namespace ProjectDelta.Domain
                     bagSlotBonus);
         }
 
+        public static int ResolveMaxStackSize(string itemId)
+        {
+            int resolved =
+                MaxStackResolver != null
+                    ? MaxStackResolver(itemId)
+                    : 1;
+
+            return Math.Max(
+                1,
+                resolved);
+        }
+
         public void SetCapacityBonuses(
             int permanentSlotBonus,
             int bagSlotBonus)
@@ -326,7 +439,6 @@ namespace ProjectDelta.Domain
             EnsureCapacity();
         }
 
-        // 기존 상자 획득 코드는 그대로 이 메서드를 사용해 첫 빈 슬롯에 들어간다.
         public void Add(InventoryItemStack item)
         {
             if (item == null)
@@ -338,6 +450,9 @@ namespace ProjectDelta.Domain
                 item.ItemId,
                 item.DisplayName,
                 item.Quantity,
+                Math.Max(
+                    1,
+                    item.MaxStackSize),
                 out _);
         }
 
@@ -347,40 +462,105 @@ namespace ProjectDelta.Domain
             int quantity,
             out int slotIndex)
         {
-            slotIndex = -1;
+            return TryAdd(
+                itemId,
+                displayName,
+                quantity,
+                ResolveMaxStackSize(
+                    itemId),
+                out slotIndex);
+        }
+
+        public bool TryAdd(
+            string itemId,
+            string displayName,
+            int quantity,
+            int maxStackSize,
+            out int slotIndex)
+        {
+            InventoryAddResult result =
+                TryAddDetailed(
+                    itemId,
+                    displayName,
+                    quantity,
+                    maxStackSize);
+
+            slotIndex =
+                result.FirstChangedSlotIndex;
+
+            return result.AddedQuantity > 0;
+        }
+
+        public InventoryAddResult TryAddDetailed(
+            string itemId,
+            string displayName,
+            int quantity)
+        {
+            return TryAddDetailed(
+                itemId,
+                displayName,
+                quantity,
+                ResolveMaxStackSize(
+                    itemId));
+        }
+
+        public InventoryAddResult TryAddDetailed(
+            string itemId,
+            string displayName,
+            int quantity,
+            int maxStackSize)
+        {
+            InventoryAddResult result =
+                new InventoryAddResult
+                {
+                    ItemId = itemId,
+                    DisplayName = displayName,
+                    RequestedQuantity = Math.Max(
+                        0,
+                        quantity),
+                    RemainingQuantity = Math.Max(
+                        0,
+                        quantity)
+                };
 
             if (string.IsNullOrEmpty(itemId)
                 || quantity <= 0)
             {
-                return false;
+                return result;
             }
 
             EnsureCapacity();
 
-            for (int index = 0;
-                 index < Capacity;
-                 index++)
-            {
-                InventorySlotState slot =
-                    slots[index];
+            int safeMaxStackSize =
+                Math.Max(
+                    1,
+                    maxStackSize);
 
-                if (!slot.IsEmpty)
-                {
-                    continue;
-                }
+            result.RemainingQuantity =
+                FillExistingStacks(
+                    itemId,
+                    result.RemainingQuantity,
+                    safeMaxStackSize,
+                    result);
 
-                slot.Set(
+            result.RemainingQuantity =
+                FillEmptySlots(
                     itemId,
                     displayName,
-                    quantity);
+                    result.RemainingQuantity,
+                    safeMaxStackSize,
+                    result);
 
-                slotIndex = index;
+            result.AddedQuantity =
+                result.RequestedQuantity
+                - result.RemainingQuantity;
 
+            if (result.AddedQuantity > 0)
+            {
                 RebuildCompatibilityItems();
-                return true;
             }
 
-            return false;
+            return result;
         }
 
         public bool TryRemoveAt(int slotIndex)
@@ -392,12 +572,37 @@ namespace ProjectDelta.Domain
             }
 
             slots[slotIndex].Clear();
+            RebuildCompatibilityItems();
+            return true;
+        }
+
+        public bool TryRemoveQuantityAt(
+            int slotIndex,
+            int amount,
+            out int removedQuantity)
+        {
+            removedQuantity = 0;
+
+            if (!IsValidSlotIndex(slotIndex)
+                || slots[slotIndex].IsEmpty
+                || amount <= 0)
+            {
+                return false;
+            }
+
+            removedQuantity =
+                slots[slotIndex].RemoveQuantity(
+                    amount);
+
+            if (removedQuantity <= 0)
+            {
+                return false;
+            }
 
             RebuildCompatibilityItems();
             return true;
         }
 
-        // 빈 슬롯으로 이동하거나 두 슬롯에 아이템이 있으면 서로 교환한다.
         public bool TryMoveOrSwap(
             int sourceIndex,
             int destinationIndex)
@@ -416,44 +621,66 @@ namespace ProjectDelta.Domain
             InventorySlotState destination =
                 slots[destinationIndex];
 
-            string sourceItemId =
-                source.ItemId;
+            if (!destination.IsEmpty
+                && destination.ItemId == source.ItemId)
+            {
+                int sourceQuantity =
+                    source.Quantity;
 
-            string sourceDisplayName =
-                source.DisplayName;
+                int remaining =
+                    destination.AddQuantity(
+                        sourceQuantity);
 
-            int sourceQuantity =
-                source.Quantity;
+                int moved =
+                    sourceQuantity - remaining;
+
+                if (moved <= 0)
+                {
+                    return false;
+                }
+
+                source.RemoveQuantity(
+                    moved);
+
+                RebuildCompatibilityItems();
+                return true;
+            }
 
             if (destination.IsEmpty)
             {
                 destination.Set(
-                    sourceItemId,
-                    sourceDisplayName,
-                    sourceQuantity);
+                    source.ItemId,
+                    source.DisplayName,
+                    source.Quantity,
+                    source.MaxStackSize);
 
                 source.Clear();
             }
             else
             {
-                string destinationItemId =
-                    destination.ItemId;
+                string sourceItemId =
+                    source.ItemId;
 
-                string destinationDisplayName =
-                    destination.DisplayName;
+                string sourceDisplayName =
+                    source.DisplayName;
 
-                int destinationQuantity =
-                    destination.Quantity;
+                int sourceQuantity =
+                    source.Quantity;
+
+                int sourceMaxStackSize =
+                    source.MaxStackSize;
 
                 destination.Set(
                     sourceItemId,
                     sourceDisplayName,
-                    sourceQuantity);
+                    sourceQuantity,
+                    sourceMaxStackSize);
 
                 source.Set(
-                    destinationItemId,
-                    destinationDisplayName,
-                    destinationQuantity);
+                    destination.ItemId,
+                    destination.DisplayName,
+                    destination.Quantity,
+                    destination.MaxStackSize);
             }
 
             RebuildCompatibilityItems();
@@ -470,13 +697,10 @@ namespace ProjectDelta.Domain
                 return false;
             }
 
-            slot =
-                slots[slotIndex];
-
+            slot = slots[slotIndex];
             return true;
         }
 
-        // 저장 데이터를 적용하기 전에 현재 슬롯을 초기화한다.
         public void ResetForRestore(
             int permanentSlotBonus,
             int bagSlotBonus)
@@ -495,12 +719,27 @@ namespace ProjectDelta.Domain
             RebuildCompatibilityItems();
         }
 
-        // 저장된 슬롯 위치를 그대로 되살린다.
         public bool RestoreSlot(
             int slotIndex,
             string itemId,
             string displayName,
             int quantity)
+        {
+            return RestoreSlot(
+                slotIndex,
+                itemId,
+                displayName,
+                quantity,
+                ResolveMaxStackSize(
+                    itemId));
+        }
+
+        public bool RestoreSlot(
+            int slotIndex,
+            string itemId,
+            string displayName,
+            int quantity,
+            int maxStackSize)
         {
             if (!IsValidSlotIndex(slotIndex))
             {
@@ -510,10 +749,85 @@ namespace ProjectDelta.Domain
             slots[slotIndex].Set(
                 itemId,
                 displayName,
-                quantity);
+                quantity,
+                maxStackSize);
 
             RebuildCompatibilityItems();
             return true;
+        }
+
+        private int FillExistingStacks(
+            string itemId,
+            int remainingQuantity,
+            int maxStackSize,
+            InventoryAddResult result)
+        {
+            for (int index = 0;
+                 index < Capacity && remainingQuantity > 0;
+                 index++)
+            {
+                InventorySlotState slot =
+                    slots[index];
+
+                if (slot.IsEmpty
+                    || slot.ItemId != itemId
+                    || !slot.CanStackMore)
+                {
+                    continue;
+                }
+
+                if (result.FirstChangedSlotIndex < 0)
+                {
+                    result.FirstChangedSlotIndex = index;
+                }
+
+                remainingQuantity =
+                    slot.AddQuantity(
+                        remainingQuantity);
+            }
+
+            return remainingQuantity;
+        }
+
+        private int FillEmptySlots(
+            string itemId,
+            string displayName,
+            int remainingQuantity,
+            int maxStackSize,
+            InventoryAddResult result)
+        {
+            for (int index = 0;
+                 index < Capacity && remainingQuantity > 0;
+                 index++)
+            {
+                InventorySlotState slot =
+                    slots[index];
+
+                if (!slot.IsEmpty)
+                {
+                    continue;
+                }
+
+                int amountToPlace =
+                    Math.Min(
+                        remainingQuantity,
+                        maxStackSize);
+
+                slot.Set(
+                    itemId,
+                    displayName,
+                    amountToPlace,
+                    maxStackSize);
+
+                if (result.FirstChangedSlotIndex < 0)
+                {
+                    result.FirstChangedSlotIndex = index;
+                }
+
+                remainingQuantity -= amountToPlace;
+            }
+
+            return remainingQuantity;
         }
 
         private bool IsValidSlotIndex(int slotIndex)
@@ -555,7 +869,8 @@ namespace ProjectDelta.Domain
                     new InventoryItemStack(
                         slot.ItemId,
                         slot.DisplayName,
-                        slot.Quantity));
+                        slot.Quantity,
+                        slot.MaxStackSize));
             }
         }
     }
