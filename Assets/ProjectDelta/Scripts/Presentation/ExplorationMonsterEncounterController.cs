@@ -193,6 +193,20 @@ namespace ProjectDelta.Presentation
                 autoAdvanceRoutine = null;
             }
 
+            // 88일차: 탐험 → 전투 전환 도중 비활성화되어도 검은 화면과 죽은 코루틴 참조를 남기지 않는다.
+            if (battleEntryRoutine != null)
+            {
+                StopCoroutine(
+                    battleEntryRoutine);
+
+                battleEntryRoutine = null;
+            }
+
+            if (BattleTransitionController.Current != null)
+            {
+                BattleTransitionController.Current.ForceReveal();
+            }
+
             session.ForceReset();
             battleSession.ForceReset();
             actionSelectionGate.Reset();
@@ -301,6 +315,9 @@ namespace ProjectDelta.Presentation
             Debug.Log(
                 $"[Project Delta] 46일차 Encounter Active / Monster {monster.MonsterDefinitionId}",
                 this);
+
+            // 88일차: 별도 조우 선택 UI 없이 몬스터 접촉 직후 자동으로 전투 전환을 시작한다.
+            StartAutomaticBattleEntry();
 
             return true;
         }
@@ -468,8 +485,8 @@ namespace ProjectDelta.Presentation
                 $"[Project Delta] 47일차 Battle Round {battleSession.RoundNumber} Start",
                 this);
 
-            // 56일차: "다음 턴" 버튼을 누르지 않아도 바로 행동할 수 있도록 첫 행동자를 자동으로 불러온다.
-            TestAdvanceBattleTurn();
+            // 88일차: 첫 행동은 검은 화면에서 Battle HUD가 준비되고 Fade In까지 끝난 뒤 시작한다.
+            // AutomaticBattleEntryRoutine()이 전환 완료 후 TestAdvanceBattleTurn()을 호출한다.
         }
 
         // 76일차: 그룹 슬롯의 몬스터 ID를 실제 MonsterDefinition으로 옮긴다. floorController가
@@ -496,6 +513,70 @@ namespace ProjectDelta.Presentation
 
         // 이미 코루틴이 진행 중이면 다시 시작하지 않는다 (코루틴의 while 루프가 알아서 이어간다).
         private Coroutine autoAdvanceRoutine;
+
+        // 88일차: 몬스터 접촉 후 암전 → Battle 준비 → 밝아짐 → 첫 행동 순서를 한 번만 실행한다.
+        private Coroutine battleEntryRoutine;
+
+        // 88일차: Encounter가 Active가 되면 기존 선택 UI 없이 자동 전투 전환 코루틴을 시작한다.
+        private void StartAutomaticBattleEntry()
+        {
+            if (battleEntryRoutine != null)
+            {
+                return;
+            }
+
+            battleEntryRoutine =
+                StartCoroutine(
+                    AutomaticBattleEntryRoutine());
+        }
+
+        // 88일차: 화면이 완전히 검어진 뒤 Battle을 만들고, 화면이 다시 보인 뒤 첫 행동을 진행한다.
+        private IEnumerator AutomaticBattleEntryRoutine()
+        {
+            BattleTransitionController transition =
+                BattleTransitionController.GetOrCreate();
+
+            yield return transition.FadeToBlack();
+
+            EncounterCommandResult battleResult =
+                SelectBattleCommand();
+
+            bool battleReady =
+                battleResult != null
+                && battleResult.Accepted
+                && HasBattle;
+
+            if (!battleReady)
+            {
+                Debug.LogError(
+                    "[Project Delta] 88일차 자동 전투 진입 실패 / Encounter를 중단하고 탐험 화면으로 복원합니다.",
+                    this);
+
+                yield return transition.FadeFromBlack();
+
+                battleEntryRoutine =
+                    null;
+
+                AbortEncounter();
+
+                yield break;
+            }
+
+            // 검은 화면 뒤에서 새 Battle HUD의 레이아웃과 텍스트가 갱신될 기회를 준다.
+            Canvas.ForceUpdateCanvases();
+
+            yield return transition.HoldBlack();
+            yield return transition.FadeFromBlack();
+
+            battleEntryRoutine =
+                null;
+
+            // Fade In이 끝난 뒤에만 첫 행동자를 호출해 Enemy가 검은 화면에서 먼저 공격하지 않게 한다.
+            if (battleSession.State == BattleState.RoundStart)
+            {
+                TestAdvanceBattleTurn();
+            }
+        }
 
         // 49일차: 이번 턴의 다음 행동자를 AwaitingAction으로 불러온다.
         // Enemy 차례는 아직 AI가 없으므로 유일한 대상(Player)을 자동으로 미리 선택해 둔다.
