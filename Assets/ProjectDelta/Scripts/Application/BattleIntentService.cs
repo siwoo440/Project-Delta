@@ -20,6 +20,8 @@ namespace ProjectDelta.Application
                 || string.IsNullOrEmpty(
                     intent.ActorInstanceId)
                 || intents.ContainsKey(
+                    intent.ActorInstanceId)
+                || HasPendingCancellation(
                     intent.ActorInstanceId))
             {
                 return false;
@@ -28,9 +30,6 @@ namespace ProjectDelta.Application
             intents.Add(
                 intent.ActorInstanceId,
                 intent);
-
-            lastCancelReasons.Remove(
-                intent.ActorInstanceId);
 
             return true;
         }
@@ -102,6 +101,36 @@ namespace ProjectDelta.Application
             }
 
             return reason;
+        }
+
+        public static bool HasPendingCancellation(
+            string actorInstanceId)
+        {
+            return GetLastCancelReason(
+                    actorInstanceId)
+                != BattleIntentCancelReason.None;
+        }
+
+        public static bool TryConsumeCancellation(
+            string actorInstanceId,
+            out BattleIntentCancelReason reason)
+        {
+            reason =
+                BattleIntentCancelReason.None;
+
+            if (string.IsNullOrEmpty(
+                    actorInstanceId)
+                || !lastCancelReasons.TryGetValue(
+                    actorInstanceId,
+                    out reason))
+            {
+                return false;
+            }
+
+            lastCancelReasons.Remove(
+                actorInstanceId);
+
+            return true;
         }
 
         public static BattleIntentCancelReason EvaluateCancelReason(

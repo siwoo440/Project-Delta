@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9677390285424fa286951dcbdf40bc6f, type: 3}
+  m_Name: TestMonsterHeavyAttack
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.SkillDefinition
+  id: SKILL_MON_HEAVY_ATTACK
+  displayName: "\uAC15\uACF5\uACA9"
+  targetType: 0
+  manaCost: 0
+  staminaCost: 0
+  damageMultiplierPercent: 140
+  damageType: 0
+  defenseInteraction: 0
+  accuracyModifierPercent: 0
+  criticalChancePercent: 0
+  criticalMultiplierPercent: 0
+  grantedStatusEffect: {fileID: 0}
+  statusEffectBaseChancePercent: 0
+  statusEffectDurationRounds: 1
+  statusEffectAppliedValue: 0
+  grantsExtraAction: 0

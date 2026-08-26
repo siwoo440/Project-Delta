@@ -50,6 +50,16 @@ namespace ProjectDelta.Application
                     "현재 Battle 정보가 없습니다.");
             }
 
+            // 74일차 수정: Intent Runtime의 Update 순서와 무관하게 실제 스킬 선언 지점에서도
+            // 침묵을 다시 검증한다. 따라서 같은 프레임에 침묵이 부여돼도 스킬이 실행되지 않는다.
+            if (BattleStatusRestrictionPolicy.IsSilenced(
+                    actor))
+            {
+                return BattleCommandResult.Reject(
+                    Id,
+                    "침묵 상태에서는 스킬을 사용할 수 없습니다.");
+            }
+
             if (skill.TargetType == SkillTargetType.Enemy
                 && !BattleTargeting.IsValidTarget(
                     context,
@@ -78,7 +88,7 @@ namespace ProjectDelta.Application
             string targetSuffix =
                 skill.TargetType == SkillTargetType.Enemy
                     ? $" → {target.InstanceId}"
-                    : string.Empty; // Self 대상은 표시할 대상이 따로 없음
+                    : string.Empty;
 
             return BattleCommandResult.Accept(
                 Id,

@@ -20,6 +20,9 @@ namespace ProjectDelta.Data
         [SerializeField] private int charm;
         [SerializeField] private int resistance;
 
+        [Header("74일차 몬스터 AI")]
+        [SerializeField] private MonsterAiProfile aiProfile;
+
         public string DisplayName => displayName;
 
         public int MaxHp => maxHp;
@@ -31,5 +34,7 @@ namespace ProjectDelta.Data
         public int Evasion => evasion;
         public int Charm => charm;
         public int Resistance => resistance;
+
+        public MonsterAiProfile AiProfile => aiProfile;
     }
 }

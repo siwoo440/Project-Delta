@@ -1,4 +1,3 @@
-using System;
 using ProjectDelta.Application;
 using ProjectDelta.Data;
 using UnityEngine;
@@ -9,6 +8,10 @@ namespace ProjectDelta.Presentation
     public sealed class BattleIntentRuntimeController : MonoBehaviour
     {
         [SerializeField] private ExplorationMonsterEncounterController encounterController;
+        [SerializeField] private MonsterDefinition monsterDefinition;
+
+        private readonly IRandomSource aiRng =
+            new CombatRng();
 
         private BattleContext observedContext;
         private int lastObservedActionSequence;
@@ -96,12 +99,22 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            BattleIntentService.TryConsume(
+            if (BattleIntentService.TryConsume(
+                    actor.InstanceId,
+                    out _))
+            {
+                return;
+            }
+
+            // 74일차 수정:
+            // Intent가 취소되어 실제 Command가 실행되지 않았더라도 적의 차례 자체가 소비되면
+            // 그때 취소 대기 상태를 해제한다. 다음 라운드부터는 다시 새 Intent를 만들 수 있다.
+            BattleIntentService.TryConsumeCancellation(
                 actor.InstanceId,
                 out _);
         }
 
-        private static void RefreshEnemyIntents(
+        private void RefreshEnemyIntents(
             BattleContext context)
         {
             if (context.Enemies == null)
@@ -116,19 +129,19 @@ namespace ProjectDelta.Presentation
                     continue;
                 }
 
+                // 취소된 예고는 해당 Enemy의 차례가 실제로 소비될 때까지 유지한다.
+                // 따라서 이 구간에서는 공격/방어/스킬을 새로 뽑지 않는다.
+                if (BattleIntentService.HasPendingCancellation(
+                        enemy.InstanceId))
+                {
+                    continue;
+                }
+
                 BattleParticipant target =
                     context.Player;
 
-                bool targetAvailable =
-                    target != null
-                    && target.IsAlive;
-
-                bool isStunned =
-                    enemy.HasActiveStatusEffectOfKind(
-                        StatusEffectKind.Stun);
-
                 bool isSilenced =
-                    HasActiveSilence(
+                    BattleStatusRestrictionPolicy.IsSilenced(
                         enemy);
 
                 bool isSatisfied =
@@ -139,13 +152,11 @@ namespace ProjectDelta.Presentation
                         out BattleIntent currentIntent))
                 {
                     BattleIntentCancelReason cancelReason =
-                        BattleIntentService.EvaluateCancelReason(
+                        BattleIntentExecutionPolicy.EvaluateCurrentCancelReason(
+                            context,
+                            enemy,
                             currentIntent,
-                            enemy.IsAlive,
-                            isStunned,
-                            isSilenced,
-                            isSatisfied,
-                            targetAvailable);
+                            isSatisfied);
 
                     if (cancelReason != BattleIntentCancelReason.None)
                     {
@@ -157,22 +168,37 @@ namespace ProjectDelta.Presentation
                     continue;
                 }
 
-                BattleIntent probeIntent =
-                    BattleIntent.CreateBasicAttack(
+                if (!enemy.IsAlive
+                    || enemy.HasActiveStatusEffectOfKind(
+                        StatusEffectKind.Stun))
+                {
+                    continue;
+                }
+
+                MonsterAiProfile profile =
+                    monsterDefinition != null
+                        ? monsterDefinition.AiProfile
+                        : null;
+
+                if (!MonsterAiDecisionService.TryCreateIntent(
                         enemy,
-                        target);
+                        target,
+                        profile,
+                        isSilenced,
+                        aiRng,
+                        out BattleIntent probeIntent))
+                {
+                    continue;
+                }
 
                 BattleIntentCancelReason createBlockReason =
-                    BattleIntentService.EvaluateCancelReason(
+                    BattleIntentExecutionPolicy.EvaluateCurrentCancelReason(
+                        context,
+                        enemy,
                         probeIntent,
-                        enemy.IsAlive,
-                        isStunned,
-                        isSilenced,
-                        isSatisfied,
-                        targetAvailable);
+                        isSatisfied);
 
-                if (probeIntent == null
-                    || createBlockReason != BattleIntentCancelReason.None)
+                if (createBlockReason != BattleIntentCancelReason.None)
                 {
                     continue;
                 }
@@ -180,42 +206,6 @@ namespace ProjectDelta.Presentation
                 BattleIntentService.TryRegister(
                     probeIntent);
             }
-        }
-
-        private static bool HasActiveSilence(
-            BattleParticipant participant)
-        {
-            if (participant == null
-                || participant.StatusEffects == null)
-            {
-                return false;
-            }
-
-            for (int index = 0; index < participant.StatusEffects.Count; index++)
-            {
-                StatusEffectInstance status =
-                    participant.StatusEffects[index];
-
-                if (status == null
-                    || status.IsExpired
-                    || string.IsNullOrEmpty(
-                        status.DefinitionId))
-                {
-                    continue;
-                }
-
-                if (status.DefinitionId.IndexOf(
-                        "SILENCE",
-                        StringComparison.OrdinalIgnoreCase) >= 0
-                    || status.DefinitionId.IndexOf(
-                        "침묵",
-                        StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private void ResetObservedState()

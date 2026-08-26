@@ -474,18 +474,22 @@ namespace ProjectDelta.Presentation
                     break; // Player 차례, 공격·방어 버튼 입력을 기다린다.
                 }
 
-                IReadOnlyList<BattleParticipant> validTargets =
-                    BattleTargeting.GetValidTargets(
-                        battleSession.Context,
-                        actor);
-
-                if (validTargets.Count > 0)
+                if (!ExecuteEnemyIntent(
+                        actor))
                 {
-                    battleSession.TrySelectTarget(
-                        validTargets[0]);
-                }
+                    IReadOnlyList<BattleParticipant> fallbackTargets =
+                        BattleTargeting.GetValidTargets(
+                            battleSession.Context,
+                            actor);
 
-                ConfirmAttack();
+                    if (fallbackTargets.Count > 0)
+                    {
+                        battleSession.TrySelectTarget(
+                            fallbackTargets[0]);
+                    }
+
+                    ConfirmAttack();
+                }
 
                 // 이 공격으로 전투가 끝났으면(승리·패배) 다음 행동자를 기다릴 필요 없이 바로 멈춘다.
                 if (battleSession.State != BattleState.RoundStart
@@ -501,6 +505,257 @@ namespace ProjectDelta.Presentation
             }
 
             autoAdvanceRoutine = null;
+        }
+
+        // 74일차: Enemy는 73일차에 미리 저장한 Intent를 실제 차례에서 그대로 실행한다.
+        private bool ExecuteEnemyIntent(
+            BattleParticipant actor)
+        {
+            if (actor == null
+                || battleSession.Context == null)
+            {
+                return false;
+            }
+
+            if (!BattleIntentService.TryGet(
+                    actor.InstanceId,
+                    out BattleIntent intent))
+            {
+                // 이미 예고가 취소된 Enemy는 그 취소된 차례를 먼저 소비한다.
+                // 여기서 새 AI Intent를 만들면 예고 취소 직후 공격/방어로 바뀌는 문제가 생긴다.
+                if (BattleIntentService.HasPendingCancellation(
+                        actor.InstanceId))
+                {
+                    BattleIntentCancelReason pendingReason =
+                        BattleIntentService.GetLastCancelReason(
+                            actor.InstanceId);
+
+                    return ResolveCancelledEnemyIntent(
+                        actor,
+                        pendingReason);
+                }
+
+                MonsterAiProfile profile =
+                    testMonsterDefinition != null
+                        ? testMonsterDefinition.AiProfile
+                        : null;
+
+                bool skillsBlocked =
+                    IsAiSkillBlocked(
+                        actor);
+
+                if (!MonsterAiDecisionService.TryCreateIntent(
+                        actor,
+                        battleSession.Context.Player,
+                        profile,
+                        skillsBlocked,
+                        combatRng,
+                        out intent))
+                {
+                    intent =
+                        BattleIntent.CreateBasicAttack(
+                            actor,
+                            battleSession.Context.Player);
+                }
+
+                if (intent != null)
+                {
+                    BattleIntentService.TryRegister(
+                        intent);
+                }
+            }
+
+            if (intent == null)
+            {
+                return false;
+            }
+
+            // 74일차 수정: HUD Update가 아직 돌지 않은 같은 프레임이라도 실제 실행 직전에
+            // 현재 상태를 다시 검사하여 오래된 Skill Intent가 침묵을 무시하지 못하게 한다.
+            BattleIntentCancelReason cancelReason =
+                BattleIntentExecutionPolicy.EvaluateCurrentCancelReason(
+                    battleSession.Context,
+                    actor,
+                    intent);
+
+            if (cancelReason != BattleIntentCancelReason.None)
+            {
+                BattleIntentService.Cancel(
+                    actor.InstanceId,
+                    cancelReason);
+
+                return ResolveCancelledEnemyIntent(
+                    actor,
+                    cancelReason);
+            }
+
+            switch (intent.CommandId)
+            {
+                case "Attack":
+                    if (!TrySelectIntentTarget(
+                            intent))
+                    {
+                        return false;
+                    }
+
+                    return ConfirmAttack()
+                        != null;
+
+                case "Defend":
+                    return ConfirmDefend()
+                        != null;
+
+                case "Skill":
+                    if (intent.Skill == null)
+                    {
+                        return false;
+                    }
+
+                    if (intent.Skill.TargetType == SkillTargetType.Enemy
+                        && !TrySelectIntentTarget(
+                            intent))
+                    {
+                        return false;
+                    }
+
+                    return ConfirmSkill(
+                        intent.Skill)
+                        != null;
+
+                default:
+                    return false;
+            }
+        }
+
+        private bool ResolveCancelledEnemyIntent(
+            BattleParticipant actor,
+            BattleIntentCancelReason cancelReason)
+        {
+            if (actor == null)
+            {
+                return true;
+            }
+
+            // 취소된 예고를 다른 공격으로 교체하지 않는다.
+            // 해당 Enemy의 행동만 소비하고 정상적인 다음 행동자/다음 라운드 흐름으로 넘긴다.
+            if (!battleSession.TryBeginResolveAction())
+            {
+                Debug.LogError(
+                    $"[Project Delta] 74일차 Intent 취소 턴 소비 실패 / Actor {actor.InstanceId} / Reason {cancelReason}",
+                    this);
+
+                return true;
+            }
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            string message =
+                $"행동 예고 취소 / {actor.InstanceId} / {cancelReason}";
+
+            LastBattleActionResult =
+                BattleActionResult.Accept(
+                    "IntentCancelled",
+                    new[] { message },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    false,
+                    null);
+
+            Debug.Log(
+                $"[Project Delta] 74일차 {message}",
+                this);
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                return true;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return true;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return true;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return true;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 74일차 Battle Round {battleSession.RoundNumber} Start / Intent 취소 후 진행",
+                this);
+
+            return true;
+        }
+
+        private bool TrySelectIntentTarget(
+            BattleIntent intent)
+        {
+            if (intent == null
+                || string.IsNullOrEmpty(
+                    intent.TargetInstanceId)
+                || battleSession.Context == null
+                || !battleSession.Context.TryGetParticipant(
+                    intent.TargetInstanceId,
+                    out BattleParticipant target)
+                || target == null
+                || !target.IsAlive)
+            {
+                return false;
+            }
+
+            return battleSession.TrySelectTarget(
+                target);
+        }
+
+        private static bool IsAiSkillBlocked(
+            BattleParticipant actor)
+        {
+            if (actor == null
+                || actor.StatusEffects == null)
+            {
+                return false;
+            }
+
+            for (int index = 0;
+                 index < actor.StatusEffects.Count;
+                 index++)
+            {
+                StatusEffectInstance status =
+                    actor.StatusEffects[index];
+
+                if (status == null
+                    || status.IsExpired
+                    || string.IsNullOrEmpty(
+                        status.DefinitionId))
+                {
+                    continue;
+                }
+
+                if (status.DefinitionId.IndexOf(
+                        "SILENCE",
+                        StringComparison.OrdinalIgnoreCase) >= 0
+                    || status.DefinitionId.IndexOf(
+                        "침묵",
+                        StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // 49일차: AwaitingAction 상태에서 CurrentActor의 공격 대상을 지정·재지정한다.

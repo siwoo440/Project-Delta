@@ -5987,6 +5987,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: ProjectDelta.Presentation::ProjectDelta.Presentation.BattleIntentRuntimeController
   encounterController: {fileID: 1454137234}
+  monsterDefinition: {fileID: 11400000, guid: 133917812ecdfae49b319e5980fbb44e, type: 2}
 --- !u!114 &1196757272
 MonoBehaviour:
   m_ObjectHideFlags: 0

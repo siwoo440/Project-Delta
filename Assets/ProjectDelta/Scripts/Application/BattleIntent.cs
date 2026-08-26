@@ -1,3 +1,5 @@
+using ProjectDelta.Data;
+
 namespace ProjectDelta.Application
 {
     public sealed class BattleIntent
@@ -9,6 +11,7 @@ namespace ProjectDelta.Application
         public string SkillId { get; }
         public BattleIntentIconType IconType { get; }
         public bool IsSilenceSensitive { get; }
+        public SkillDefinition Skill { get; }
 
         public bool HasTarget =>
             !string.IsNullOrEmpty(
@@ -21,7 +24,8 @@ namespace ProjectDelta.Application
             string displayName,
             BattleIntentIconType iconType,
             string skillId = null,
-            bool isSilenceSensitive = false)
+            bool isSilenceSensitive = false,
+            SkillDefinition skill = null)
         {
             ActorInstanceId =
                 actorInstanceId;
@@ -43,6 +47,9 @@ namespace ProjectDelta.Application
 
             IsSilenceSensitive =
                 isSilenceSensitive;
+
+            Skill =
+                skill;
         }
 
         public static BattleIntent CreateBasicAttack(
@@ -61,6 +68,56 @@ namespace ProjectDelta.Application
                 "Attack",
                 "공격",
                 BattleIntentIconType.Attack);
+        }
+
+        public static BattleIntent CreateDefend(
+            BattleParticipant actor)
+        {
+            if (actor == null)
+            {
+                return null;
+            }
+
+            return new BattleIntent(
+                actor.InstanceId,
+                null,
+                "Defend",
+                "방어",
+                BattleIntentIconType.Defend);
+        }
+
+        public static BattleIntent CreateSkill(
+            BattleParticipant actor,
+            BattleParticipant target,
+            SkillDefinition skill,
+            BattleIntentIconType iconType)
+        {
+            if (actor == null
+                || skill == null)
+            {
+                return null;
+            }
+
+            if (skill.TargetType == SkillTargetType.Enemy
+                && target == null)
+            {
+                return null;
+            }
+
+            BattleParticipant resolvedTarget =
+                skill.TargetType == SkillTargetType.Self
+                    ? actor
+                    : target;
+
+            return new BattleIntent(
+                actor.InstanceId,
+                resolvedTarget?.InstanceId,
+                "Skill",
+                skill.DisplayName,
+                iconType,
+                skill.Id,
+                true,
+                skill);
         }
     }
 }
