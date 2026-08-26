@@ -31,6 +31,9 @@ namespace ProjectDelta.Data
         [Min(0)]
         [SerializeField] private int experienceReward = 20;
 
+        [Header("80일차 전투 드롭")]
+        [SerializeField] private MonsterDropTable dropTable;
+
         public string DisplayName => displayName;
         public MonsterRarity Rarity => rarity;
 
@@ -50,5 +53,8 @@ namespace ProjectDelta.Data
             Mathf.Max(
                 0,
                 experienceReward);
+
+        public MonsterDropTable DropTable =>
+            dropTable;
     }
 }

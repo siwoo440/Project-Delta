@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51d316d151ae5654590ee863c458d84e, type: 3}
+  m_Name: Day80_TestDropItem
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.ItemDefinition
+  id: ITEM_DAY80_TEST_DROP
+  displayName: "\uC804\uD22C \uB4DC\uB86D \uD14C\uC2A4\uD2B8 \uC544\uC774\uD15C"

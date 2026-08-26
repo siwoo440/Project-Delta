@@ -53,6 +53,10 @@ namespace ProjectDelta.Presentation
         private readonly IRandomSource combatRng =
             new CombatRng();
 
+        // 80일차: 전투 RNG와 분리된 골드·아이템 드롭 전용 RNG.
+        private readonly IRandomSource rewardRng =
+            new RewardRng();
+
         // 47일차: 승패 계산 전까지 사용하던 테스트 스탯. 54일차부터 플레이어의 체력·공격·방어·
         // 속도·매력·회피·저항은 PlayerRunState(기획서 6.1), 적은 MonsterDefinition에서 가져온다.
         // 명중은 능력치가 아니라 스킬별 기본값이라 56일차 명중 공식 정정 전까지는 임시 상수로 둔다.
@@ -135,6 +139,10 @@ namespace ProjectDelta.Presentation
         // 81일차 정식 보상 화면이 이 값을 그대로 표시할 수 있도록 보존한다.
         public BattleGrowthResult LastBattleGrowthResult { get; private set; }
 
+        // 80일차: 가장 최근 승리에서 한 번 판정된 골드·아이템 드롭 결과.
+        // 81일차 정식 보상 화면이 재추첨 없이 이 결과를 그대로 표시한다.
+        public BattleDropResult LastBattleDropResult { get; private set; }
+
         public bool IsBattleRewardPending =>
             pendingVictoryEncounterResult != null
             && BattleRewardState.IsPending; // 72일차 보상 선택 대기 여부
@@ -193,6 +201,7 @@ namespace ProjectDelta.Presentation
             pendingVictoryEncounterResult = null; // 72일차 대기 중 보상 결과 정리
             BattleRewardState.Clear(); // 72일차 보상 상태 정리
             LastBattleGrowthResult = null; // 79일차 성장 결과 정리
+            LastBattleDropResult = null; // 80일차 드롭 결과 정리
             wasMoving = false;
         }
 
@@ -436,6 +445,7 @@ namespace ProjectDelta.Presentation
             BattleRewardState.Clear(); // 72일차 이전 보상 상태 초기화
             pendingVictoryEncounterResult = null; // 72일차 이전 보상 결과 초기화
             LastBattleGrowthResult = null; // 79일차 이전 전투 성장 결과 초기화
+            LastBattleDropResult = null; // 80일차 이전 전투 드롭 결과 초기화
             BattleDefeatService.BeginBattle(); // 70일차 패배 추적 정보 초기화
 
             Debug.Log(
@@ -1659,6 +1669,7 @@ namespace ProjectDelta.Presentation
             if (outcome == BattleOutcome.Victory)
             {
                 ApplyVictoryGrowth(); // 79일차 경험치·레벨업
+                ApplyVictoryDrops(); // 80일차 골드·아이템 드롭 판정
 
                 if (!EncounterResultResolver.TryCreateTestResult(
                         session.Context,
@@ -1712,6 +1723,51 @@ namespace ProjectDelta.Presentation
                 battleSession.RoundNumber); // 70일차 패배 기록 후 임시 타이틀 복귀
 
             return finishedResult;
+        }
+
+        // 80일차: 승리가 확정된 BattleContext의 실제 Enemy 구성 전체를 드롭 테이블로 환산한다.
+        // FinishBattle()의 Victory 분기에서 한 번만 호출하므로 보상 UI를 열어도 재추첨하지 않는다.
+        private void ApplyVictoryDrops()
+        {
+            if (battleSession.Context == null
+                || battleSession.Context.Enemies == null)
+            {
+                LastBattleDropResult =
+                    BattleDropResult.Empty;
+
+                return;
+            }
+
+            System.Collections.Generic.List<MonsterDefinition> defeatedMonsters =
+                new System.Collections.Generic.List<MonsterDefinition>();
+
+            foreach (BattleParticipant enemy
+                     in battleSession.Context.Enemies)
+            {
+                if (enemy == null)
+                {
+                    continue;
+                }
+
+                MonsterDefinition definition =
+                    ResolveMonsterDefinition(
+                        enemy.DefinitionId);
+
+                if (definition != null)
+                {
+                    defeatedMonsters.Add(
+                        definition);
+                }
+            }
+
+            LastBattleDropResult =
+                BattleDropService.RollBattleDrops(
+                    defeatedMonsters,
+                    rewardRng);
+
+            Debug.Log(
+                $"[Project Delta] 80일차 Battle Drop / Gold {LastBattleDropResult.Gold} / Item Type {LastBattleDropResult.Items.Count}",
+                this);
         }
 
         // 79일차: 승리가 확정된 BattleContext의 실제 Enemy 구성 전체를 경험치로 환산한다.

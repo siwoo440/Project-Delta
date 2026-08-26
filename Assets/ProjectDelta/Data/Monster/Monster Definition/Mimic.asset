@@ -26,3 +26,4 @@ MonoBehaviour:
   resistance: 10
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
   experienceReward: 20
+  dropTable: {fileID: 11400000, guid: fceca0125aca58a4895d91210f238fc2, type: 2}

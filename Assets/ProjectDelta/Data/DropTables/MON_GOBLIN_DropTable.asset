@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f9feff77a4e4fcf8282454212b37bc6, type: 3}
+  m_Name: MON_GOBLIN_DropTable
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.MonsterDropTable
+  minimumGold: 5
+  maximumGold: 12
+  itemDrops: []
