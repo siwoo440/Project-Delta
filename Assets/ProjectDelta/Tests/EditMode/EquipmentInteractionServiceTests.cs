@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using NUnit.Framework;
 using ProjectDelta.Application;
@@ -58,7 +59,7 @@ namespace ProjectDelta.Tests.EditMode
             }
             finally
             {
-                Object.DestroyImmediate(
+                UnityEngine.Object.DestroyImmediate(
                     definition);
             }
         }
@@ -118,7 +119,7 @@ namespace ProjectDelta.Tests.EditMode
             }
             finally
             {
-                Object.DestroyImmediate(
+                UnityEngine.Object.DestroyImmediate(
                     definition);
             }
         }
@@ -181,13 +182,23 @@ namespace ProjectDelta.Tests.EditMode
 
             try
             {
+                // 100일차: 장착 시 등급/랜덤 옵션이 적용되므로, 실제로 무엇이 적용됐는지는
+                // 동일한 시드로 직접 굴려서 기대값을 구한 뒤 비교한다.
+                EquipmentRollResult expectedRoll =
+                    EquipmentRollService.Roll(
+                        definition,
+                        new System.Random(
+                            99));
+
                 EquipmentActionResult result =
                     EquipmentInteractionService.EquipFromInventory(
                         inventory,
                         equipment,
                         inventorySlot,
                         definition,
-                        player);
+                        player,
+                        new System.Random(
+                            99));
 
                 Assert.That(
                     result.Success,
@@ -196,11 +207,17 @@ namespace ProjectDelta.Tests.EditMode
                 Assert.That(
                     player.GetFinalStats().Attack,
                     Is.EqualTo(
-                        baseAttack + 12));
+                        baseAttack + expectedRoll.Bonuses.Attack));
+
+                // 등급 배율이 1.0 이상이므로 최소한 원래 정의값 이상은 적용되어야 한다.
+                Assert.That(
+                    expectedRoll.Bonuses.Attack,
+                    Is.GreaterThanOrEqualTo(
+                        12 * 0.9));
             }
             finally
             {
-                Object.DestroyImmediate(
+                UnityEngine.Object.DestroyImmediate(
                     definition);
             }
         }
@@ -262,7 +279,7 @@ namespace ProjectDelta.Tests.EditMode
             }
             finally
             {
-                Object.DestroyImmediate(
+                UnityEngine.Object.DestroyImmediate(
                     definition);
             }
         }
@@ -330,7 +347,79 @@ namespace ProjectDelta.Tests.EditMode
             }
             finally
             {
-                Object.DestroyImmediate(
+                UnityEngine.Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
+        // 100일차: EquipFromInventory가 EquipmentRollService로 굴린 등급/보너스를
+        // 그대로 EquipmentItemState에 저장하는지 확인한다.
+        [Test]
+        public void EquipFromInventory_WithSeededRandom_StoresRolledRarityAndBonuses()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Weapon,
+                    new StatBlock
+                    {
+                        Attack = 20
+                    });
+
+            try
+            {
+                System.Random random =
+                    new System.Random(
+                        42);
+
+                EquipmentRollResult expectedRoll =
+                    EquipmentRollService.Roll(
+                        definition,
+                        new System.Random(
+                            42));
+
+                EquipmentActionResult result =
+                    EquipmentInteractionService.EquipFromInventory(
+                        inventory,
+                        equipment,
+                        inventorySlot,
+                        definition,
+                        null,
+                        random);
+
+                Assert.That(
+                    result.Success,
+                    Is.True);
+
+                EquipmentItemState equipped =
+                    equipment.GetEquippedItem(
+                        EquipmentSlotType.Weapon);
+
+                Assert.That(
+                    equipped.Rarity,
+                    Is.EqualTo(
+                        expectedRoll.Rarity));
+
+                Assert.That(
+                    equipped.EquipmentBonuses.Attack,
+                    Is.EqualTo(
+                        expectedRoll.Bonuses.Attack));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(
                     definition);
             }
         }

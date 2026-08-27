@@ -18,12 +18,17 @@ namespace ProjectDelta.Domain
         // Domain이 Data 계층(ItemDefinition)에 의존하지 않도록, 값만 복사해서 들고 있는다.
         public StatBlock EquipmentBonuses { get; }
 
+        // 100일차: 장착 시점에 판정된 등급. EquipmentBonuses는 이미 등급 배율과
+        // 랜덤 옵션이 반영된 최종 값이며, Rarity는 UI 표시용으로 별도 보관한다.
+        public EquipmentRarity Rarity { get; }
+
         public EquipmentItemState(
             string itemId,
             string displayName,
             EquipmentSlotType slotType,
             int maxStackSize,
-            StatBlock equipmentBonuses = null)
+            StatBlock equipmentBonuses = null,
+            EquipmentRarity rarity = EquipmentRarity.Common)
         {
             ItemId =
                 itemId
@@ -46,6 +51,9 @@ namespace ProjectDelta.Domain
             EquipmentBonuses =
                 equipmentBonuses
                 ?? new StatBlock();
+
+            Rarity =
+                rarity;
         }
     }
 

@@ -1,3 +1,4 @@
+using System;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 
@@ -12,7 +13,8 @@ namespace ProjectDelta.Application
             EquipmentRunState equipment,
             int inventorySlotIndex,
             ItemDefinition definition,
-            PlayerRunState player = null)
+            PlayerRunState player = null,
+            Random random = null)
         {
             if (definition == null)
             {
@@ -25,6 +27,12 @@ namespace ProjectDelta.Application
             // EquipmentSlot에만 장착하므로 defined/target이 항상 같다.
             // 99일차: 장착 시점의 EquipmentStatBonuses를 EquipmentItemState에 그대로 전달하고,
             // player가 있으면 최종 스탯에 즉시 반영한다.
+            // 100일차: 등급과 랜덤 옵션은 장착 시점에 EquipmentRollService가 판정한다.
+            EquipmentRollResult roll =
+                EquipmentRollService.Roll(
+                    definition,
+                    random);
+
             return EquipmentService.Equip(
                 inventory,
                 equipment,
@@ -32,8 +40,9 @@ namespace ProjectDelta.Application
                 definition.Category,
                 definition.EquipmentSlot,
                 definition.EquipmentSlot,
-                definition.EquipmentStatBonuses,
-                player);
+                roll.Bonuses,
+                player,
+                roll.Rarity);
         }
 
         public static EquipmentActionResult Unequip(

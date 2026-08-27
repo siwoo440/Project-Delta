@@ -64,7 +64,8 @@ namespace ProjectDelta.Domain
             EquipmentSlotType definedSlotType,
             EquipmentSlotType targetSlotType,
             StatBlock equipmentBonuses = null,
-            PlayerRunState player = null)
+            PlayerRunState player = null,
+            EquipmentRarity rarity = EquipmentRarity.Common)
         {
             if (inventory == null
                 || equipment == null)
@@ -108,7 +109,8 @@ namespace ProjectDelta.Domain
                     inventorySlot.DisplayName,
                     definedSlotType,
                     inventorySlot.MaxStackSize,
-                    equipmentBonuses);
+                    equipmentBonuses,
+                    rarity);
 
             EquipmentItemState previousItem =
                 equipment.GetEquippedItem(

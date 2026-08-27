@@ -1880,13 +1880,19 @@ namespace ProjectDelta.Presentation
                     && index < equipmentSlotNameTexts.Length
                     && equipmentSlotNameTexts[index] != null)
                 {
+                    string itemName =
+                        definition != null
+                        && !string.IsNullOrEmpty(
+                            definition.DisplayName)
+                            ? definition.DisplayName
+                            : equipped != null
+                                ? equipped.DisplayName
+                                : string.Empty;
+
+                    // 100일차: 등급 표시를 "[희귀] 강철 투구" 형태로 이름 앞에 붙인다.
                     equipmentSlotNameTexts[index].text =
                         equipped != null
-                            ? (definition != null
-                            && !string.IsNullOrEmpty(
-                                definition.DisplayName)
-                                ? definition.DisplayName
-                                : equipped.DisplayName)
+                            ? $"[{EquipmentRarityRules.GetDisplayName(equipped.Rarity)}] {itemName}"
                             : "비어있음";
                 }
 

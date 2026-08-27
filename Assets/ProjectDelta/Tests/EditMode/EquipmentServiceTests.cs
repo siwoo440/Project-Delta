@@ -475,6 +475,73 @@ namespace ProjectDelta.Tests.EditMode
                 Is.True);
         }
 
+        // 100일차: rarity를 넘기지 않으면 기존과 동일하게 Common으로 저장되어야 한다.
+        [Test]
+        public void Equip_WithoutRarity_DefaultsToCommon()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentService.Equip(
+                inventory,
+                equipment,
+                inventorySlot,
+                ItemCategory.Equipment,
+                EquipmentSlotType.Weapon,
+                EquipmentSlotType.Weapon);
+
+            Assert.That(
+                equipment.GetEquippedItem(
+                    EquipmentSlotType.Weapon).Rarity,
+                Is.EqualTo(
+                    EquipmentRarity.Common));
+        }
+
+        // 100일차: 전달한 rarity가 EquipmentItemState에 그대로 저장되는지 확인한다.
+        [Test]
+        public void Equip_WithRarity_StoresRarityOnEquippedItem()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "LEGEND_SWORD",
+                "전설의 검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentService.Equip(
+                inventory,
+                equipment,
+                inventorySlot,
+                ItemCategory.Equipment,
+                EquipmentSlotType.Weapon,
+                EquipmentSlotType.Weapon,
+                null,
+                null,
+                EquipmentRarity.Legendary);
+
+            Assert.That(
+                equipment.GetEquippedItem(
+                    EquipmentSlotType.Weapon).Rarity,
+                Is.EqualTo(
+                    EquipmentRarity.Legendary));
+        }
+
         private static bool ContainsItem(
             InventoryRunState inventory,
             string itemId)
