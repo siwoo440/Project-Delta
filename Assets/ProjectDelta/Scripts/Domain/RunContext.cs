@@ -16,6 +16,7 @@ namespace ProjectDelta.Domain
         public PlayerRunState Player { get; }
         public DungeonRunState Dungeon { get; }
         public InventoryRunState Inventory { get; }
+        public EquipmentRunState Equipment { get; }
         public SkillRunState Skills { get; }
         public CharacterRunState Characters { get; }
         public EventRunState Events { get; }
@@ -34,6 +35,7 @@ namespace ProjectDelta.Domain
             Player = PlayerRunState.CreateDefault(); // 54일차: 기획서 6.1 기본 능력치로 시작
             Dungeon = new DungeonRunState();
             Inventory = new InventoryRunState();
+            Equipment = new EquipmentRunState();
             Skills = new SkillRunState();
             Characters = new CharacterRunState();
             Events = new EventRunState();

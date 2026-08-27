@@ -28,6 +28,16 @@ namespace ProjectDelta.Data
         [Min(1)]
         private int maxStackSize = 1;
 
+        [Header("Equipment")]
+        [SerializeField]
+        private EquipmentSlotType equipmentSlot =
+            EquipmentSlotType.Weapon;
+
+        // 97일차에는 데이터만 보관하고 실제 최종 능력치 합산은 99일차에 연결한다.
+        [SerializeField]
+        private StatBlock equipmentStatBonuses =
+            new StatBlock();
+
         // 93일차: 아이템을 사용할 수 있는 상황.
         [SerializeField]
         private ItemUseContext useContext =
@@ -51,9 +61,18 @@ namespace ProjectDelta.Data
             category;
 
         public int MaxStackSize =>
-            Mathf.Max(
-                1,
-                maxStackSize);
+            category == ItemCategory.Equipment
+                ? 1
+                : Mathf.Max(
+                    1,
+                    maxStackSize);
+
+        public EquipmentSlotType EquipmentSlot =>
+            equipmentSlot;
+
+        public StatBlock EquipmentStatBonuses =>
+            equipmentStatBonuses
+            ?? new StatBlock();
 
         public ItemUseContext UseContext =>
             useContext;
