@@ -18,6 +18,7 @@ namespace ProjectDelta.Domain
         public InventoryRunState Inventory { get; }
         public EquipmentRunState Equipment { get; }
         public RelicRunState Relics { get; }
+        public ShopRunState Shop { get; }
         public SkillRunState Skills { get; }
         public CharacterRunState Characters { get; }
         public EventRunState Events { get; }
@@ -38,6 +39,7 @@ namespace ProjectDelta.Domain
             Inventory = new InventoryRunState();
             Equipment = new EquipmentRunState();
             Relics = new RelicRunState();
+            Shop = new ShopRunState();
             Skills = new SkillRunState();
             Characters = new CharacterRunState();
             Events = new EventRunState();

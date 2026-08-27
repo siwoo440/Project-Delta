@@ -1,4 +1,3 @@
-using System;
 using ProjectDelta.Domain;
 
 namespace ProjectDelta.Application
@@ -16,22 +15,11 @@ namespace ProjectDelta.Application
                 return 0;
             }
 
-            int before =
-                Math.Max(
-                    0,
-                    player.Gold);
-
-            long after =
-                (long)before
-                + drop.Gold;
-
-            player.Gold =
-                after >= int.MaxValue
-                    ? int.MaxValue
-                    : (int)after;
-
-            return player.Gold
-                - before;
+            // 105일차: 골드 획득 계산 자체는 GoldService로 옮겨 전투 보상·이벤트·상점이
+            // 같은 화폐 API를 쓰게 했다. 기존 반환값(실제 증가량)·포화 동작은 동일하다.
+            return GoldService.Earn(
+                player,
+                drop.Gold);
         }
 
         public static int ApplyDropItems(

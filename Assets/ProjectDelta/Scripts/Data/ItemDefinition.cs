@@ -28,6 +28,11 @@ namespace ProjectDelta.Data
         [Min(1)]
         private int maxStackSize = 1;
 
+        // 105일차: 상점 정가. 판매가는 ShopService가 이 값의 50%로 계산한다.
+        [SerializeField]
+        [Min(0)]
+        private int basePrice;
+
         [Header("Equipment")]
         [SerializeField]
         private EquipmentSlotType equipmentSlot =
@@ -87,6 +92,11 @@ namespace ProjectDelta.Data
 
         public ItemCategory Category =>
             category;
+
+        public int BasePrice =>
+            Mathf.Max(
+                0,
+                basePrice);
 
         public int MaxStackSize =>
             category == ItemCategory.Equipment

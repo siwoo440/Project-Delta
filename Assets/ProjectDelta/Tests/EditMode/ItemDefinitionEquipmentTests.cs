@@ -170,6 +170,27 @@ namespace ProjectDelta.Tests.EditMode
                 Is.False);
         }
 
+        // 105일차: 상점 정가가 설정한 값 그대로 노출되는지, 음수로는 내려가지 않는지 확인한다.
+        [Test]
+        public void BasePrice_ExposesConfiguredValue()
+        {
+            SetPrivateField(
+                "basePrice",
+                120);
+
+            Assert.That(
+                definition.BasePrice,
+                Is.EqualTo(120));
+        }
+
+        [Test]
+        public void BasePrice_DefaultsToZero()
+        {
+            Assert.That(
+                definition.BasePrice,
+                Is.EqualTo(0));
+        }
+
         [Test]
         public void EquipmentCategory_MaxStackSize_IsAlwaysOne()
         {
