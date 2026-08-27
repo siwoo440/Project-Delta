@@ -354,6 +354,74 @@ namespace ProjectDelta.Tests.EditMode
 
         // 100일차: EquipFromInventory가 EquipmentRollService로 굴린 등급/보너스를
         // 그대로 EquipmentItemState에 저장하는지 확인한다.
+        // 103일차: 비교 UI가 미리 굴려둔 EquipmentRollResult를 그대로 넘기면,
+        // 다시 굴리지 않고 그 값을 그대로 저장해야 한다(미리보기와 실제 장착 결과 일치).
+        [Test]
+        public void EquipFromInventory_WithPrecomputedRoll_UsesThatRollExactly()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Weapon,
+                    new StatBlock
+                    {
+                        Attack = 20
+                    });
+
+            EquipmentRollResult precomputedRoll =
+                new EquipmentRollResult(
+                    EquipmentRarity.Legendary,
+                    new StatBlock
+                    {
+                        Attack = 999
+                    });
+
+            try
+            {
+                EquipmentActionResult result =
+                    EquipmentInteractionService.EquipFromInventory(
+                        inventory,
+                        equipment,
+                        inventorySlot,
+                        definition,
+                        precomputedRoll);
+
+                Assert.That(
+                    result.Success,
+                    Is.True);
+
+                EquipmentItemState equipped =
+                    equipment.GetEquippedItem(
+                        EquipmentSlotType.Weapon);
+
+                Assert.That(
+                    equipped.Rarity,
+                    Is.EqualTo(
+                        EquipmentRarity.Legendary));
+
+                Assert.That(
+                    equipped.EquipmentBonuses.Attack,
+                    Is.EqualTo(999));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
         [Test]
         public void EquipFromInventory_WithSeededRandom_StoresRolledRarityAndBonuses()
         {

@@ -63,6 +63,38 @@ namespace ProjectDelta.Tests.EditMode
                 Is.Not.Null);
         }
 
+        // 103일차: 장비 비교 미리보기 굴림 캐시/빌더가 존재하는지 확인한다.
+        [Test]
+        public void Controller_HasEquipmentComparisonHelpers()
+        {
+            FieldInfo pendingRollField =
+                typeof(PlayerInventoryHudController).GetField(
+                    "pendingEquipRoll",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(
+                pendingRollField,
+                Is.Not.Null);
+
+            MethodInfo updateRollMethod =
+                typeof(PlayerInventoryHudController).GetMethod(
+                    "UpdatePendingEquipRoll",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(
+                updateRollMethod,
+                Is.Not.Null);
+
+            MethodInfo comparisonTextMethod =
+                typeof(PlayerInventoryHudController).GetMethod(
+                    "BuildEquipmentComparisonText",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(
+                comparisonTextMethod,
+                Is.Not.Null);
+        }
+
         [Test]
         public void Controller_DoesNotUseOnGui()
         {

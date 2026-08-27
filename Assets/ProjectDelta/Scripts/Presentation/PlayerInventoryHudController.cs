@@ -64,6 +64,11 @@ namespace ProjectDelta.Presentation
         private int selectedSlotIndex =
             -1;
 
+        // 103일차: 장비 비교 미리보기와 실제 장착이 같은 굴림 결과를 쓰도록 캐시한다.
+        // 선택 슬롯의 아이템이 바뀌기 전까지는 다시 굴리지 않는다.
+        private EquipmentRollResult pendingEquipRoll;
+        private string pendingEquipRollKey;
+
         [Header("Actions")]
         [SerializeField]
         private Button useButton;
@@ -758,13 +763,25 @@ namespace ProjectDelta.Presentation
                 ResolveDefinition(
                     slot);
 
+            // 103일차: 비교 화면에 보여준 것과 같은 굴림 결과를 그대로 장착에 사용한다.
+            UpdatePendingEquipRoll(
+                slot,
+                definition);
+
             EquipmentActionResult result =
                 EquipmentInteractionService.EquipFromInventory(
                     inventory,
                     equipment,
                     selectedSlotIndex,
                     definition,
+                    pendingEquipRoll,
                     RunContext.Current?.Player);
+
+            pendingEquipRoll =
+                null;
+
+            pendingEquipRollKey =
+                null;
 
             lastUseMessage =
                 BuildEquipResultMessage(
@@ -832,6 +849,129 @@ namespace ProjectDelta.Presentation
             }
 
             RefreshInventory();
+        }
+
+        // 103일차: 선택한 슬롯이 장비 아이템이면 미리 한 번 굴려서 캐시해둔다.
+        // 장착 버튼을 눌렀을 때도 같은 결과를 재사용해, 비교 화면에 보여준 수치와
+        // 실제 장착 결과가 어긋나지 않게 한다.
+        private void UpdatePendingEquipRoll(
+            InventorySlotState slot,
+            ItemDefinition definition)
+        {
+            if (definition == null
+                || definition.Category
+                    != ItemCategory.Equipment)
+            {
+                pendingEquipRoll =
+                    null;
+
+                pendingEquipRollKey =
+                    null;
+
+                return;
+            }
+
+            string key =
+                $"{selectedSlotIndex}:{slot.ItemId}";
+
+            if (pendingEquipRoll != null
+                && pendingEquipRollKey == key)
+            {
+                return;
+            }
+
+            pendingEquipRoll =
+                EquipmentRollService.Roll(
+                    definition);
+
+            pendingEquipRollKey =
+                key;
+        }
+
+        // 103일차: 현재 장비 대비 후보 장비의 스탯 변화와 등급, 저주 여부를
+        // 텍스트로 정리한다. "모든 효과를 공개한다"는 요구에 맞춰 불리한
+        // 옵션(음수 값)도 그대로 보여준다.
+        private string BuildEquipmentComparisonText(
+            ItemDefinition definition)
+        {
+            if (definition == null
+                || definition.Category
+                    != ItemCategory.Equipment
+                || pendingEquipRoll == null)
+            {
+                return string.Empty;
+            }
+
+            EquipmentRunState equipment =
+                GetEquipment();
+
+            StatBlock delta =
+                EquipmentComparisonService.ComputeBonusDelta(
+                    equipment,
+                    definition.EquipmentSlot,
+                    pendingEquipRoll.Bonuses);
+
+            List<string> deltaLines =
+                BuildStatDeltaLines(
+                    delta);
+
+            string rarityLabel =
+                EquipmentRarityRules.GetDisplayName(
+                    pendingEquipRoll.Rarity);
+
+            string comparisonText =
+                $"[{rarityLabel}] 장착 시 스탯 변화\n"
+                + (deltaLines.Count > 0
+                    ? string.Join(
+                        "\n",
+                        deltaLines)
+                    : "변화 없음");
+
+            if (definition.IsCursed)
+            {
+                comparisonText +=
+                    "\n⚠ 저주 장비 — 위 수치에 불리한 옵션이 포함되어 있습니다.";
+            }
+
+            return comparisonText;
+        }
+
+        private static List<string> BuildStatDeltaLines(
+            StatBlock delta)
+        {
+            List<string> lines =
+                new List<string>();
+
+            AddStatDeltaLine(lines, "최대 체력", delta.MaxHealth);
+            AddStatDeltaLine(lines, "최대 마나", delta.MaxMana);
+            AddStatDeltaLine(lines, "최대 정력", delta.MaxStamina);
+            AddStatDeltaLine(lines, "공격력", delta.Attack);
+            AddStatDeltaLine(lines, "방어력", delta.Defense);
+            AddStatDeltaLine(lines, "속도", delta.Speed);
+            AddStatDeltaLine(lines, "매력", delta.Charm);
+            AddStatDeltaLine(lines, "회피", delta.Evasion);
+            AddStatDeltaLine(lines, "저항", delta.Resistance);
+
+            return lines;
+        }
+
+        private static void AddStatDeltaLine(
+            List<string> lines,
+            string label,
+            int value)
+        {
+            if (value == 0)
+            {
+                return;
+            }
+
+            string sign =
+                value > 0
+                    ? "+"
+                    : string.Empty;
+
+            lines.Add(
+                $"{label} {sign}{value}");
         }
 
         private static string BuildEquipResultMessage(
@@ -1553,6 +1693,10 @@ namespace ProjectDelta.Presentation
                         : slot.DisplayName;
             }
 
+            UpdatePendingEquipRoll(
+                slot,
+                definition);
+
             if (selectedItemDescriptionText != null)
             {
                 string baseDescription =
@@ -1569,6 +1713,17 @@ namespace ProjectDelta.Presentation
 
                 string description =
                     $"[{categoryDisplayName}]\n보유 수량 ×{slot.Quantity}\n{baseDescription}".Trim();
+
+                string comparisonText =
+                    BuildEquipmentComparisonText(
+                        definition);
+
+                if (!string.IsNullOrEmpty(
+                        comparisonText))
+                {
+                    description +=
+                        $"\n\n{comparisonText}";
+                }
 
                 if (!string.IsNullOrEmpty(
                         lastUseMessage))
@@ -1872,6 +2027,12 @@ namespace ProjectDelta.Presentation
 
             lastUseMessage =
                 string.Empty;
+
+            pendingEquipRoll =
+                null;
+
+            pendingEquipRollKey =
+                null;
 
             if (discardConfirmPanel != null)
             {

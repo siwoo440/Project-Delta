@@ -59,6 +59,13 @@ namespace ProjectDelta.Data
         private BagTier bagTier =
             BagTier.None;
 
+        // 103일차: 저주 장비 여부. 저주 장비는 EquipmentStatBonuses에 강점(양수)과
+        // 약점(음수)을 함께 담을 수 있으며, UI가 이 플래그를 보고 불리한 옵션까지
+        // 전부 공개해야 한다. 별도의 장착 제한은 없다 - ItemCategory.Equipment로
+        // 분류돼 있으면 일반 장비와 동일하게 장착·해제된다.
+        [SerializeField]
+        private bool isCursed;
+
         // 93일차: 아이템을 사용할 수 있는 상황.
         [SerializeField]
         private ItemUseContext useContext =
@@ -107,6 +114,9 @@ namespace ProjectDelta.Data
 
         public BagTier BagTier =>
             bagTier;
+
+        public bool IsCursed =>
+            isCursed;
 
         public ItemUseContext UseContext =>
             useContext;

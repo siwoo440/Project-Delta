@@ -149,6 +149,27 @@ namespace ProjectDelta.Tests.EditMode
                     BagTier.None));
         }
 
+        // 103일차: 저주 장비 플래그가 설정한 값 그대로 노출되는지 확인한다.
+        [Test]
+        public void IsCursed_ExposesConfiguredValue()
+        {
+            SetPrivateField(
+                "isCursed",
+                true);
+
+            Assert.That(
+                definition.IsCursed,
+                Is.True);
+        }
+
+        [Test]
+        public void IsCursed_DefaultsToFalse()
+        {
+            Assert.That(
+                definition.IsCursed,
+                Is.False);
+        }
+
         [Test]
         public void EquipmentCategory_MaxStackSize_IsAlwaysOne()
         {
