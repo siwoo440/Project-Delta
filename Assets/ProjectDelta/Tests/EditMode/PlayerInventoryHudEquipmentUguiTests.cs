@@ -95,6 +95,32 @@ namespace ProjectDelta.Tests.EditMode
                 Is.Not.Null);
         }
 
+        // 104일차: 유물 패널(읽기 전용) 필드가 노출되는지 확인한다.
+        [Test]
+        public void Controller_HasSerializedRelicPanel()
+        {
+            AssertSerializedField(
+                "relicPanel",
+                typeof(GameObject));
+
+            AssertSerializedField(
+                "relicSlotNameTexts",
+                typeof(Text[]));
+        }
+
+        [Test]
+        public void Controller_HasRefreshRelicPanelMethod()
+        {
+            MethodInfo refreshRelicPanel =
+                typeof(PlayerInventoryHudController).GetMethod(
+                    "RefreshRelicPanel",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(
+                refreshRelicPanel,
+                Is.Not.Null);
+        }
+
         [Test]
         public void Controller_DoesNotUseOnGui()
         {

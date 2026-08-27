@@ -16,6 +16,9 @@ namespace ProjectDelta.Presentation
         // 98일차: EquipmentSlotType과 동일한 순서·개수로 고정된 장비 슬롯 UI 개수.
         private const int EquipmentSlotCount = 6;
 
+        // 104일차: RelicRunState.DefaultMaxCapacity와 동일한 유물 패널 표시 칸 수.
+        private const int RelicSlotCount = RelicRunState.DefaultMaxCapacity;
+
         [Header("Definitions")]
         [SerializeField]
         private ItemDefinition[] itemDefinitions =
@@ -116,6 +119,16 @@ namespace ProjectDelta.Presentation
         private Text[] equipmentSlotNameTexts =
             new Text[EquipmentSlotCount];
 
+        // 104일차: 유물은 장착/해제 개념이 없는 읽기 전용 보유 목록이라
+        // 버튼 없이 이름 텍스트만 표시한다.
+        [Header("Relics")]
+        [SerializeField]
+        private GameObject relicPanel;
+
+        [SerializeField]
+        private Text[] relicSlotNameTexts =
+            new Text[RelicSlotCount];
+
         private bool isMoveMode;
         private int moveSourceSlotIndex =
             -1;
@@ -180,6 +193,7 @@ namespace ProjectDelta.Presentation
 
             ResizeSlotArrayLengths();
             ResizeEquipmentArrayLengths();
+            ResizeRelicArrayLengths();
             AutoBindQuantityTexts();
             HookButtons();
 
@@ -282,6 +296,18 @@ namespace ProjectDelta.Presentation
                 System.Array.Resize(
                     ref equipmentSlotNameTexts,
                     EquipmentSlotCount);
+            }
+        }
+
+        private void ResizeRelicArrayLengths()
+        {
+            if (relicSlotNameTexts == null
+                || relicSlotNameTexts.Length
+                    != RelicSlotCount)
+            {
+                System.Array.Resize(
+                    ref relicSlotNameTexts,
+                    RelicSlotCount);
             }
         }
 
@@ -1248,6 +1274,7 @@ namespace ProjectDelta.Presentation
             }
 
             RefreshEquipmentPanel();
+            RefreshRelicPanel();
 
             // 직접 호출된 Refresh도 현재 상태를 기준으로 기록하여
             // 다음 프레임에 같은 UI를 한 번 더 갱신하지 않는다.
@@ -2146,6 +2173,52 @@ namespace ProjectDelta.Presentation
                         && !IsDiscardConfirmOpen
                         && equipped != null;
                 }
+            }
+        }
+
+        // 104일차: 유물은 장착/해제 개념이 없는 읽기 전용 목록이라 이름만 표시한다.
+        // 저주 유물은 이름 앞에 경고 표시를 붙여 항상 효과·저주 여부를 드러낸다.
+        private void RefreshRelicPanel()
+        {
+            if (relicPanel != null)
+            {
+                relicPanel.SetActive(
+                    true);
+            }
+
+            RelicRunState relicState =
+                RunContext.Current != null
+                    ? RunContext.Current.Relics
+                    : null;
+
+            IReadOnlyList<RelicInstanceState> relics =
+                relicState != null
+                    ? relicState.Relics
+                    : null;
+
+            for (int index = 0;
+                 index < RelicSlotCount;
+                 index++)
+            {
+                if (relicSlotNameTexts == null
+                    || index >= relicSlotNameTexts.Length
+                    || relicSlotNameTexts[index] == null)
+                {
+                    continue;
+                }
+
+                RelicInstanceState relic =
+                    relics != null
+                    && index < relics.Count
+                        ? relics[index]
+                        : null;
+
+                relicSlotNameTexts[index].text =
+                    relic != null
+                        ? (relic.IsCursed
+                            ? $"[저주] {relic.DisplayName}"
+                            : relic.DisplayName)
+                        : "비어있음";
             }
         }
 
