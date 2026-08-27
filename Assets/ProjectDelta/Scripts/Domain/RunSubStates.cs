@@ -889,7 +889,7 @@ namespace ProjectDelta.Domain
 
     public sealed class SkillRunState { }
     public sealed class CharacterRunState { }
-    public sealed class EventRunState { }
+    // 107일차: EventRunState는 Assets/ProjectDelta/Scripts/Domain/EventRunState.cs로 옮겼다.
     public sealed class BattleRunState { }
     public sealed class RewardRunState { }
     public sealed class RunStatistics { }
