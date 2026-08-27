@@ -542,6 +542,231 @@ namespace ProjectDelta.Tests.EditMode
                     EquipmentRarity.Legendary));
         }
 
+        // 101일차: 요구 조건을 만족하지 못하면 인벤토리·장비 상태 변경 없이 실패해야 한다.
+        [Test]
+        public void Equip_RequirementsNotMet_FailsWithoutMutation()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            inventory.TryAdd(
+                "HEAVY_SWORD",
+                "육중한 대검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Weapon,
+                    EquipmentSlotType.Weapon,
+                    null,
+                    player,
+                    EquipmentRarity.Common,
+                    new StatBlock
+                    {
+                        Attack = 999
+                    });
+
+            Assert.That(
+                result.Success,
+                Is.False);
+
+            Assert.That(
+                result.FailureReason,
+                Is.EqualTo(
+                    EquipmentActionFailureReason.RequirementNotMet));
+
+            Assert.That(
+                inventory.TryGetSlot(
+                    inventorySlot,
+                    out InventorySlotState slot),
+                Is.True);
+
+            Assert.That(
+                slot.ItemId,
+                Is.EqualTo(
+                    "HEAVY_SWORD"));
+
+            Assert.That(
+                equipment.GetEquippedItem(
+                    EquipmentSlotType.Weapon),
+                Is.Null);
+        }
+
+        // 101일차: 요구 조건을 만족하면 정상적으로 장착된다.
+        [Test]
+        public void Equip_RequirementsMet_Succeeds()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            inventory.TryAdd(
+                "BASIC_SWORD",
+                "기본 검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Weapon,
+                    EquipmentSlotType.Weapon,
+                    null,
+                    player,
+                    EquipmentRarity.Common,
+                    new StatBlock
+                    {
+                        Attack = 10
+                    });
+
+            Assert.That(
+                result.Success,
+                Is.True);
+        }
+
+        // 101일차: player를 넘기지 않으면(검증 불가 상황) 요구 조건 검사를 건너뛴다.
+        [Test]
+        public void Equip_RequirementsWithoutPlayer_SkipsCheck()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "HEAVY_SWORD",
+                "육중한 대검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Weapon,
+                    EquipmentSlotType.Weapon,
+                    null,
+                    null,
+                    EquipmentRarity.Common,
+                    new StatBlock
+                    {
+                        Attack = 999
+                    });
+
+            Assert.That(
+                result.Success,
+                Is.True);
+        }
+
+        // 101일차 핵심 규칙: 교체 대상 슬롯에 이미 장비가 있으면 그 보너스를 제외한
+        // 기준 수치로 판정해야 한다 — 지금 장비 힘으로 상위 장비를 계속 갈아타지 못하게 한다.
+        [Test]
+        public void Equip_ReplacingItem_ExcludesCurrentSlotBonusFromRequirementCheck()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            int baseAttack =
+                player.GetFinalStats().Attack;
+
+            inventory.TryAdd(
+                "WEAK_SWORD",
+                "낡은 검",
+                1,
+                1,
+                out int weakSlot);
+
+            // 낡은 검 자체가 공격력을 크게 올려줘서, 착용한 채로는 요구치를 넘어 보인다.
+            EquipmentService.Equip(
+                inventory,
+                equipment,
+                weakSlot,
+                ItemCategory.Equipment,
+                EquipmentSlotType.Weapon,
+                EquipmentSlotType.Weapon,
+                new StatBlock
+                {
+                    Attack = 40
+                },
+                player);
+
+            Assert.That(
+                player.GetFinalStats().Attack,
+                Is.EqualTo(
+                    baseAttack + 40));
+
+            inventory.TryAdd(
+                "STRONG_SWORD",
+                "강력한 검",
+                1,
+                1,
+                out int strongSlot);
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    strongSlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Weapon,
+                    EquipmentSlotType.Weapon,
+                    null,
+                    player,
+                    EquipmentRarity.Common,
+                    new StatBlock
+                    {
+                        // 낡은 검 보너스(40)를 빼면 기준 공격력은 baseAttack이므로,
+                        // baseAttack보다 높은 요구치는 실패해야 한다.
+                        Attack = baseAttack + 1
+                    });
+
+            Assert.That(
+                result.Success,
+                Is.False);
+
+            Assert.That(
+                result.FailureReason,
+                Is.EqualTo(
+                    EquipmentActionFailureReason.RequirementNotMet));
+
+            Assert.That(
+                equipment.GetEquippedItem(
+                    EquipmentSlotType.Weapon).ItemId,
+                Is.EqualTo(
+                    "WEAK_SWORD"));
+        }
+
         private static bool ContainsItem(
             InventoryRunState inventory,
             string itemId)

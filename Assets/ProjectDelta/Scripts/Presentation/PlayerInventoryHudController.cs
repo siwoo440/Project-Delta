@@ -810,6 +810,9 @@ namespace ProjectDelta.Presentation
                 case EquipmentActionFailureReason.WrongEquipmentSlot:
                     return "이 아이템은 해당 부위에 장착할 수 없습니다.";
 
+                case EquipmentActionFailureReason.RequirementNotMet:
+                    return "장착 요구 조건을 만족하지 못했습니다.";
+
                 case EquipmentActionFailureReason.InvalidInventorySlot:
                     return "장착할 아이템을 찾을 수 없습니다.";
 

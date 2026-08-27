@@ -38,6 +38,11 @@ namespace ProjectDelta.Data
         private StatBlock equipmentStatBonuses =
             new StatBlock();
 
+        // 101일차: 공격력·속도·매력·저항 요구치. 값이 0인 스탯은 요구 조건이 없는 것으로 취급한다.
+        [SerializeField]
+        private StatBlock equipmentRequirements =
+            new StatBlock();
+
         // 93일차: 아이템을 사용할 수 있는 상황.
         [SerializeField]
         private ItemUseContext useContext =
@@ -72,6 +77,10 @@ namespace ProjectDelta.Data
 
         public StatBlock EquipmentStatBonuses =>
             equipmentStatBonuses
+            ?? new StatBlock();
+
+        public StatBlock EquipmentRequirements =>
+            equipmentRequirements
             ?? new StatBlock();
 
         public ItemUseContext UseContext =>

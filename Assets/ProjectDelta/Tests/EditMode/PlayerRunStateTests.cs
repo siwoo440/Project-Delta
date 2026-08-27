@@ -134,6 +134,37 @@ namespace ProjectDelta.Tests.EditMode // EditMode 테스트 네임스페이스
                 state.CurrentHp);
         }
 
+        // 101일차: 요구 조건 판정에 쓰이는 StatBlock.Subtract가 필드별로 정확히 빼는지 확인한다.
+        [Test]
+        public void StatBlock_Subtract_SubtractsEachFieldIndependently()
+        {
+            StatBlock minuend =
+                new StatBlock
+                {
+                    Attack = 50,
+                    Speed = 30,
+                    Charm = 20,
+                    Resistance = 10
+                };
+
+            StatBlock subtrahend =
+                new StatBlock
+                {
+                    Attack = 12,
+                    Speed = 5
+                };
+
+            StatBlock result =
+                StatBlock.Subtract(
+                    minuend,
+                    subtrahend);
+
+            Assert.AreEqual(38, result.Attack);
+            Assert.AreEqual(25, result.Speed);
+            Assert.AreEqual(20, result.Charm);
+            Assert.AreEqual(10, result.Resistance);
+        }
+
         // 99일차: 현재 자원이 최대치 이하이면 그대로 유지되어야 한다 (자동 회복 아님).
         [Test]
         public void ClampCurrentResourcesToFinalStats_DoesNotHealWhenBelowMax()

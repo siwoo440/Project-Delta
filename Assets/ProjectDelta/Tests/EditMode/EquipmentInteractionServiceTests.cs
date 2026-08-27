@@ -424,6 +424,78 @@ namespace ProjectDelta.Tests.EditMode
             }
         }
 
+        // 101일차: definition.EquipmentRequirements가 EquipFromInventory를 통해
+        // 실제로 강제되는지(요구 조건 미달 시 인벤토리 변경 없이 실패) 확인한다.
+        [Test]
+        public void EquipFromInventory_RequirementNotMet_FailsWithoutMutation()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            inventory.TryAdd(
+                "HEAVY_SWORD",
+                "육중한 대검",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Weapon,
+                    null,
+                    new StatBlock
+                    {
+                        Attack = 999
+                    });
+
+            try
+            {
+                EquipmentActionResult result =
+                    EquipmentInteractionService.EquipFromInventory(
+                        inventory,
+                        equipment,
+                        inventorySlot,
+                        definition,
+                        player);
+
+                Assert.That(
+                    result.Success,
+                    Is.False);
+
+                Assert.That(
+                    result.FailureReason,
+                    Is.EqualTo(
+                        EquipmentActionFailureReason.RequirementNotMet));
+
+                Assert.That(
+                    inventory.TryGetSlot(
+                        inventorySlot,
+                        out InventorySlotState slot),
+                    Is.True);
+
+                Assert.That(
+                    slot.ItemId,
+                    Is.EqualTo(
+                        "HEAVY_SWORD"));
+
+                Assert.That(
+                    equipment.GetEquippedItem(
+                        EquipmentSlotType.Weapon),
+                    Is.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
         [Test]
         public void Unequip_EmptySlot_FailsWithEquipmentSlotEmpty()
         {
@@ -451,7 +523,8 @@ namespace ProjectDelta.Tests.EditMode
 
         private static ItemDefinition CreateEquipmentDefinition(
             EquipmentSlotType slotType,
-            StatBlock equipmentBonuses = null)
+            StatBlock equipmentBonuses = null,
+            StatBlock equipmentRequirements = null)
         {
             ItemDefinition definition =
                 ScriptableObject.CreateInstance<ItemDefinition>();
@@ -472,6 +545,14 @@ namespace ProjectDelta.Tests.EditMode
                     definition,
                     "equipmentStatBonuses",
                     equipmentBonuses);
+            }
+
+            if (equipmentRequirements != null)
+            {
+                SetPrivateField(
+                    definition,
+                    "equipmentRequirements",
+                    equipmentRequirements);
             }
 
             return definition;

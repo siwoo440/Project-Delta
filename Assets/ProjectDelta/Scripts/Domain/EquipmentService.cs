@@ -10,7 +10,10 @@ namespace ProjectDelta.Domain
         InventoryFull = 5,
 
         // 아이템 자체에 정의된 장비 슬롯과 실제 장착 대상 슬롯이 다르다.
-        WrongEquipmentSlot = 6
+        WrongEquipmentSlot = 6,
+
+        // 101일차: 공격력·속도·매력·저항 요구치를 만족하지 못했다.
+        RequirementNotMet = 7
     }
 
     public sealed class EquipmentActionResult
@@ -65,7 +68,8 @@ namespace ProjectDelta.Domain
             EquipmentSlotType targetSlotType,
             StatBlock equipmentBonuses = null,
             PlayerRunState player = null,
-            EquipmentRarity rarity = EquipmentRarity.Common)
+            EquipmentRarity rarity = EquipmentRarity.Common,
+            StatBlock requirements = null)
         {
             if (inventory == null
                 || equipment == null)
@@ -103,6 +107,23 @@ namespace ProjectDelta.Domain
                     targetSlotType);
             }
 
+            EquipmentItemState previousItem =
+                equipment.GetEquippedItem(
+                    targetSlotType);
+
+            // 101일차: 교체 대상 슬롯에 이미 장비가 있다면 그 보너스를 제외한
+            // 기준 수치로 요구 조건을 판정해, 지금 장비의 힘으로 상위 장비를
+            // 계속 갈아타는 편법을 막는다. 인벤토리는 아직 건드리지 않은 상태다.
+            if (!MeetsRequirements(
+                    player,
+                    previousItem,
+                    requirements))
+            {
+                return EquipmentActionResult.Failed(
+                    EquipmentActionFailureReason.RequirementNotMet,
+                    targetSlotType);
+            }
+
             EquipmentItemState incomingItem =
                 new EquipmentItemState(
                     inventorySlot.ItemId,
@@ -111,10 +132,6 @@ namespace ProjectDelta.Domain
                     inventorySlot.MaxStackSize,
                     equipmentBonuses,
                     rarity);
-
-            EquipmentItemState previousItem =
-                equipment.GetEquippedItem(
-                    targetSlotType);
 
             if (!inventory.TryRemoveQuantityAt(
                     inventorySlotIndex,
@@ -237,6 +254,36 @@ namespace ProjectDelta.Domain
                 equipment.GetTotalBonuses();
 
             player.ClampCurrentResourcesToFinalStats();
+        }
+
+        // 101일차: 공격력·속도·매력·저항 요구치를 검사한다.
+        // player가 없으면(테스트 등 UI 밖 호출) 판정할 기준이 없으므로 통과시킨다.
+        // requirements가 없으면 요구 조건 자체가 없는 장비이므로 통과시킨다.
+        private static bool MeetsRequirements(
+            PlayerRunState player,
+            EquipmentItemState currentSlotItem,
+            StatBlock requirements)
+        {
+            if (player == null
+                || requirements == null)
+            {
+                return true;
+            }
+
+            StatBlock finalStats =
+                player.GetFinalStats();
+
+            StatBlock baseline =
+                currentSlotItem != null
+                    ? StatBlock.Subtract(
+                        finalStats,
+                        currentSlotItem.EquipmentBonuses)
+                    : finalStats;
+
+            return baseline.Attack >= requirements.Attack
+                && baseline.Speed >= requirements.Speed
+                && baseline.Charm >= requirements.Charm
+                && baseline.Resistance >= requirements.Resistance;
         }
     }
 }

@@ -57,6 +57,46 @@ namespace ProjectDelta.Tests.EditMode
                     bonuses));
         }
 
+        // 101일차: 요구 조건 데이터가 노출되는지 확인한다.
+        [Test]
+        public void EquipmentRequirements_ExposesConfiguredThresholds()
+        {
+            StatBlock requirements =
+                new StatBlock
+                {
+                    Attack = 30,
+                    Speed = 20,
+                    Charm = 10,
+                    Resistance = 15
+                };
+
+            SetPrivateField(
+                "equipmentRequirements",
+                requirements);
+
+            Assert.That(
+                definition.EquipmentRequirements,
+                Is.SameAs(
+                    requirements));
+        }
+
+        // 101일차: 요구 조건을 설정하지 않으면 null이 아니라 빈 StatBlock을 반환해야 한다.
+        [Test]
+        public void EquipmentRequirements_DefaultsToEmptyStatBlock()
+        {
+            SetPrivateField(
+                "equipmentRequirements",
+                null);
+
+            Assert.That(
+                definition.EquipmentRequirements,
+                Is.Not.Null);
+
+            Assert.That(
+                definition.EquipmentRequirements.Attack,
+                Is.EqualTo(0));
+        }
+
         [Test]
         public void EquipmentCategory_MaxStackSize_IsAlwaysOne()
         {

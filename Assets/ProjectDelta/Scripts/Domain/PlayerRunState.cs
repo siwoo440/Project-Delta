@@ -176,5 +176,25 @@ namespace ProjectDelta.Domain
 
             return result;
         }
+
+        // 101일차: 장비 요구 조건 판정에서 "현재 장착 장비의 보너스를 제외한
+        // 기준 수치"를 구하기 위해 사용한다.
+        public static StatBlock Subtract(
+            StatBlock minuend,
+            StatBlock subtrahend)
+        {
+            return new StatBlock
+            {
+                MaxHealth = minuend.MaxHealth - subtrahend.MaxHealth,
+                MaxMana = minuend.MaxMana - subtrahend.MaxMana,
+                MaxStamina = minuend.MaxStamina - subtrahend.MaxStamina,
+                Attack = minuend.Attack - subtrahend.Attack,
+                Defense = minuend.Defense - subtrahend.Defense,
+                Speed = minuend.Speed - subtrahend.Speed,
+                Charm = minuend.Charm - subtrahend.Charm,
+                Evasion = minuend.Evasion - subtrahend.Evasion,
+                Resistance = minuend.Resistance - subtrahend.Resistance
+            };
+        }
     }
 }

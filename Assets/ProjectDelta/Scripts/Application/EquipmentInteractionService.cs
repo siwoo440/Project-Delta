@@ -28,6 +28,7 @@ namespace ProjectDelta.Application
             // 99일차: 장착 시점의 EquipmentStatBonuses를 EquipmentItemState에 그대로 전달하고,
             // player가 있으면 최종 스탯에 즉시 반영한다.
             // 100일차: 등급과 랜덤 옵션은 장착 시점에 EquipmentRollService가 판정한다.
+            // 101일차: 요구 조건(EquipmentRequirements) 검사는 EquipmentService.Equip 내부에서 처리한다.
             EquipmentRollResult roll =
                 EquipmentRollService.Roll(
                     definition,
@@ -42,7 +43,8 @@ namespace ProjectDelta.Application
                 definition.EquipmentSlot,
                 roll.Bonuses,
                 player,
-                roll.Rarity);
+                roll.Rarity,
+                definition.EquipmentRequirements);
         }
 
         public static EquipmentActionResult Unequip(
