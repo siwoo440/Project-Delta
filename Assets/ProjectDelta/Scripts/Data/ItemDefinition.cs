@@ -43,6 +43,22 @@ namespace ProjectDelta.Data
         private StatBlock equipmentRequirements =
             new StatBlock();
 
+        // 102일차: 방어구(ChestArmor·Leggings·Boots)에만 의미 있는 무게 분류 태그.
+        [SerializeField]
+        private ArmorWeightClass armorWeightClass =
+            ArmorWeightClass.None;
+
+        // 102일차: 장신구(Accessory)에만 의미 있는 역할 분류 태그.
+        [SerializeField]
+        private AccessoryRole accessoryRole =
+            AccessoryRole.None;
+
+        // 102일차: 가방 등급. None이 아니면 BagExpansionService가 처리 가능한
+        // 인벤토리 확장 아이템으로 취급한다 (6부위 장비 슬롯과는 별개).
+        [SerializeField]
+        private BagTier bagTier =
+            BagTier.None;
+
         // 93일차: 아이템을 사용할 수 있는 상황.
         [SerializeField]
         private ItemUseContext useContext =
@@ -82,6 +98,15 @@ namespace ProjectDelta.Data
         public StatBlock EquipmentRequirements =>
             equipmentRequirements
             ?? new StatBlock();
+
+        public ArmorWeightClass ArmorWeightClass =>
+            armorWeightClass;
+
+        public AccessoryRole AccessoryRole =>
+            accessoryRole;
+
+        public BagTier BagTier =>
+            bagTier;
 
         public ItemUseContext UseContext =>
             useContext;

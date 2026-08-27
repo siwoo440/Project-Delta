@@ -97,6 +97,58 @@ namespace ProjectDelta.Tests.EditMode
                 Is.EqualTo(0));
         }
 
+        // 102일차: 방어구 무게 분류 / 장신구 역할 / 가방 등급이 설정한 값 그대로 노출되는지 확인한다.
+        [Test]
+        public void EquipmentClassification_ExposesConfiguredTags()
+        {
+            SetPrivateField(
+                "armorWeightClass",
+                ArmorWeightClass.Heavy);
+
+            SetPrivateField(
+                "accessoryRole",
+                AccessoryRole.Evasion);
+
+            SetPrivateField(
+                "bagTier",
+                BagTier.Large);
+
+            Assert.That(
+                definition.ArmorWeightClass,
+                Is.EqualTo(
+                    ArmorWeightClass.Heavy));
+
+            Assert.That(
+                definition.AccessoryRole,
+                Is.EqualTo(
+                    AccessoryRole.Evasion));
+
+            Assert.That(
+                definition.BagTier,
+                Is.EqualTo(
+                    BagTier.Large));
+        }
+
+        // 102일차: 분류 태그를 설정하지 않은 기존 에셋은 전부 None으로 유지되어야 한다.
+        [Test]
+        public void EquipmentClassification_DefaultsToNone()
+        {
+            Assert.That(
+                definition.ArmorWeightClass,
+                Is.EqualTo(
+                    ArmorWeightClass.None));
+
+            Assert.That(
+                definition.AccessoryRole,
+                Is.EqualTo(
+                    AccessoryRole.None));
+
+            Assert.That(
+                definition.BagTier,
+                Is.EqualTo(
+                    BagTier.None));
+        }
+
         [Test]
         public void EquipmentCategory_MaxStackSize_IsAlwaysOne()
         {

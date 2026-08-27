@@ -538,6 +538,29 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            // 102일차: 가방은 6부위 장비 슬롯과 별개로, 사용 즉시 인벤토리 슬롯을
+            // 영구 확장하고 소모되는 아이템이다. 전투 중에도 동일하게 동작한다.
+            if (definition.BagTier != BagTier.None)
+            {
+                BagExpansionResult bagResult =
+                    BagExpansionService.ApplyAndConsume(
+                        inventory,
+                        selectedSlotIndex,
+                        definition);
+
+                lastUseMessage =
+                    BuildBagExpansionMessage(
+                        bagResult);
+
+                if (bagResult.Success)
+                {
+                    ApplicationFlow.Current?.SaveDungeonProgress();
+                }
+
+                RefreshInventory();
+                return;
+            }
+
             ResolveEncounterController();
 
             ItemUseResult result;
@@ -574,6 +597,32 @@ namespace ProjectDelta.Presentation
                     result);
 
             RefreshInventory();
+        }
+
+        private static string BuildBagExpansionMessage(
+            BagExpansionResult result)
+        {
+            if (result == null)
+            {
+                return "가방을 사용할 수 없습니다.";
+            }
+
+            if (result.Success)
+            {
+                return $"가방을 사용해 인벤토리 슬롯이 {result.AddedSlotBonus}칸 늘었습니다.";
+            }
+
+            switch (result.FailureReason)
+            {
+                case BagExpansionFailureReason.NotABag:
+                    return "가방으로 사용할 수 없는 아이템입니다.";
+
+                case BagExpansionFailureReason.InvalidSlot:
+                    return "사용할 가방을 찾을 수 없습니다.";
+
+                default:
+                    return "가방을 사용할 수 없습니다.";
+            }
         }
 
         private void OnMoveButtonClicked()
@@ -1616,6 +1665,17 @@ namespace ProjectDelta.Presentation
             {
                 useButton.interactable =
                     false;
+
+                return;
+            }
+
+            // 102일차: 가방은 전투 아이템 사용 판정(ItemUseService)을 거치지 않고
+            // 선택된 상태 그대로 바로 사용 가능하다.
+            if (definition != null
+                && definition.BagTier != BagTier.None)
+            {
+                useButton.interactable =
+                    true;
 
                 return;
             }
