@@ -13,6 +13,9 @@ namespace ProjectDelta.Presentation
     {
         private const int VisibleSlotCount = 10;
 
+        // 98일차: EquipmentSlotType과 동일한 순서·개수로 고정된 장비 슬롯 UI 개수.
+        private const int EquipmentSlotCount = 6;
+
         [Header("Definitions")]
         [SerializeField]
         private ItemDefinition[] itemDefinitions =
@@ -89,6 +92,25 @@ namespace ProjectDelta.Presentation
         [SerializeField]
         private Button discardCancelButton;
 
+        [SerializeField]
+        private Button equipButton;
+
+        [Header("Equipment")]
+        [SerializeField]
+        private GameObject equipmentPanel;
+
+        [SerializeField]
+        private Button[] equipmentSlotButtons =
+            new Button[EquipmentSlotCount];
+
+        [SerializeField]
+        private Image[] equipmentSlotIcons =
+            new Image[EquipmentSlotCount];
+
+        [SerializeField]
+        private Text[] equipmentSlotNameTexts =
+            new Text[EquipmentSlotCount];
+
         private bool isMoveMode;
         private int moveSourceSlotIndex =
             -1;
@@ -152,6 +174,7 @@ namespace ProjectDelta.Presentation
                 ResolveMaxStackSizeInternal;
 
             ResizeSlotArrayLengths();
+            ResizeEquipmentArrayLengths();
             AutoBindQuantityTexts();
             HookButtons();
 
@@ -224,6 +247,36 @@ namespace ProjectDelta.Presentation
                 System.Array.Resize(
                     ref slotQuantityTexts,
                     VisibleSlotCount);
+            }
+        }
+
+        private void ResizeEquipmentArrayLengths()
+        {
+            if (equipmentSlotButtons == null
+                || equipmentSlotButtons.Length
+                    != EquipmentSlotCount)
+            {
+                System.Array.Resize(
+                    ref equipmentSlotButtons,
+                    EquipmentSlotCount);
+            }
+
+            if (equipmentSlotIcons == null
+                || equipmentSlotIcons.Length
+                    != EquipmentSlotCount)
+            {
+                System.Array.Resize(
+                    ref equipmentSlotIcons,
+                    EquipmentSlotCount);
+            }
+
+            if (equipmentSlotNameTexts == null
+                || equipmentSlotNameTexts.Length
+                    != EquipmentSlotCount)
+            {
+                System.Array.Resize(
+                    ref equipmentSlotNameTexts,
+                    EquipmentSlotCount);
             }
         }
 
@@ -364,6 +417,35 @@ namespace ProjectDelta.Presentation
             HookButton(
                 discardCancelButton,
                 CloseDiscardConfirmPanel);
+
+            HookButton(
+                equipButton,
+                OnEquipButtonClicked);
+
+            if (equipmentSlotButtons != null)
+            {
+                for (int index = 0;
+                     index < equipmentSlotButtons.Length;
+                     index++)
+                {
+                    Button button =
+                        equipmentSlotButtons[index];
+
+                    if (button == null)
+                    {
+                        continue;
+                    }
+
+                    EquipmentSlotType capturedSlotType =
+                        (EquipmentSlotType)index;
+
+                    button.onClick.RemoveAllListeners();
+
+                    button.onClick.AddListener(
+                        () => OnEquipmentSlotClicked(
+                            capturedSlotType));
+                }
+            }
         }
 
         private static void HookButton(
@@ -597,6 +679,149 @@ namespace ProjectDelta.Presentation
             RefreshInventory();
         }
 
+        private void OnEquipButtonClicked()
+        {
+            if (isMoveMode
+                || IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            EquipmentRunState equipment =
+                GetEquipment();
+
+            if (inventory == null
+                || equipment == null
+                || selectedSlotIndex < 0
+                || !inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState slot)
+                || slot == null
+                || slot.IsEmpty)
+            {
+                return;
+            }
+
+            ItemDefinition definition =
+                ResolveDefinition(
+                    slot);
+
+            EquipmentActionResult result =
+                EquipmentInteractionService.EquipFromInventory(
+                    inventory,
+                    equipment,
+                    selectedSlotIndex,
+                    definition);
+
+            lastUseMessage =
+                BuildEquipResultMessage(
+                    result);
+
+            if (!result.Success)
+            {
+                RefreshInventory();
+                return;
+            }
+
+            ApplicationFlow.Current?.SaveDungeonProgress();
+
+            if (!inventory.TryGetSlot(
+                    selectedSlotIndex,
+                    out InventorySlotState remainingSlot)
+                || remainingSlot == null
+                || remainingSlot.IsEmpty)
+            {
+                ClearSelection();
+                return;
+            }
+
+            RefreshInventory();
+        }
+
+        private void OnEquipmentSlotClicked(
+            EquipmentSlotType slotType)
+        {
+            if (isMoveMode
+                || IsDiscardConfirmOpen)
+            {
+                return;
+            }
+
+            InventoryRunState inventory =
+                GetInventory();
+
+            EquipmentRunState equipment =
+                GetEquipment();
+
+            if (inventory == null
+                || equipment == null
+                || equipment.GetEquippedItem(
+                    slotType)
+                    == null)
+            {
+                return;
+            }
+
+            EquipmentActionResult result =
+                EquipmentInteractionService.Unequip(
+                    inventory,
+                    equipment,
+                    slotType);
+
+            lastUseMessage =
+                BuildEquipResultMessage(
+                    result);
+
+            if (result.Success)
+            {
+                ApplicationFlow.Current?.SaveDungeonProgress();
+            }
+
+            RefreshInventory();
+        }
+
+        private static string BuildEquipResultMessage(
+            EquipmentActionResult result)
+        {
+            if (result == null)
+            {
+                return "장비 처리를 할 수 없습니다.";
+            }
+
+            if (result.Success)
+            {
+                return result.ReturnedItem != null
+                    ? "장비를 교체했습니다."
+                    : (result.EquippedItem != null
+                        ? "장비를 착용했습니다."
+                        : "장비를 해제했습니다.");
+            }
+
+            switch (result.FailureReason)
+            {
+                case EquipmentActionFailureReason.ItemNotEquipment:
+                    return "장착할 수 없는 아이템입니다.";
+
+                case EquipmentActionFailureReason.WrongEquipmentSlot:
+                    return "이 아이템은 해당 부위에 장착할 수 없습니다.";
+
+                case EquipmentActionFailureReason.InvalidInventorySlot:
+                    return "장착할 아이템을 찾을 수 없습니다.";
+
+                case EquipmentActionFailureReason.EquipmentSlotEmpty:
+                    return "해당 부위에 장착된 장비가 없습니다.";
+
+                case EquipmentActionFailureReason.InventoryFull:
+                    return "인벤토리 공간이 부족합니다.";
+
+                default:
+                    return "장비 처리를 할 수 없습니다.";
+            }
+        }
+
         private void OnDiscardButtonClicked()
         {
             if (isMoveMode
@@ -828,6 +1053,8 @@ namespace ProjectDelta.Presentation
                 RefreshSelectedItem();
             }
 
+            RefreshEquipmentPanel();
+
             // 직접 호출된 Refresh도 현재 상태를 기준으로 기록하여
             // 다음 프레임에 같은 UI를 한 번 더 갱신하지 않는다.
             CaptureRefreshSignature();
@@ -933,6 +1160,26 @@ namespace ProjectDelta.Presentation
                         ref signature,
                         slot.MaxStackSize);
                 }
+            }
+
+            EquipmentRunState equipment =
+                GetEquipment();
+
+            for (int index = 0;
+                 index < EquipmentSlotCount;
+                 index++)
+            {
+                EquipmentItemState equipped =
+                    equipment != null
+                        ? equipment.GetEquippedItem(
+                            (EquipmentSlotType)index)
+                        : null;
+
+                AddRefreshSignature(
+                    ref signature,
+                    equipped != null
+                        ? equipped.ItemId
+                        : string.Empty);
             }
 
             // 선택 아이템이 없으면 자원/전투 상태는 인벤토리 표시 결과에 영향을 주지 않는다.
@@ -1326,6 +1573,21 @@ namespace ProjectDelta.Presentation
                         category);
             }
 
+            if (equipButton != null)
+            {
+                bool categoryAllowsEquip =
+                    ItemCategoryRules.CanEquip(
+                        category);
+
+                equipButton.gameObject.SetActive(
+                    categoryAllowsEquip);
+
+                equipButton.interactable =
+                    categoryAllowsEquip
+                    && !modalOpen
+                    && !isMoveMode;
+            }
+
             if (useButton == null)
             {
                 return;
@@ -1573,6 +1835,109 @@ namespace ProjectDelta.Presentation
             return RunContext.Current != null
                 ? RunContext.Current.Inventory
                 : null;
+        }
+
+        private EquipmentRunState GetEquipment()
+        {
+            return RunContext.Current != null
+                ? RunContext.Current.Equipment
+                : null;
+        }
+
+        private void RefreshEquipmentPanel()
+        {
+            if (equipmentPanel != null)
+            {
+                equipmentPanel.SetActive(
+                    true);
+            }
+
+            EquipmentRunState equipment =
+                GetEquipment();
+
+            for (int index = 0;
+                 index < EquipmentSlotCount;
+                 index++)
+            {
+                EquipmentSlotType slotType =
+                    (EquipmentSlotType)index;
+
+                EquipmentItemState equipped =
+                    equipment != null
+                        ? equipment.GetEquippedItem(
+                            slotType)
+                        : null;
+
+                ItemDefinition definition =
+                    equipped != null
+                        ? ResolveDefinitionByItemId(
+                            equipped.ItemId)
+                        : null;
+
+                if (equipmentSlotNameTexts != null
+                    && index < equipmentSlotNameTexts.Length
+                    && equipmentSlotNameTexts[index] != null)
+                {
+                    equipmentSlotNameTexts[index].text =
+                        equipped != null
+                            ? (definition != null
+                            && !string.IsNullOrEmpty(
+                                definition.DisplayName)
+                                ? definition.DisplayName
+                                : equipped.DisplayName)
+                            : "비어있음";
+                }
+
+                if (equipmentSlotIcons != null
+                    && index < equipmentSlotIcons.Length
+                    && equipmentSlotIcons[index] != null)
+                {
+                    Image icon =
+                        equipmentSlotIcons[index];
+
+                    icon.sprite =
+                        definition != null
+                            ? definition.Icon
+                            : null;
+
+                    icon.enabled =
+                        definition != null
+                        && definition.Icon != null;
+                }
+
+                if (equipmentSlotButtons != null
+                    && index < equipmentSlotButtons.Length
+                    && equipmentSlotButtons[index] != null)
+                {
+                    equipmentSlotButtons[index].interactable =
+                        !isMoveMode
+                        && !IsDiscardConfirmOpen
+                        && equipped != null;
+                }
+            }
+        }
+
+        private ItemDefinition ResolveDefinitionByItemId(
+            string itemId)
+        {
+            if (string.IsNullOrEmpty(
+                    itemId))
+            {
+                return null;
+            }
+
+            if (itemLookup.TryGetValue(
+                    itemId,
+                    out ItemDefinition definition))
+            {
+                return definition;
+            }
+
+            RuntimeItemDefinitionLookup.TryFind(
+                itemId,
+                out definition);
+
+            return definition;
         }
     }
 }
