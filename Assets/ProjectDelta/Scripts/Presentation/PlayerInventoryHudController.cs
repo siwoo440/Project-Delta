@@ -714,7 +714,8 @@ namespace ProjectDelta.Presentation
                     inventory,
                     equipment,
                     selectedSlotIndex,
-                    definition);
+                    definition,
+                    RunContext.Current?.Player);
 
             lastUseMessage =
                 BuildEquipResultMessage(
@@ -769,7 +770,8 @@ namespace ProjectDelta.Presentation
                 EquipmentInteractionService.Unequip(
                     inventory,
                     equipment,
-                    slotType);
+                    slotType,
+                    RunContext.Current?.Player);
 
             lastUseMessage =
                 BuildEquipResultMessage(

@@ -392,6 +392,89 @@ namespace ProjectDelta.Tests.EditMode
                     "LEGGINGS"));
         }
 
+        // 99일차: 장착 시 전달한 스탯 보너스가 최종 스탯과 EquipmentRunState 합산에 반영되는지 확인한다.
+        [Test]
+        public void Equip_WithBonusesAndPlayer_UpdatesPlayerFinalStatsAndTotalBonuses()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            inventory.TryAdd(
+                "STEEL_HELMET",
+                "강철 투구",
+                1,
+                1,
+                out int inventorySlot);
+
+            StatBlock bonuses =
+                new StatBlock
+                {
+                    Defense = 8
+                };
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Helmet,
+                    EquipmentSlotType.Helmet,
+                    bonuses,
+                    player);
+
+            Assert.That(
+                result.Success,
+                Is.True);
+
+            Assert.That(
+                equipment.GetTotalBonuses().Defense,
+                Is.EqualTo(
+                    8));
+
+            Assert.That(
+                player.GetFinalStats().Defense,
+                Is.EqualTo(
+                    48));
+        }
+
+        // 99일차: player 인자를 넘기지 않으면 97일차 기존 동작과 동일해야 한다.
+        [Test]
+        public void Equip_WithoutPlayer_StillSucceedsAsBefore()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            EquipmentActionResult result =
+                EquipmentService.Equip(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    ItemCategory.Equipment,
+                    EquipmentSlotType.Weapon,
+                    EquipmentSlotType.Weapon);
+
+            Assert.That(
+                result.Success,
+                Is.True);
+        }
+
         private static bool ContainsItem(
             InventoryRunState inventory,
             string itemId)

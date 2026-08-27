@@ -150,6 +150,192 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
+        public void EquipFromInventory_WithPlayer_AddsBonusesToFinalStats()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            int baseAttack =
+                player.GetFinalStats().Attack;
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Weapon,
+                    new StatBlock
+                    {
+                        Attack = 12
+                    });
+
+            try
+            {
+                EquipmentActionResult result =
+                    EquipmentInteractionService.EquipFromInventory(
+                        inventory,
+                        equipment,
+                        inventorySlot,
+                        definition,
+                        player);
+
+                Assert.That(
+                    result.Success,
+                    Is.True);
+
+                Assert.That(
+                    player.GetFinalStats().Attack,
+                    Is.EqualTo(
+                        baseAttack + 12));
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
+        [Test]
+        public void Unequip_WithPlayer_RemovesBonusesFromFinalStats()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            int baseAttack =
+                player.GetFinalStats().Attack;
+
+            inventory.TryAdd(
+                "IRON_SWORD",
+                "철검",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Weapon,
+                    new StatBlock
+                    {
+                        Attack = 12
+                    });
+
+            try
+            {
+                EquipmentInteractionService.EquipFromInventory(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    definition,
+                    player);
+
+                EquipmentActionResult result =
+                    EquipmentInteractionService.Unequip(
+                        inventory,
+                        equipment,
+                        EquipmentSlotType.Weapon,
+                        player);
+
+                Assert.That(
+                    result.Success,
+                    Is.True);
+
+                Assert.That(
+                    player.GetFinalStats().Attack,
+                    Is.EqualTo(
+                        baseAttack));
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
+        [Test]
+        public void Unequip_WithPlayer_ClampsCurrentHpToReducedMaxHealth()
+        {
+            InventoryRunState inventory =
+                new InventoryRunState();
+
+            EquipmentRunState equipment =
+                new EquipmentRunState();
+
+            PlayerRunState player =
+                PlayerRunState.CreateDefault();
+
+            inventory.TryAdd(
+                "VITALITY_RING",
+                "생명의 반지",
+                1,
+                1,
+                out int inventorySlot);
+
+            ItemDefinition definition =
+                CreateEquipmentDefinition(
+                    EquipmentSlotType.Accessory,
+                    new StatBlock
+                    {
+                        MaxHealth = 50
+                    });
+
+            try
+            {
+                EquipmentInteractionService.EquipFromInventory(
+                    inventory,
+                    equipment,
+                    inventorySlot,
+                    definition,
+                    player);
+
+                // 장착 중 최대 체력이 150까지 늘어난 상태에서 최대치로 채워둔다.
+                player.CurrentHp =
+                    player.GetFinalStats().MaxHealth;
+
+                EquipmentActionResult result =
+                    EquipmentInteractionService.Unequip(
+                        inventory,
+                        equipment,
+                        EquipmentSlotType.Accessory,
+                        player);
+
+                Assert.That(
+                    result.Success,
+                    Is.True);
+
+                Assert.That(
+                    player.GetFinalStats().MaxHealth,
+                    Is.EqualTo(
+                        100));
+
+                Assert.That(
+                    player.CurrentHp,
+                    Is.EqualTo(
+                        100));
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    definition);
+            }
+        }
+
+        [Test]
         public void Unequip_EmptySlot_FailsWithEquipmentSlotEmpty()
         {
             InventoryRunState inventory =
@@ -175,7 +361,8 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         private static ItemDefinition CreateEquipmentDefinition(
-            EquipmentSlotType slotType)
+            EquipmentSlotType slotType,
+            StatBlock equipmentBonuses = null)
         {
             ItemDefinition definition =
                 ScriptableObject.CreateInstance<ItemDefinition>();
@@ -189,6 +376,14 @@ namespace ProjectDelta.Tests.EditMode
                 definition,
                 "equipmentSlot",
                 slotType);
+
+            if (equipmentBonuses != null)
+            {
+                SetPrivateField(
+                    definition,
+                    "equipmentStatBonuses",
+                    equipmentBonuses);
+            }
 
             return definition;
         }

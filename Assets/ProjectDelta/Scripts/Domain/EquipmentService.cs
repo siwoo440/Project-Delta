@@ -62,7 +62,9 @@ namespace ProjectDelta.Domain
             int inventorySlotIndex,
             ItemCategory itemCategory,
             EquipmentSlotType definedSlotType,
-            EquipmentSlotType targetSlotType)
+            EquipmentSlotType targetSlotType,
+            StatBlock equipmentBonuses = null,
+            PlayerRunState player = null)
         {
             if (inventory == null
                 || equipment == null)
@@ -105,7 +107,8 @@ namespace ProjectDelta.Domain
                     inventorySlot.ItemId,
                     inventorySlot.DisplayName,
                     definedSlotType,
-                    inventorySlot.MaxStackSize);
+                    inventorySlot.MaxStackSize,
+                    equipmentBonuses);
 
             EquipmentItemState previousItem =
                 equipment.GetEquippedItem(
@@ -153,6 +156,10 @@ namespace ProjectDelta.Domain
                 targetSlotType,
                 incomingItem);
 
+            SyncPlayerStats(
+                player,
+                equipment);
+
             return EquipmentActionResult.Succeeded(
                 targetSlotType,
                 incomingItem,
@@ -162,7 +169,8 @@ namespace ProjectDelta.Domain
         public static EquipmentActionResult Unequip(
             InventoryRunState inventory,
             EquipmentRunState equipment,
-            EquipmentSlotType slotType)
+            EquipmentSlotType slotType,
+            PlayerRunState player = null)
         {
             if (inventory == null
                 || equipment == null)
@@ -201,10 +209,32 @@ namespace ProjectDelta.Domain
             equipment.ClearSlot(
                 slotType);
 
+            SyncPlayerStats(
+                player,
+                equipment);
+
             return EquipmentActionResult.Succeeded(
                 slotType,
                 null,
                 equippedItem);
+        }
+
+        // 99일차: 장착/해제 직후 플레이어의 장비 보너스 합계를 갱신하고,
+        // 최대치가 줄어들었다면 현재 자원도 함께 정리한다.
+        private static void SyncPlayerStats(
+            PlayerRunState player,
+            EquipmentRunState equipment)
+        {
+            if (player == null
+                || equipment == null)
+            {
+                return;
+            }
+
+            player.EquipmentBonuses =
+                equipment.GetTotalBonuses();
+
+            player.ClampCurrentResourcesToFinalStats();
         }
     }
 }

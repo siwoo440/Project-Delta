@@ -16,6 +16,10 @@ namespace ProjectDelta.Domain
         public StatBlock AllocatedStats = new StatBlock();
         public StatBlock TemporaryStats = new StatBlock();
 
+        // 99일차: 장착 중인 장비 6부위의 스탯 보너스 합계.
+        // EquipmentService가 장착/해제/교체 시점마다 최신 값으로 갱신한다.
+        public StatBlock EquipmentBonuses = new StatBlock();
+
         public int CurrentHp;
         public int CurrentMana;
         public int CurrentStamina;
@@ -39,7 +43,34 @@ namespace ProjectDelta.Domain
             return StatBlock.Sum(
                 BaseStats,
                 AllocatedStats,
-                TemporaryStats);
+                TemporaryStats,
+                EquipmentBonuses);
+        }
+
+        // 99일차: 장비 변경 직후 현재 자원이 새로운 최대치를 넘지 않도록 정리한다.
+        // 최대치가 늘어난다고 현재 값을 채워주지는 않는다 (기존 CreateDefault만 완전 회복 처리).
+        public void ClampCurrentResourcesToFinalStats()
+        {
+            StatBlock finalStats =
+                GetFinalStats();
+
+            if (CurrentHp > finalStats.MaxHealth)
+            {
+                CurrentHp =
+                    finalStats.MaxHealth;
+            }
+
+            if (CurrentMana > finalStats.MaxMana)
+            {
+                CurrentMana =
+                    finalStats.MaxMana;
+            }
+
+            if (CurrentStamina > finalStats.MaxStamina)
+            {
+                CurrentStamina =
+                    finalStats.MaxStamina;
+            }
         }
 
         public static PlayerRunState CreateDefault()
