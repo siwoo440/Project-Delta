@@ -99,6 +99,115 @@ namespace ProjectDelta.Data
         }
     }
 
+    // 108일차: 선택 결과 효과 종류. 조건(EventConditionKind)과 달리 결과는
+    // 양방향(회복뿐 아니라 피해·소비도 가능)이라 값에 음수를 허용한다.
+    public enum EventEffectKind
+    {
+        None = 0,
+        RestoreHp = 1,
+        RestoreMana = 2,
+        RestoreStamina = 3,
+        GainGold = 4,
+        GainItem = 5,
+        SetFlag = 6,
+
+        // 관계(호감도) 시스템은 아직 없다(113일차 이후 예정). 데이터 자리만
+        // 미리 만들어두고, 실제 적용은 EventResultService에서 no-op으로 둔다.
+        RelationshipChange = 7
+    }
+
+    [Serializable]
+    public sealed class EventEffect
+    {
+        [SerializeField]
+        private EventEffectKind kind =
+            EventEffectKind.None;
+
+        // GainItem/SetFlag/RelationshipChange에서 아이템 ID·플래그 이름·NPC ID로 쓴다.
+        [SerializeField]
+        private string targetId;
+
+        // GainItem에서만 사용하는 표시 이름 (인벤토리에 새로 추가될 수 있으므로 필요).
+        [SerializeField]
+        private string displayName;
+
+        // 회복량/피해량, 골드 증감, 아이템 수량 증감에 쓴다. 음수 허용.
+        [SerializeField]
+        private int value;
+
+        // SetFlag에서만 사용한다.
+        [SerializeField]
+        private bool flagValue;
+
+        public EventEffectKind Kind =>
+            kind;
+
+        public string TargetId =>
+            targetId
+            ?? string.Empty;
+
+        public string DisplayName =>
+            string.IsNullOrEmpty(
+                displayName)
+                ? TargetId
+                : displayName;
+
+        public int Value =>
+            value;
+
+        public bool FlagValue =>
+            flagValue;
+
+        public EventEffect()
+        {
+        }
+
+        public EventEffect(
+            EventEffectKind kind,
+            int value)
+        {
+            this.kind =
+                kind;
+
+            this.value =
+                value;
+        }
+
+        public EventEffect(
+            EventEffectKind kind,
+            string targetId,
+            int value,
+            string displayName = null)
+        {
+            this.kind =
+                kind;
+
+            this.targetId =
+                targetId;
+
+            this.value =
+                value;
+
+            this.displayName =
+                displayName;
+        }
+
+        public EventEffect(
+            EventEffectKind kind,
+            string targetId,
+            bool flagValue)
+        {
+            this.kind =
+                kind;
+
+            this.targetId =
+                targetId;
+
+            this.flagValue =
+                flagValue;
+        }
+    }
+
     [Serializable]
     public sealed class EventChoiceDefinition
     {
@@ -110,12 +219,21 @@ namespace ProjectDelta.Data
         private EventCondition[] conditions =
             Array.Empty<EventCondition>();
 
+        // 108일차: 이 선택지를 확정했을 때 적용되는 결과 목록.
+        [SerializeField]
+        private EventEffect[] results =
+            Array.Empty<EventEffect>();
+
         public string ChoiceText =>
             choiceText;
 
         public IReadOnlyList<EventCondition> Conditions =>
             conditions
             ?? Array.Empty<EventCondition>();
+
+        public IReadOnlyList<EventEffect> Results =>
+            results
+            ?? Array.Empty<EventEffect>();
 
         public EventChoiceDefinition()
         {
@@ -131,6 +249,23 @@ namespace ProjectDelta.Data
             this.conditions =
                 conditions
                 ?? Array.Empty<EventCondition>();
+        }
+
+        public EventChoiceDefinition(
+            string choiceText,
+            EventCondition[] conditions,
+            EventEffect[] results)
+        {
+            this.choiceText =
+                choiceText;
+
+            this.conditions =
+                conditions
+                ?? Array.Empty<EventCondition>();
+
+            this.results =
+                results
+                ?? Array.Empty<EventEffect>();
         }
     }
 
