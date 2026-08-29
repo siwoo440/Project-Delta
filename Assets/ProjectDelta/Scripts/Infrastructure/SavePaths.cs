@@ -14,7 +14,18 @@ namespace ProjectDelta.Infrastructure
         // ProjectDelta.Application 네임스페이스와 이름이 겹쳐서 완전한 이름으로 명시한다.
         public static string SaveDirectory => Path.Combine(UnityEngine.Application.persistentDataPath, SaveFolderName);
         public static string ProfilePath => Path.Combine(SaveDirectory, ProfileFileName);
-        public static string RunPath => Path.Combine(SaveDirectory, RunFileName);
+
+        // 슬롯 0은 기존 저장 파일명을 그대로 쓴다 - 저장 슬롯 UI가 생기기 전
+        // 단일 저장 파일을 쓰던 플레이어의 데이터를 그대로 이어받기 위해서다.
+        public static string RunPath => RunPathForSlot(0);
+
+        public static string RunPathForSlot(int slot)
+        {
+            return slot <= 0
+                ? Path.Combine(SaveDirectory, RunFileName)
+                : Path.Combine(SaveDirectory, $"run_slot{slot}.json");
+        }
+
         public static string SettingsPath => Path.Combine(SaveDirectory, SettingsFileName);
 
         public static void EnsureSaveDirectoryExists()

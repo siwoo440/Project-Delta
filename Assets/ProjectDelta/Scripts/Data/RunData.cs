@@ -25,6 +25,10 @@ namespace ProjectDelta.Data
 
         public List<CharacterRunState> CharacterStates =
             new List<CharacterRunState>();
+
+        // 109일차: 발생·확정된 이벤트 플래그 목록(EventRunState.Flags 그대로).
+        public List<string> EventFlags =
+            new List<string>();
     }
 
     [Serializable]

@@ -186,6 +186,17 @@ namespace ProjectDelta.Data
                 }
             }
 
+            // 109일차: 발생·확정된 이벤트 플래그를 그대로 저장한다.
+            foreach (string flag
+                     in context.Events.Flags)
+            {
+                data.EventFlags.Add(
+                    flag);
+            }
+
+            data.EventFlags.Sort(
+                StringComparer.Ordinal);
+
             return data;
         }
 
@@ -362,6 +373,11 @@ namespace ProjectDelta.Data
                             itemId));
                 }
             }
+
+            // 109일차: 이벤트 플래그를 복원해, 이미 확정된 1회성 이벤트가
+            // 불러오기 후 다시 실행되지 않게 한다.
+            context.Events.RestoreFrom(
+                savedRun.EventFlags);
         }
 
         public static void BeginRestore(

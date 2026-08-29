@@ -21,16 +21,64 @@ namespace ProjectDelta.Infrastructure
         public ProfileData ReadProfile() => ReadFileWithRecovery<ProfileData>(SavePaths.ProfilePath);
         public bool HasProfile() => File.Exists(SavePaths.ProfilePath);
 
-        public void WriteRun(RunData run, string saveState) => WriteFile(SavePaths.RunPath, run, saveState);
-        public RunData ReadRun() => ReadFileWithRecovery<RunData>(SavePaths.RunPath);
-        public bool HasRun() => File.Exists(SavePaths.RunPath);
+        public void WriteRun(RunData run, string saveState) => WriteRun(run, saveState, 0);
+        public RunData ReadRun() => ReadRun(0);
+        public bool HasRun() => HasRun(0);
+        public void DeleteRun() => DeleteRun(0);
 
-        public void DeleteRun()
+        public void WriteRun(RunData run, string saveState, int slot) => WriteFile(SavePaths.RunPathForSlot(slot), run, saveState);
+        public RunData ReadRun(int slot) => ReadFileWithRecovery<RunData>(SavePaths.RunPathForSlot(slot));
+        public bool HasRun(int slot) => File.Exists(SavePaths.RunPathForSlot(slot));
+
+        public void DeleteRun(int slot)
         {
-            if (File.Exists(SavePaths.RunPath))
+            var path = SavePaths.RunPathForSlot(slot);
+
+            if (File.Exists(path))
             {
-                File.Delete(SavePaths.RunPath);
+                File.Delete(path);
             }
+        }
+
+        // 109일차: 저장 슬롯 UI가 목록을 그릴 때 쓰는 요약 정보. 손상 복구 순서는
+        // ReadFileWithRecovery와 동일하지만, 파싱된 RunData와 envelope의
+        // 마지막 기록 시각을 함께 반환해야 해서 별도 경로로 둔다.
+        public bool TryGetRunSummary(int slot, out SaveSlotSummary summary)
+        {
+            var targetPath = SavePaths.RunPathForSlot(slot);
+
+            var candidates = new[]
+            {
+                targetPath,
+                targetPath + ".tmp",
+                SavePaths.GetBackupPath(targetPath, 1),
+                SavePaths.GetBackupPath(targetPath, 2),
+                SavePaths.GetBackupPath(targetPath, 3)
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (!File.Exists(candidate) || !TryReadEnvelope(candidate, out var envelope))
+                {
+                    continue;
+                }
+
+                var runData = JsonConvert.DeserializeObject<RunData>(envelope.PayloadJson, JsonSettings);
+
+                summary = new SaveSlotSummary
+                {
+                    Slot = slot,
+                    HasData = true,
+                    RunId = runData?.BasicInfo?.RunId,
+                    SavedAtIso8601 = envelope.ModifiedAtIso8601,
+                    PlaytimeSeconds = runData?.BasicInfo?.PlaytimeSeconds ?? 0f
+                };
+
+                return true;
+            }
+
+            summary = SaveSlotSummary.Empty(slot);
+            return false;
         }
 
         public void WriteSettings(SettingsData settings) => WriteFile(SavePaths.SettingsPath, settings, saveState: null);

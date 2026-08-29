@@ -89,5 +89,98 @@ namespace ProjectDelta.Tests.EditMode
 
             Assert.Throws<InvalidDataException>(() => _saveService.ReadProfile());
         }
+
+        // 109일차: 저장 슬롯 UI가 쓰는 슬롯 지정 API 회귀 테스트.
+        [Test]
+        public void WriteRun_ToSlot_ReadRunFromSameSlot_ReturnsData()
+        {
+            var run = new RunData();
+            run.BasicInfo.RunId = "RUN_SLOT_1";
+
+            _saveService.WriteRun(run, "InProgress", 1);
+            var loaded = _saveService.ReadRun(1);
+
+            Assert.AreEqual("RUN_SLOT_1", loaded.BasicInfo.RunId);
+        }
+
+        [Test]
+        public void WriteRun_DifferentSlots_DoNotOverwriteEachOther()
+        {
+            var runSlot1 = new RunData();
+            runSlot1.BasicInfo.RunId = "RUN_SLOT_1";
+
+            var runSlot2 = new RunData();
+            runSlot2.BasicInfo.RunId = "RUN_SLOT_2";
+
+            _saveService.WriteRun(runSlot1, "InProgress", 1);
+            _saveService.WriteRun(runSlot2, "InProgress", 2);
+
+            Assert.AreEqual("RUN_SLOT_1", _saveService.ReadRun(1).BasicInfo.RunId);
+            Assert.AreEqual("RUN_SLOT_2", _saveService.ReadRun(2).BasicInfo.RunId);
+        }
+
+        [Test]
+        public void HasRun_Slot_ReflectsWriteAndDelete()
+        {
+            Assert.IsFalse(_saveService.HasRun(3));
+
+            _saveService.WriteRun(new RunData(), "InProgress", 3);
+            Assert.IsTrue(_saveService.HasRun(3));
+
+            _saveService.DeleteRun(3);
+            Assert.IsFalse(_saveService.HasRun(3));
+        }
+
+        [Test]
+        public void DeleteRun_Slot_DoesNotAffectOtherSlots()
+        {
+            _saveService.WriteRun(new RunData(), "InProgress", 1);
+            _saveService.WriteRun(new RunData(), "InProgress", 2);
+
+            _saveService.DeleteRun(1);
+
+            Assert.IsFalse(_saveService.HasRun(1));
+            Assert.IsTrue(_saveService.HasRun(2));
+        }
+
+        [Test]
+        public void TryGetRunSummary_NoData_ReturnsFalse()
+        {
+            bool found = _saveService.TryGetRunSummary(4, out SaveSlotSummary summary);
+
+            Assert.IsFalse(found);
+            Assert.IsFalse(summary.HasData);
+            Assert.AreEqual(4, summary.Slot);
+        }
+
+        [Test]
+        public void TryGetRunSummary_WithData_ReturnsRunIdAndSavedTime()
+        {
+            var run = new RunData();
+            run.BasicInfo.RunId = "RUN_SUMMARY";
+            run.BasicInfo.PlaytimeSeconds = 123f;
+
+            _saveService.WriteRun(run, "InProgress", 5);
+
+            bool found = _saveService.TryGetRunSummary(5, out SaveSlotSummary summary);
+
+            Assert.IsTrue(found);
+            Assert.IsTrue(summary.HasData);
+            Assert.AreEqual("RUN_SUMMARY", summary.RunId);
+            Assert.AreEqual(123f, summary.PlaytimeSeconds);
+            Assert.IsFalse(string.IsNullOrEmpty(summary.SavedAtIso8601));
+        }
+
+        [Test]
+        public void WriteRun_WithoutSlot_UsesSlotZeroPath()
+        {
+            var run = new RunData();
+            run.BasicInfo.RunId = "RUN_LEGACY";
+
+            _saveService.WriteRun(run, "InProgress");
+
+            Assert.IsTrue(File.Exists(SavePaths.RunPath));
+            Assert.AreEqual("RUN_LEGACY", _saveService.ReadRun(0).BasicInfo.RunId);
+        }
     }
 }

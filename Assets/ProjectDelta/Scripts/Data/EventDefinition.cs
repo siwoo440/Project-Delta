@@ -285,6 +285,11 @@ namespace ProjectDelta.Data
         private EventChoiceDefinition[] choices =
             Array.Empty<EventChoiceDefinition>();
 
+        // 109일차: 재등장 가능한 이벤트인지. false(기본값)면 EventResultService가
+        // 한 번 확정된 뒤로는 다시 선택할 수 없게 막는다.
+        [SerializeField]
+        private bool isRepeatable;
+
         public string Title =>
             title;
 
@@ -294,5 +299,8 @@ namespace ProjectDelta.Data
         public IReadOnlyList<EventChoiceDefinition> Choices =>
             choices
             ?? Array.Empty<EventChoiceDefinition>();
+
+        public bool IsRepeatable =>
+            isRepeatable;
     }
 }

@@ -52,6 +52,119 @@ namespace ProjectDelta.Tests.EditMode
             return definition;
         }
 
+        private static EventDefinition CreateRepeatableEventWithId(
+            string id)
+        {
+            EventDefinition definition =
+                CreateEventWithId(
+                    id);
+
+            System.Reflection.FieldInfo repeatableField =
+                typeof(EventDefinition).GetField(
+                    "isRepeatable",
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic);
+
+            repeatableField.SetValue(
+                definition,
+                true);
+
+            return definition;
+        }
+
+        // 109일차: 재등장 가능 이벤트는 "한 번만 확정" 게이트를 적용받지 않는다.
+        [Test]
+        public void ApplyChoice_RepeatableEvent_CanBeAppliedMultipleTimes()
+        {
+            RunContext context =
+                RunContext.Begin(
+                    "TEST_RUN");
+
+            EventDefinition eventDefinition =
+                CreateRepeatableEventWithId(
+                    "EVT_SHRINE");
+
+            EventChoiceDefinition choice =
+                new EventChoiceDefinition(
+                    "기도한다",
+                    new EventCondition[0],
+                    new[]
+                    {
+                        new EventEffect(
+                            EventEffectKind.GainGold,
+                            5)
+                    });
+
+            try
+            {
+                EventResultService.ApplyChoice(
+                    eventDefinition,
+                    choice,
+                    context);
+
+                EventResultApplicationResult secondResult =
+                    EventResultService.ApplyChoice(
+                        eventDefinition,
+                        choice,
+                        context);
+
+                Assert.That(
+                    secondResult.Success,
+                    Is.True);
+
+                Assert.That(
+                    context.Player.Gold,
+                    Is.EqualTo(10));
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    eventDefinition);
+            }
+        }
+
+        // 109일차: 재등장 가능 이벤트는 "확정됨" 플래그를 남기지 않는다(불필요한 플래그 누적 방지).
+        [Test]
+        public void ApplyChoice_RepeatableEvent_DoesNotSetResolvedFlag()
+        {
+            RunContext context =
+                RunContext.Begin(
+                    "TEST_RUN");
+
+            EventDefinition eventDefinition =
+                CreateRepeatableEventWithId(
+                    "EVT_SHRINE_2");
+
+            EventChoiceDefinition choice =
+                new EventChoiceDefinition(
+                    "기도한다",
+                    new EventCondition[0],
+                    new[]
+                    {
+                        new EventEffect(
+                            EventEffectKind.GainGold,
+                            5)
+                    });
+
+            try
+            {
+                EventResultService.ApplyChoice(
+                    eventDefinition,
+                    choice,
+                    context);
+
+                Assert.That(
+                    context.Events.HasFlag(
+                        "EVENT_RESOLVED_EVT_SHRINE_2"),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    eventDefinition);
+            }
+        }
+
         [Test]
         public void ApplyChoice_RestoreHp_ClampsToMaxAndReportsChange()
         {

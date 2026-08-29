@@ -68,11 +68,13 @@ namespace ProjectDelta.Application
                     EventResultFailureReason.InvalidState);
             }
 
+            // 109일차: 재등장 가능한 이벤트는 "한 번만 확정" 게이트를 아예 적용하지 않는다.
             string resolvedFlag =
                 BuildResolvedFlagName(
                     eventDefinition.Id);
 
-            if (context.Events.HasFlag(
+            if (!eventDefinition.IsRepeatable
+                && context.Events.HasFlag(
                     resolvedFlag))
             {
                 return EventResultApplicationResult.Failed(
@@ -110,9 +112,12 @@ namespace ProjectDelta.Application
                 }
             }
 
-            context.Events.SetFlag(
-                resolvedFlag,
-                true);
+            if (!eventDefinition.IsRepeatable)
+            {
+                context.Events.SetFlag(
+                    resolvedFlag,
+                    true);
+            }
 
             return EventResultApplicationResult.Succeeded(
                 summaries);
