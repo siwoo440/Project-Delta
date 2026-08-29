@@ -337,12 +337,12 @@ namespace ProjectDelta.Presentation
             if (bounds.Contains(
                     target))
             {
-                // 113일차: 활성 상자는 실제로 한 칸을 점유하여 플레이어가 그 칸으로 이동하지 못하게 한다.
-                if (IsBlockedByActiveChest(
+                // 113일차: 상자와 NPC처럼 한 칸을 점유하는 활성 콘텐츠는 플레이어가 통과하지 못한다.
+                if (IsBlockedBySolidContent(
                         target))
                 {
                     Debug.Log(
-                        $"[Project Delta] 이동 불가: {target} 상자 칸 점유",
+                        $"[Project Delta] 이동 불가: {target} 콘텐츠 칸 점유",
                         this);
 
                     return;
@@ -360,7 +360,7 @@ namespace ProjectDelta.Presentation
                 facing);
         }
 
-        private bool IsBlockedByActiveChest(
+        private bool IsBlockedBySolidContent(
             GridPosition target)
         {
             if (currentRoomView == null)
@@ -368,9 +368,21 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
+            return HasActiveMarkerAt(
+                    RoomContentType.Chest,
+                    target)
+                || HasActiveMarkerAt(
+                    RoomContentType.NpcPoint,
+                    target);
+        }
+
+        private bool HasActiveMarkerAt(
+            RoomContentType contentType,
+            GridPosition target)
+        {
             foreach (RoomContentMarker marker
                      in currentRoomView.GetMarkers(
-                         RoomContentType.Chest))
+                         contentType))
             {
                 if (marker != null
                     && marker.gameObject.activeInHierarchy

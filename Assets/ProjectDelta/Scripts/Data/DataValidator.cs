@@ -14,6 +14,9 @@ namespace ProjectDelta.Data
             ValidateIds(repository.Monsters.All, "Monster", report);
             ValidateIds(repository.Items.All, "Item", report);
 
+            // 113일차: NPC도 동일한 영구 ID 검증 규칙을 적용한다.
+            ValidateIds(repository.Npcs.All, "Npc", report);
+
             return report;
         }
 
