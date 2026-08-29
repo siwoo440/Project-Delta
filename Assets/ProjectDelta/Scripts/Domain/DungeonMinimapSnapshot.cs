@@ -16,14 +16,34 @@ namespace ProjectDelta.Domain
         public GridPosition MacroCoordinate { get; }
         public DungeonMinimapRoomState State { get; }
 
+        // 112일차: 미니맵에 방 종류(N/C/E/T)를 표시하기 위한 값. 미발견(Unvisited) 방은
+        // 정찰 스포일러를 막기 위해 항상 RoomType.Normal로 채워 화면에 글자가 나오지 않는다 -
+        // 실제 값은 State가 Visited/Current일 때만 유효하다.
+        public RoomType RoomType { get; }
+
         public DungeonMinimapRoomEntry(
             string roomId,
             GridPosition macroCoordinate,
-            DungeonMinimapRoomState state)
+            DungeonMinimapRoomState state,
+            RoomType roomType)
         {
             RoomId = roomId;
             MacroCoordinate = macroCoordinate;
             State = state;
+            RoomType = roomType;
+        }
+
+        // 112일차 이전 호출부(테스트 등) 호환용 - 방 종류는 기본값(Normal)으로 채운다.
+        public DungeonMinimapRoomEntry(
+            string roomId,
+            GridPosition macroCoordinate,
+            DungeonMinimapRoomState state)
+            : this(
+                roomId,
+                macroCoordinate,
+                state,
+                RoomType.Normal)
+        {
         }
     }
 
@@ -106,10 +126,19 @@ namespace ProjectDelta.Domain
                 DungeonMinimapRoomState state =
                     ResolveRoomState(room, runState, currentRoomId);
 
+                RoomType roomType =
+                    state != DungeonMinimapRoomState.Unvisited
+                    && runState != null
+                    && runState.TryGetRoom(room.RoomId, out RoomInstance visibleInstance)
+                    && visibleInstance != null
+                        ? visibleInstance.RoomType
+                        : RoomType.Normal;
+
                 entries.Add(new DungeonMinimapRoomEntry(
                     room.RoomId,
                     room.MacroCoordinate,
-                    state));
+                    state,
+                    roomType));
             }
 
             return new DungeonMinimapSnapshot(

@@ -367,6 +367,10 @@ namespace ProjectDelta.Presentation
                 run.SuccessfulSeed,
                 floor);
 
+            SpawnChests(
+                run.Dungeon,
+                run.SuccessfulSeed);
+
             if (movePlayerToEntry && movementController != null)
             {
                 if (!spawnedRooms.TryGetValue(run.Dungeon.EntryRoom.RoomId, out RoomView entryRoomView))
@@ -460,6 +464,10 @@ namespace ProjectDelta.Presentation
                 dungeon,
                 savedSeed,
                 floor);
+
+            SpawnChests(
+                dungeon,
+                savedSeed);
 
             if (movementController != null)
             {
@@ -789,7 +797,6 @@ namespace ProjectDelta.Presentation
                     }
 
                     GridPassage sharedDoor = GridPassage.CreateDoor(edge.IsLocked);
-
                     if (!fromView.PassageController.SetGeneratedDoorPassage(fromExit, sharedDoor)
                         || !toView.PassageController.SetGeneratedDoorPassage(toExit, sharedDoor))
                     {
@@ -904,8 +911,13 @@ namespace ProjectDelta.Presentation
             if (encounters.Count == 0)
             {
                 Debug.LogWarning(
-                    "[Project Delta] 40일차 EncounterDefinition이 지정되지 않아 몬스터 방 배정을 건너뜁니다.",
+                    "[Project Delta] EncounterDefinition 필드가 비어 있어 로드된 인카운터 자산으로 Combat 방 보장을 시도합니다.",
                     this);
+
+                EnsureCombatRoomsHaveMonsters(
+                    dungeon,
+                    seed);
+
                 return;
             }
 
@@ -916,6 +928,304 @@ namespace ProjectDelta.Presentation
             SpawnEncounterMonsters(
                 dungeon,
                 seed);
+
+            EnsureCombatRoomsHaveMonsters(
+                dungeon,
+                seed);
+        }
+
+        // 112일차: RoomType.Combat 방(시작/계단 방 제외)은 인카운터 확률 굴림과 무관하게
+        // 최소 1마리를 보장한다 - 위 SpawnEncounterMonsters가 확률상 아무것도 배치하지
+        // 않고 지나간 Combat 방만 여기서 defaultMonsterEncounter로 채운다.
+        private void EnsureCombatRoomsHaveMonsters(
+            GeneratedDungeon dungeon,
+            int seed)
+        {
+            if (dungeon?.Layout == null)
+            {
+                return;
+            }
+
+            DungeonRunState dungeonState =
+                RunContext.Current?.Dungeon;
+
+            if (dungeonState == null)
+            {
+                return;
+            }
+
+            List<EncounterDefinition> fallbackEncounters =
+                CollectCombatGuaranteeEncounters();
+
+            if (fallbackEncounters.Count == 0)
+            {
+                Debug.LogError(
+                    "[Project Delta] Combat 방 최소 몬스터 보장 실패: 사용할 EncounterDefinition이 하나도 없습니다.",
+                    this);
+                return;
+            }
+
+            MonsterSpawnPositionService spawnPositionService =
+                new MonsterSpawnPositionService();
+
+            foreach (RoomNode room in dungeon.Layout.AllRooms)
+            {
+                if (room == null
+                    || string.IsNullOrEmpty(room.RoomId)
+                    || spawnedMonsters.ContainsKey(room.RoomId)
+                    || (dungeon.EntryRoom != null && room.RoomId == dungeon.EntryRoom.RoomId)
+                    || (dungeon.StairsRoom != null && room.RoomId == dungeon.StairsRoom.RoomId))
+                {
+                    continue;
+                }
+
+                if (!dungeonState.TryGetRoom(room.RoomId, out RoomInstance roomInstance)
+                    || roomInstance.RoomType != RoomType.Combat)
+                {
+                    continue;
+                }
+
+                if (!spawnedRooms.TryGetValue(room.RoomId, out RoomView roomView)
+                    || roomView == null
+                    || roomView.PassageController == null)
+                {
+                    continue;
+                }
+
+                RoomDefinition definition =
+                    roomView.PassageController.RoomDefinition;
+
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                if (!TryBuildCombatGuaranteeAssignment(
+                        room.RoomId,
+                        seed,
+                        fallbackEncounters,
+                        out RoomEncounterAssignment assignment))
+                {
+                    Debug.LogError(
+                        $"[Project Delta] Combat 방 최소 몬스터 보장 실패: 유효한 몬스터 그룹 없음. RoomId={room.RoomId}",
+                        roomView);
+                    continue;
+                }
+
+                List<RoomExit> connectedExits =
+                    CollectConnectedExits(
+                        room);
+
+                List<GridPosition> occupiedPositions =
+                    CollectOccupiedContentPositions(
+                        roomView);
+
+                bool hasSpawnPosition =
+                    spawnPositionService.TryChoosePosition(
+                        definition.MinX,
+                        definition.MaxX,
+                        definition.MinZ,
+                        definition.MaxZ,
+                        connectedExits,
+                        occupiedPositions,
+                        seed,
+                        room.RoomId,
+                        assignment.MonsterDefinitionId,
+                        out GridPosition spawnPosition);
+
+                // 113일차: 다른 콘텐츠 때문에 빈 칸이 없으면 겹침을 허용해서라도 Combat 방 1마리를 우선 보장한다.
+                if (!hasSpawnPosition)
+                {
+                    hasSpawnPosition =
+                        spawnPositionService.TryChoosePosition(
+                            definition.MinX,
+                            definition.MaxX,
+                            definition.MinZ,
+                            definition.MaxZ,
+                            connectedExits,
+                            null,
+                            seed,
+                            room.RoomId,
+                            assignment.MonsterDefinitionId,
+                            out spawnPosition);
+                }
+
+                if (!hasSpawnPosition)
+                {
+                    spawnPosition =
+                        ChooseEmergencyMonsterPosition(
+                            definition,
+                            connectedExits);
+
+                    Debug.LogWarning(
+                        $"[Project Delta] Combat 방 빈 칸이 없어 비상 위치에 최소 몬스터를 배치합니다. RoomId={room.RoomId} / Position={spawnPosition}",
+                        roomView);
+                }
+
+                ExplorationMonsterMarker monster =
+                    CreateRuntimeMonster(
+                        roomView,
+                        definition,
+                        assignment,
+                        spawnPosition);
+
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                currentEncounterLayout.TryAdd(
+                    assignment);
+
+                spawnedMonsters[room.RoomId] =
+                    monster;
+
+                roomView.RefreshMarkers();
+            }
+        }
+
+        // 113일차: 기본 인카운터가 비어 있어도 추가 인카운터와 현재 로드된 인카운터 자산까지 후보로 사용한다.
+        private List<EncounterDefinition> CollectCombatGuaranteeEncounters()
+        {
+            List<EncounterDefinition> encounters =
+                CollectFloorEncounters();
+
+            HashSet<EncounterDefinition> known =
+                new HashSet<EncounterDefinition>(encounters);
+
+            EncounterDefinition[] loaded =
+                Resources.FindObjectsOfTypeAll<EncounterDefinition>();
+
+            for (int index = 0; index < loaded.Length; index++)
+            {
+                EncounterDefinition encounter =
+                    loaded[index];
+
+                if (encounter != null
+                    && known.Add(encounter))
+                {
+                    encounters.Add(encounter);
+                }
+            }
+
+            return encounters;
+        }
+
+        private static bool TryBuildCombatGuaranteeAssignment(
+            string roomId,
+            int seed,
+            IReadOnlyList<EncounterDefinition> encounters,
+            out RoomEncounterAssignment assignment)
+        {
+            assignment = null;
+
+            if (encounters == null)
+            {
+                return false;
+            }
+
+            for (int encounterIndex = 0;
+                 encounterIndex < encounters.Count;
+                 encounterIndex++)
+            {
+                EncounterDefinition encounter =
+                    encounters[encounterIndex];
+
+                if (encounter == null)
+                {
+                    continue;
+                }
+
+                MonsterGroupCompositionService.Result group =
+                    MonsterGroupCompositionService.Build(
+                        encounter,
+                        seed,
+                        roomId);
+
+                if (group.Representative == null
+                    || group.Slots.Count == 0)
+                {
+                    continue;
+                }
+
+                string[] monsterDefinitionIds =
+                    new string[group.Slots.Count];
+
+                for (int slotIndex = 0;
+                     slotIndex < group.Slots.Count;
+                     slotIndex++)
+                {
+                    monsterDefinitionIds[slotIndex] =
+                        group.Slots[slotIndex].Id;
+                }
+
+                assignment =
+                    new RoomEncounterAssignment(
+                        roomId,
+                        RoomContentType.Monster,
+                        encounter.Id,
+                        monsterDefinitionIds,
+                        group.Representative.Id);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static GridPosition ChooseEmergencyMonsterPosition(
+            RoomDefinition definition,
+            IReadOnlyList<RoomExit> connectedExits)
+        {
+            GridPosition center =
+                new GridPosition(
+                    Mathf.Clamp(
+                        0,
+                        definition.MinX,
+                        definition.MaxX),
+                    Mathf.Clamp(
+                        0,
+                        definition.MinZ,
+                        definition.MaxZ));
+
+            HashSet<GridPosition> doorPositions =
+                new HashSet<GridPosition>();
+
+            if (connectedExits != null)
+            {
+                for (int exitIndex = 0;
+                     exitIndex < connectedExits.Count;
+                     exitIndex++)
+                {
+                    doorPositions.Add(
+                        connectedExits[exitIndex].LocalPosition);
+                }
+            }
+
+            if (!doorPositions.Contains(center))
+            {
+                return center;
+            }
+
+            for (int z = definition.MinZ;
+                 z <= definition.MaxZ;
+                 z++)
+            {
+                for (int x = definition.MinX;
+                     x <= definition.MaxX;
+                     x++)
+                {
+                    GridPosition candidate =
+                        new GridPosition(x, z);
+
+                    if (!doorPositions.Contains(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            return center;
         }
 
         // 111일차: RoomType.Combat이 아닌 방은 몬스터 조우 배정에서 제외한다.
@@ -1204,6 +1514,174 @@ namespace ProjectDelta.Presentation
                 spawnPosition);
 
             return monsterMarker;
+        }
+
+        // 112일차: RoomType과 무관하게(전투 방 포함) 방마다 결정론적으로 상자를 배치한다.
+        // 문 칸/문 바로 안쪽 칸(MonsterSpawnPositionService의 기존 안전 칸 계산을 그대로
+        // 재사용)과 이미 다른 콘텐츠가 있는 칸은 피한다.
+        private void SpawnChests(
+            GeneratedDungeon dungeon,
+            int seed)
+        {
+            if (dungeon == null)
+            {
+                return;
+            }
+
+            RoomChestPlacementService placementService =
+                new RoomChestPlacementService();
+
+            List<string> chestRoomIds =
+                placementService.SelectRoomIds(
+                    dungeon,
+                    seed);
+
+            // 113일차: 상자가 문 사이 이동 경로를 끊지 않는 후보만 선택한다.
+            RoomBlockingPlacementService spawnPositionService =
+                new RoomBlockingPlacementService();
+
+            for (int i = 0; i < chestRoomIds.Count; i++)
+            {
+                string roomId =
+                    chestRoomIds[i];
+
+                if (!spawnedRooms.TryGetValue(
+                        roomId,
+                        out RoomView roomView)
+                    || roomView == null
+                    || roomView.PassageController == null)
+                {
+                    continue;
+                }
+
+                RoomDefinition definition =
+                    roomView.PassageController.RoomDefinition;
+
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                if (!dungeon.Layout.TryGetRoom(
+                        roomId,
+                        out RoomNode roomNode))
+                {
+                    continue;
+                }
+
+                List<RoomExit> connectedExits =
+                    CollectConnectedExits(
+                        roomNode);
+
+                List<GridPosition> occupiedPositions =
+                    CollectOccupiedContentPositions(
+                        roomView);
+
+                if (!spawnPositionService.TryChoosePosition(
+                        definition.MinX,
+                        definition.MaxX,
+                        definition.MinZ,
+                        definition.MaxZ,
+                        connectedExits,
+                        occupiedPositions,
+                        roomView.PassageController.CanPass,
+                        seed,
+                        roomId,
+                        "CHEST",
+                        out GridPosition spawnPosition))
+                {
+                    Debug.LogWarning(
+                        $"[Project Delta] 112일차 상자 배치 가능한 칸이 없습니다. RoomId={roomId}",
+                        roomView);
+                    continue;
+                }
+
+                CreateRuntimeChest(
+                    roomView,
+                    definition,
+                    roomId,
+                    spawnPosition);
+
+                roomView.RefreshMarkers();
+            }
+        }
+
+        private static readonly string[] PlaceholderChestLoot =
+        {
+            "ITEM_DAY80_TEST_DROP",
+            "ITEM_DAY80_TEST_DROP"
+        };
+
+        private void CreateRuntimeChest(
+            RoomView roomView,
+            RoomDefinition definition,
+            string roomId,
+            GridPosition spawnPosition)
+        {
+            if (roomView == null
+                || definition == null)
+            {
+                return;
+            }
+
+            float cellSizeX =
+                definition.Width > 0
+                    ? roomWorldSize / definition.Width
+                    : 2f;
+
+            float cellSizeZ =
+                definition.Height > 0
+                    ? roomWorldSize / definition.Height
+                    : 2f;
+
+            GameObject chestObject =
+                GameObject.CreatePrimitive(
+                    PrimitiveType.Cube);
+
+            chestObject.name =
+                $"Chest_{roomId}";
+
+            chestObject.transform.SetParent(
+                roomView.transform,
+                false);
+
+            chestObject.transform.localPosition =
+                new Vector3(
+                    spawnPosition.X * cellSizeX,
+                    0.4f,
+                    spawnPosition.Z * cellSizeZ);
+
+            chestObject.transform.localRotation =
+                Quaternion.identity;
+
+            chestObject.transform.localScale =
+                new Vector3(
+                    0.8f,
+                    0.8f,
+                    0.8f);
+
+            Collider chestCollider =
+                chestObject.GetComponent<Collider>();
+
+            if (chestCollider != null)
+            {
+                chestCollider.isTrigger = true;
+            }
+
+            RoomContentMarker contentMarker =
+                chestObject.AddComponent<RoomContentMarker>();
+
+            contentMarker.Configure(
+                RoomContentType.Chest,
+                spawnPosition);
+
+            // TODO: 실제 아이템 자산이 늘어나면 자리표시자 대신 진짜 루트 테이블로 교체한다.
+            // 지금은 프로젝트에 존재하는 유일한 실제 아이템(ITEM_DAY80_TEST_DROP)을 사용한다.
+            ChestContentMarker chestMarker =
+                chestObject.AddComponent<ChestContentMarker>();
+
+            chestMarker.Configure(
+                PlaceholderChestLoot);
         }
 
         private void ClearGeneratedFloor()

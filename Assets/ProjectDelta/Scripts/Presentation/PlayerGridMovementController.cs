@@ -47,6 +47,9 @@ namespace ProjectDelta.Presentation
         public bool IsMoving =>
             isMoving;
 
+        public float CellSize => // 미니맵 월드 좌표 변환용 칸 크기 공개
+            cellSize; // 현재 탐험 칸 크기 반환
+
         public bool IsInputLocked { get; set; }
 
         // 111일차: 방에 들어올 때마다(최초 진입인 currentRoomView, isFirstVisit)를 함께 알린다.
@@ -334,6 +337,17 @@ namespace ProjectDelta.Presentation
             if (bounds.Contains(
                     target))
             {
+                // 113일차: 활성 상자는 실제로 한 칸을 점유하여 플레이어가 그 칸으로 이동하지 못하게 한다.
+                if (IsBlockedByActiveChest(
+                        target))
+                {
+                    Debug.Log(
+                        $"[Project Delta] 이동 불가: {target} 상자 칸 점유",
+                        this);
+
+                    return;
+                }
+
                 CommitGridMove(
                     target,
                     facing);
@@ -344,6 +358,29 @@ namespace ProjectDelta.Presentation
             TryMoveAcrossRoomBoundary(
                 moveDirection,
                 facing);
+        }
+
+        private bool IsBlockedByActiveChest(
+            GridPosition target)
+        {
+            if (currentRoomView == null)
+            {
+                return false;
+            }
+
+            foreach (RoomContentMarker marker
+                     in currentRoomView.GetMarkers(
+                         RoomContentType.Chest))
+            {
+                if (marker != null
+                    && marker.gameObject.activeInHierarchy
+                    && marker.GridPosition == target)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void TryMoveAcrossRoomBoundary(

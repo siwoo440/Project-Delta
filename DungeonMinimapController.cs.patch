@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: Assets/ProjectDelta/Scripts/Presentation/DungeonMinimapController.cs
+@@
+ using System.Collections.Generic;
+ using ProjectDelta.Domain;
++using DungeonRunState = ProjectDelta.Domain.DungeonRunState;
+ using UnityEngine;
+ using UnityEngine.InputSystem;
+*** End Patch

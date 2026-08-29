@@ -297,6 +297,14 @@ namespace ProjectDelta.Presentation
                      in roomView.GetMarkers(
                          RoomContentType.Chest))
             {
+                // 112일차: 내용물을 다 가져가 감춰진(SetActive(false)) 상자는
+                // 더 이상 상호작용 대상이 아니다.
+                if (marker == null
+                    || !marker.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+
                 GridPosition markerPosition =
                     marker.GridPosition;
 

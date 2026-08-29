@@ -32,6 +32,30 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
+        public void RoomTypeRules_GetShortLabel_ReturnsOneLetterPerType()
+        {
+            Assert.That(
+                RoomTypeRules.GetShortLabel(
+                    RoomType.Normal),
+                Is.EqualTo("N"));
+
+            Assert.That(
+                RoomTypeRules.GetShortLabel(
+                    RoomType.Combat),
+                Is.EqualTo("C"));
+
+            Assert.That(
+                RoomTypeRules.GetShortLabel(
+                    RoomType.Event),
+                Is.EqualTo("E"));
+
+            Assert.That(
+                RoomTypeRules.GetShortLabel(
+                    RoomType.Trap),
+                Is.EqualTo("T"));
+        }
+
+        [Test]
         public void RoomTypeRoll_ManyTrials_OnlyReturnsDefinedRoomTypes()
         {
             System.Random random =
