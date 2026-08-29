@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using ProjectDelta.Application;
 using ProjectDelta.Domain;
@@ -47,6 +48,10 @@ namespace ProjectDelta.Presentation
             isMoving;
 
         public bool IsInputLocked { get; set; }
+
+        // 111일차: 방에 들어올 때마다(최초 진입인 currentRoomView, isFirstVisit)를 함께 알린다.
+        // Combat/Event 방 트리거처럼 방 진입에 반응해야 하는 시스템이 여기 구독한다.
+        public event Action<RoomView, bool> RoomEntered;
 
         private void Awake()
         {
@@ -130,7 +135,12 @@ namespace ProjectDelta.Presentation
                 && CurrentPassageController != null
                 && CurrentPassageController.CurrentInstance != null)
             {
-                CurrentPassageController.CurrentInstance.MarkVisited();
+                bool isFirstVisit =
+                    CurrentPassageController.CurrentInstance.MarkVisited();
+
+                RoomEntered?.Invoke(
+                    currentRoomView,
+                    isFirstVisit);
             }
         }
 
@@ -411,6 +421,10 @@ namespace ProjectDelta.Presentation
                 roomView.PassageController != null
                 && roomView.PassageController.CurrentInstance != null
                 && roomView.PassageController.CurrentInstance.MarkVisited();
+
+            RoomEntered?.Invoke(
+                roomView,
+                isFirstVisit);
 
             // 83일차: 방 경계를 넘는 이동도 성공한 이동 1회로 처리한다.
             if (ApplyExplorationStatusTick())

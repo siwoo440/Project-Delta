@@ -32,7 +32,7 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
-        public void RoomTypeRoll_ManyTrials_OnlyReturnsNormalOrTrap()
+        public void RoomTypeRoll_ManyTrials_OnlyReturnsDefinedRoomTypes()
         {
             System.Random random =
                 new System.Random(
@@ -48,44 +48,62 @@ namespace ProjectDelta.Tests.EditMode
 
                 Assert.That(
                     roomType == RoomType.Normal
+                    || roomType == RoomType.Combat
+                    || roomType == RoomType.Event
                     || roomType == RoomType.Trap,
                     Is.True);
             }
         }
 
         [Test]
-        public void RoomTypeRoll_ManyTrials_NormalIsMoreFrequentThanTrap()
+        public void RoomTypeRoll_ManyTrials_NormalIsMostFrequent()
         {
             System.Random random =
                 new System.Random(
                     777);
 
-            int normalCount =
-                0;
-
-            int trapCount =
-                0;
+            int normalCount = 0;
+            int combatCount = 0;
+            int eventCount = 0;
+            int trapCount = 0;
 
             for (int trial = 0;
-                 trial < 2000;
+                 trial < 4000;
                  trial++)
             {
-                if (RoomTypeRollService.Roll(
-                        random)
-                    == RoomType.Trap)
+                switch (RoomTypeRollService.Roll(
+                    random))
                 {
-                    trapCount++;
-                }
-                else
-                {
-                    normalCount++;
+                    case RoomType.Trap:
+                        trapCount++;
+                        break;
+                    case RoomType.Combat:
+                        combatCount++;
+                        break;
+                    case RoomType.Event:
+                        eventCount++;
+                        break;
+                    default:
+                        normalCount++;
+                        break;
                 }
             }
 
+            // 111일차 가중치: Normal 45% > Combat 25% > Trap 15% = Event 15%.
             Assert.That(
                 normalCount,
                 Is.GreaterThan(
+                    combatCount));
+
+            Assert.That(
+                combatCount,
+                Is.GreaterThan(
                     trapCount));
+
+            Assert.That(
+                combatCount,
+                Is.GreaterThan(
+                    eventCount));
         }
 
         [Test]

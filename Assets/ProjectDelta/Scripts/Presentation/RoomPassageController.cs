@@ -102,7 +102,8 @@ namespace ProjectDelta.Presentation
                         savedState.Completed,
                         savedState.ChestOpened,
                         savedState.RoomType,
-                        savedState.TrapTriggered);
+                        savedState.TrapTriggered,
+                        savedState.EventTriggered);
                 }
                 else
                 {

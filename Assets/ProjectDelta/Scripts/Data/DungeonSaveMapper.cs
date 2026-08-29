@@ -607,6 +607,9 @@ namespace ProjectDelta.Data
                         TrapTriggered =
                             roomInstance != null
                             && roomInstance.TrapTriggered,
+                        EventTriggered =
+                            roomInstance != null
+                            && roomInstance.EventTriggered,
                         IsStairs =
                             dungeon.StairsRoom != null
                             && dungeon.StairsRoom.RoomId
@@ -660,7 +663,8 @@ namespace ProjectDelta.Data
                         Completed = room.Completed,
                         ChestOpened = room.ChestOpened,
                         RoomType = room.RoomType,
-                        TrapTriggered = room.TrapTriggered
+                        TrapTriggered = room.TrapTriggered,
+                        EventTriggered = room.EventTriggered
                     };
 
                 SaveChestContents(

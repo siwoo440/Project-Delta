@@ -897,7 +897,9 @@ namespace ProjectDelta.Presentation
                     dungeon,
                     seed,
                     floor,
-                    encounters);
+                    encounters,
+                    CollectNonCombatRoomIds(
+                        dungeon));
 
             if (encounters.Count == 0)
             {
@@ -914,6 +916,37 @@ namespace ProjectDelta.Presentation
             SpawnEncounterMonsters(
                 dungeon,
                 seed);
+        }
+
+        // 111일차: RoomType.Combat이 아닌 방은 몬스터 조우 배정에서 제외한다.
+        // RoomEncounterPlacementService는 그래프(RoomNode)만 알고 실제 RoomType은
+        // 모르므로, 이미 배정된 excludedRoomIds 파라미터로 걸러준다.
+        private List<string> CollectNonCombatRoomIds(GeneratedDungeon dungeon)
+        {
+            List<string> excluded = new List<string>();
+
+            DungeonRunState dungeonState = RunContext.Current?.Dungeon;
+
+            if (dungeonState == null || dungeon?.Layout == null)
+            {
+                return excluded;
+            }
+
+            foreach (RoomNode room in dungeon.Layout.AllRooms)
+            {
+                if (room == null || string.IsNullOrEmpty(room.RoomId))
+                {
+                    continue;
+                }
+
+                if (!dungeonState.TryGetRoom(room.RoomId, out RoomInstance roomInstance)
+                    || roomInstance.RoomType != RoomType.Combat)
+                {
+                    excluded.Add(room.RoomId);
+                }
+            }
+
+            return excluded;
         }
 
         // 78일차: defaultMonsterEncounter(항상 포함)와 additionalFloorEncounters를 하나로 합친다.

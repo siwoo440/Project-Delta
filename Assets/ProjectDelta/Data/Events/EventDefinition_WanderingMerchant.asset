@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38d239310cbb4ab6bebe89a73ce729bf, type: 3}
+  m_Name: EventDefinition_WanderingMerchant
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.EventDefinition
+  id: EVENT_MERCHANT
+  title: 떠돌이 상인
+  body: 낯선 상인이 골목에서 손짓하며 이야기를 건넨다. 들어볼 것인가?
+  choices:
+  - choiceText: 이야기를 들어본다
+    conditions: []
+    results:
+    - kind: 4
+      targetId:
+      displayName:
+      value: 20
+      flagValue: 0
+  - choiceText: 무시하고 지나간다
+    conditions: []
+    results: []
+  isRepeatable: 0

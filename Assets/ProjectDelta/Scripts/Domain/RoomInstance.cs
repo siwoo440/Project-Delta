@@ -28,6 +28,9 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         // 110일차: 함정 방이 이미 판정을 마쳤는지. 성공/실패(회피)와 무관하게 한 번만 처리한다.
         public bool TrapTriggered { get; private set; }
 
+        // 111일차: 이벤트 방이 이미 이벤트 화면을 띄운 적 있는지. 재진입 시 다시 뜨지 않게 막는다.
+        public bool EventTriggered { get; private set; }
+
         // 95일차: 상자 개봉 여부와 실제 남은 내용물을 분리해 관리한다.
         private readonly List<string> chestRemainingItems =
             new List<string>();
@@ -87,6 +90,19 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             }
 
             TrapTriggered = true;
+            return true;
+        }
+
+        // 111일차: 이벤트 표시를 한 번만 허용한다. 이미 표시된 방이면 false를 반환한다.
+        // RoomEventTriggerController를 통해서만 호출되어야 하므로 internal로 막아둔다.
+        internal bool MarkEventTriggered()
+        {
+            if (EventTriggered)
+            {
+                return false;
+            }
+
+            EventTriggered = true;
             return true;
         }
 
@@ -166,7 +182,8 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
                 completed,
                 chestOpened,
                 RoomType,
-                TrapTriggered);
+                TrapTriggered,
+                EventTriggered);
         }
 
         // 110일차: 방 종류·함정 판정 여부까지 함께 복원하는 오버로드.
@@ -177,11 +194,30 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
             RoomType roomType,
             bool trapTriggered)
         {
+            ApplySavedState(
+                visited,
+                completed,
+                chestOpened,
+                roomType,
+                trapTriggered,
+                EventTriggered);
+        }
+
+        // 111일차: 이벤트 표시 여부까지 함께 복원하는 오버로드.
+        public void ApplySavedState(
+            bool visited,
+            bool completed,
+            bool chestOpened,
+            RoomType roomType,
+            bool trapTriggered,
+            bool eventTriggered)
+        {
             Visited = visited; // 저장된 방문 상태 복원
             Completed = completed; // 저장된 완료 상태 복원
             ChestOpened = chestOpened; // 저장된 상자 개봉 상태 복원
             RoomType = roomType; // 저장된 방 종류 복원
             TrapTriggered = trapTriggered; // 저장된 함정 판정 여부 복원
+            EventTriggered = eventTriggered; // 저장된 이벤트 표시 여부 복원
         }
 
         // RoomDefinition의 정적 통로 목록으로부터 실제 방 인스턴스를 만든다.

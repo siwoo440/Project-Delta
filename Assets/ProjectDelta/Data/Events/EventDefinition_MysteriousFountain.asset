@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38d239310cbb4ab6bebe89a73ce729bf, type: 3}
+  m_Name: EventDefinition_MysteriousFountain
+  m_EditorClassIdentifier: ProjectDelta.Data::ProjectDelta.Data.EventDefinition
+  id: EVENT_FOUNTAIN
+  title: 신비한 샘
+  body: 낡은 샘에서 은은한 빛이 새어나온다. 손을 담가볼 것인가?
+  choices:
+  - choiceText: 손을 담근다
+    conditions: []
+    results:
+    - kind: 1
+      targetId:
+      displayName:
+      value: 15
+      flagValue: 0
+  - choiceText: 그냥 지나간다
+    conditions: []
+    results: []
+  isRepeatable: 0
