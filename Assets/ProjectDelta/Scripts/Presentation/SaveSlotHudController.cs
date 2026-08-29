@@ -148,11 +148,15 @@ namespace ProjectDelta.Presentation
                         $"슬롯 {slot}";
                 }
 
+                SaveSlotSummary summary =
+                    SaveSlotSummary.Empty(
+                        slot);
+
                 bool hasData =
                     ApplicationFlow.Current != null
                     && ApplicationFlow.Current.TryGetSlotSummary(
                         slot,
-                        out SaveSlotSummary summary);
+                        out summary);
 
                 if (row.savedTimeText != null)
                 {

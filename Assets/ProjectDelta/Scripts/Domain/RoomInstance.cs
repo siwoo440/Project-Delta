@@ -22,6 +22,12 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public bool Completed { get; private set; } // 콘텐츠 처리 상태 (기획서 3.3.3절 "이벤트가 완료되면 해당 방은 일반적으로 빈 방으로 전환한다")
         public bool ChestOpened { get; private set; } // 25일차 상자 개봉 여부 (26일차: 저장 대상에 포함)
 
+        // 110일차: 방 종류. 생성 시 한 번 배정되고 이후에는 바뀌지 않는다.
+        public RoomType RoomType { get; private set; } = RoomType.Normal;
+
+        // 110일차: 함정 방이 이미 판정을 마쳤는지. 성공/실패(회피)와 무관하게 한 번만 처리한다.
+        public bool TrapTriggered { get; private set; }
+
         // 95일차: 상자 개봉 여부와 실제 남은 내용물을 분리해 관리한다.
         private readonly List<string> chestRemainingItems =
             new List<string>();
@@ -61,6 +67,27 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         public void MarkChestOpened()
         {
             ChestOpened = true; // 상자 개봉 상태로 전환
+        }
+
+        // 110일차: 방이 처음 만들어질 때 한 번 호출해 종류를 확정한다.
+        // 저장된 방을 복원할 때는 ApplySavedState가 저장된 값을 그대로 덮어쓴다.
+        public void SetRoomType(
+            RoomType roomType)
+        {
+            RoomType = roomType;
+        }
+
+        // 110일차: 함정 판정을 한 번만 허용한다. 이미 처리된 방이면 false를 반환한다.
+        // RoomTrapService를 통해서만 호출되어야 하므로 internal로 막아둔다.
+        internal bool MarkTrapTriggered()
+        {
+            if (TrapTriggered)
+            {
+                return false;
+            }
+
+            TrapTriggered = true;
+            return true;
         }
 
         // 95일차: 새 방에서 상자 원본 목록을 최초 한 번만 런타임 상태로 등록한다.
@@ -134,9 +161,27 @@ namespace ProjectDelta.Domain // 도메인 네임스페이스
         // MarkVisited()/MarkCompleted()와 달리 몇 번을 호출해도 부작용이 없다.
         public void ApplySavedState(bool visited, bool completed, bool chestOpened)
         {
+            ApplySavedState(
+                visited,
+                completed,
+                chestOpened,
+                RoomType,
+                TrapTriggered);
+        }
+
+        // 110일차: 방 종류·함정 판정 여부까지 함께 복원하는 오버로드.
+        public void ApplySavedState(
+            bool visited,
+            bool completed,
+            bool chestOpened,
+            RoomType roomType,
+            bool trapTriggered)
+        {
             Visited = visited; // 저장된 방문 상태 복원
             Completed = completed; // 저장된 완료 상태 복원
             ChestOpened = chestOpened; // 저장된 상자 개봉 상태 복원
+            RoomType = roomType; // 저장된 방 종류 복원
+            TrapTriggered = trapTriggered; // 저장된 함정 판정 여부 복원
         }
 
         // RoomDefinition의 정적 통로 목록으로부터 실제 방 인스턴스를 만든다.

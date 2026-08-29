@@ -24,6 +24,9 @@ namespace ProjectDelta.Presentation
         [SerializeField] private float roomWorldSize = 10f;
 
         [Header("생성 규칙")]
+        // 110일차: 새 게임을 시작할 때마다 다른 던전이 나오도록 baseSeed를 무작위로 다시 뽑는다.
+        // 끄면(QA 재현·밸런스 검증용) 아래 baseSeed 값을 그대로 고정해서 쓴다.
+        [SerializeField] private bool randomizeSeedEachRun = true;
         [SerializeField] private int baseSeed = 3600;
         [SerializeField] private int maxGenerationAttempts = 10;
         [SerializeField] private int targetRoomCount = 8;
@@ -132,6 +135,16 @@ namespace ProjectDelta.Presentation
 
             if (useProceduralGeneration)
             {
+                // 110일차: 불러오기(RestoreAndPlaceCurrentFloor)는 저장된 실제 Seed를
+                // 그대로 쓰고 baseSeed를 전혀 참조하지 않으므로, 여기서 새로 뽑아도
+                // 이어하기에는 영향이 없다 - 새 게임을 생성할 때만 실제로 쓰인다.
+                if (randomizeSeedEachRun)
+                {
+                    baseSeed = new System.Random().Next(
+                        int.MinValue,
+                        int.MaxValue);
+                }
+
                 RemovePreExistingSceneRooms(); // 기존 테스트 맵을 제거하고 생성 던전만 사용
             }
 

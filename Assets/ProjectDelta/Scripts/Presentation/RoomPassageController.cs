@@ -1,4 +1,5 @@
 using System.Collections.Generic; // 출구 마커 사전 사용
+using ProjectDelta.Application; // 110일차: RoomTypeRollService 사용
 using ProjectDelta.Data; // RoomDefinition 사용
 using ProjectDelta.Domain; // 통로 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
@@ -99,7 +100,16 @@ namespace ProjectDelta.Presentation
                     roomInstance.ApplySavedState(
                         savedState.Visited,
                         savedState.Completed,
-                        savedState.ChestOpened);
+                        savedState.ChestOpened,
+                        savedState.RoomType,
+                        savedState.TrapTriggered);
+                }
+                else
+                {
+                    // 110일차: 저장된 상태가 없는 새 방이면 종류를 한 번 굴려서 확정한다.
+                    // 무작위 판정은 Application 계층(RoomTypeRollService)이 담당한다.
+                    roomInstance.SetRoomType(
+                        RoomTypeRollService.Roll());
                 }
             }
 

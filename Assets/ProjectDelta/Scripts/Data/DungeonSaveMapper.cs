@@ -600,6 +600,13 @@ namespace ProjectDelta.Data
                         ChestOpened =
                             roomInstance != null
                             && roomInstance.ChestOpened,
+                        RoomType =
+                            roomInstance != null
+                                ? roomInstance.RoomType
+                                : RoomType.Normal,
+                        TrapTriggered =
+                            roomInstance != null
+                            && roomInstance.TrapTriggered,
                         IsStairs =
                             dungeon.StairsRoom != null
                             && dungeon.StairsRoom.RoomId
@@ -651,7 +658,9 @@ namespace ProjectDelta.Data
                             context.Dungeon.IsRoomRevealed(
                                 room.RoomId),
                         Completed = room.Completed,
-                        ChestOpened = room.ChestOpened
+                        ChestOpened = room.ChestOpened,
+                        RoomType = room.RoomType,
+                        TrapTriggered = room.TrapTriggered
                     };
 
                 SaveChestContents(

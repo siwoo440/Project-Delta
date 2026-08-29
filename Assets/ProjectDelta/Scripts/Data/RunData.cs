@@ -211,6 +211,10 @@ namespace ProjectDelta.Data
         public bool IsStairs;
         public bool StairsDiscovered;
         public bool RestRoomUsed;
+
+        // 110일차: 방 종류. TrapTriggered는 이미 위에 있던 필드를 그대로 쓴다
+        // (이번 일차 전까지는 아무도 읽거나 쓰지 않던 필드였다).
+        public ProjectDelta.Domain.RoomType RoomType;
     }
 
     [Serializable]

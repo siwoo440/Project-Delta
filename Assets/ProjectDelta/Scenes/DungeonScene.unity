@@ -4265,18 +4265,58 @@ MonoBehaviour:
   - definition: {fileID: 11400000, guid: 75e74169d53f2f142be277c96eed0b27, type: 2}
     prefab: {fileID: 815328540437213445, guid: 624eef65d888e2f479ed1987c8b2fda5, type: 3}
     useAsEntry: 0
-    includeInGenerationPool: 0
+    includeInGenerationPool: 1
   - definition: {fileID: 11400000, guid: 3dbb9cd75bcc28741b6696ee9de22165, type: 2}
     prefab: {fileID: 4201009925210753747, guid: 7166fbc256d26234ca5280cefac968cc, type: 3}
     useAsEntry: 0
-    includeInGenerationPool: 0
+    includeInGenerationPool: 1
   - definition: {fileID: 11400000, guid: d8ac9c1c86bd9b349bf2701a249999d3, type: 2}
     prefab: {fileID: 6181716721683139310, guid: 3f83f351ba6749e48afaa818d305ee7d, type: 3}
     useAsEntry: 0
-    includeInGenerationPool: 0
+    includeInGenerationPool: 1
   - definition: {fileID: 11400000, guid: f17b1161393bbfd43b7e28ff999fc427, type: 2}
     prefab: {fileID: 361522432088089468, guid: 8265835590505fe4b905b2cbfc100653, type: 3}
     useAsEntry: 1
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 8423f3efbfa9403086ba72407a7d6177, type: 2}
+    prefab: {fileID: 1000200, guid: f059b96ebcc7471b86f54319053a057f, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: d7419c58401748a598478a0bdcaedca7, type: 2}
+    prefab: {fileID: 1000200, guid: b16912fed09548c2a31fea2ca7837241, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: efe6b816ba68477889b40dd677299907, type: 2}
+    prefab: {fileID: 1000200, guid: f1cb3bd3c99542ba975e8b6148a477f0, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 13518a729d544587b8e8670c231e71bd, type: 2}
+    prefab: {fileID: 1000200, guid: 51432ef7667442ce980a177c1008e446, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 156cf06ab1fa432a8eda0acef31864c9, type: 2}
+    prefab: {fileID: 1000200, guid: 710bc156adaf4a5fac3e7fb6563a5ff0, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 60aa73b9cd824eb39f16c3bc3babc088, type: 2}
+    prefab: {fileID: 1000200, guid: 91064eadceb848029b8310113085e4a6, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 87aa7507e46049b59bb77ddbdb25a946, type: 2}
+    prefab: {fileID: 1000200, guid: c758fc93e88042958a1d18ea2fceb932, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 7f94c468572c41f49cdb0e7c8e5b5eb1, type: 2}
+    prefab: {fileID: 1000200, guid: ecba1c7f69534010a5431586fd8e2eb0, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 2519143f3b894ee1a0a44ba81bf586f7, type: 2}
+    prefab: {fileID: 1000200, guid: 0a1869a2d0874083a762dc1fd20748cd, type: 3}
+    useAsEntry: 0
+    includeInGenerationPool: 1
+  - definition: {fileID: 11400000, guid: 1b150a77eec948b6853556715fabcb74, type: 2}
+    prefab: {fileID: 1000200, guid: acd9d5cfe0194af1bdee9657f512facd, type: 3}
+    useAsEntry: 0
     includeInGenerationPool: 1
   playerController: {fileID: 1454137231}
   proceduralFloorOrigin: {x: 0, y: 0, z: 0}
