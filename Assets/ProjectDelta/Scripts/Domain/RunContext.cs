@@ -46,6 +46,11 @@ namespace ProjectDelta.Domain
             Battle = new BattleRunState();
             Reward = new RewardRunState();
             Statistics = new RunStatistics();
+
+            // 115일차: NpcRelationshipRegistry는 static 저장소라 새 회차를 시작할 때마다
+            // 비워야 이전 회차의 NPC 관계가 새 회차로 새어 들어가지 않는다. 이어하기라면
+            // 바로 뒤에 DungeonSaveMapper.ApplyBasics가 저장된 값으로 다시 채운다.
+            NpcRelationshipRegistry.Clear();
         }
 
         // 24일차: ApplicationFlow.StartNewGame()/ContinueGame()에서 호출한다.

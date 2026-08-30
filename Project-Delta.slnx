@@ -1,6 +1,6 @@
 ﻿<Solution>
-  <Project Path="ProjectDelta.Domain.csproj" />
   <Project Path="ProjectDelta.Tests.EditMode.csproj" />
+  <Project Path="ProjectDelta.Domain.csproj" />
   <Project Path="ProjectDelta.Application.csproj" />
   <Project Path="ProjectDelta.Editor.csproj" />
   <Project Path="ProjectDelta.Infrastructure.csproj" />

@@ -29,6 +29,10 @@ namespace ProjectDelta.Data
         // 109일차: 발생·확정된 이벤트 플래그 목록(EventRunState.Flags 그대로).
         public List<string> EventFlags =
             new List<string>();
+
+        // 115일차: NPC 관계 상태(NpcRelationshipRegistry) 전체를 그대로 저장한다.
+        public List<NpcRunState> NpcStates =
+            new List<NpcRunState>();
     }
 
     [Serializable]
@@ -235,5 +239,16 @@ namespace ProjectDelta.Data
 
         public bool IsHostile;
         public bool IsUsingService;
+    }
+
+    // 115일차: NpcRelationshipRegistry의 상태 하나를 그대로 옮겨 담는다.
+    [Serializable]
+    public sealed class NpcRunState
+    {
+        public string NpcId;
+        public int Affinity;
+        public int EncounterCount;
+        public bool IsHostile;
+        public bool HasBeenRescued;
     }
 }

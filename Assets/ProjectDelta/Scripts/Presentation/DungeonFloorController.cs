@@ -70,6 +70,22 @@ namespace ProjectDelta.Presentation
         public IReadOnlyDictionary<string, ExplorationMonsterMarker> SpawnedMonsters => spawnedMonsters;
         public DungeonEncounterLayout CurrentEncounterLayout => currentEncounterLayout;
 
+        // 115일차: 적대로 전환된 NPC를 기존 몬스터 조우 파이프라인(TryBeginEncounterAtCurrentPosition)에
+        // 그대로 태워보내기 위한 등록 통로 - 몬스터처럼 이 방의 "현재 조우 대상"이 된다.
+        public void RegisterRuntimeMonsterMarker(
+            string roomId,
+            ExplorationMonsterMarker marker)
+        {
+            if (string.IsNullOrEmpty(roomId)
+                || marker == null)
+            {
+                return;
+            }
+
+            spawnedMonsters[roomId] =
+                marker;
+        }
+
         // 76일차: 몬스터 그룹 구성(RoomEncounterAssignment.MonsterDefinitionIds)은 ID 문자열만
         // 들고 있으므로, 실제 전투를 만들 때 그 ID로 MonsterDefinition 에셋을 다시 찾아야 한다.
         // 78일차: 던전이 defaultMonsterEncounter 하나가 아니라 여러 EncounterDefinition을

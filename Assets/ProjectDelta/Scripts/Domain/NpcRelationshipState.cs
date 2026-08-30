@@ -10,11 +10,28 @@ namespace ProjectDelta.Domain
         private int affinity;
         private int encounterCount;
         private bool isHostile;
+        private bool hasBeenRescued;
 
         public NpcRelationshipState(
             string npcId,
             int initialAffinity,
             bool startsHostile)
+            : this(
+                npcId,
+                initialAffinity,
+                startsHostile,
+                0,
+                false)
+        {
+        }
+
+        // 115일차: 저장 데이터 복원용 - 조우 횟수·구조 여부까지 그대로 되살린다.
+        public NpcRelationshipState(
+            string npcId,
+            int initialAffinity,
+            bool startsHostile,
+            int savedEncounterCount,
+            bool savedHasBeenRescued)
         {
             this.npcId =
                 npcId;
@@ -25,12 +42,21 @@ namespace ProjectDelta.Domain
 
             isHostile =
                 startsHostile;
+
+            encounterCount =
+                savedEncounterCount < 0
+                    ? 0
+                    : savedEncounterCount;
+
+            hasBeenRescued =
+                savedHasBeenRescued;
         }
 
         public string NpcId => npcId;
         public int Affinity => affinity;
         public int EncounterCount => encounterCount;
         public bool IsHostile => isHostile;
+        public bool HasBeenRescued => hasBeenRescued;
         public NpcRelationshipStage Stage => NpcRelationshipRules.GetStage(affinity);
 
         public void RegisterEncounter()
@@ -51,6 +77,13 @@ namespace ProjectDelta.Domain
         {
             isHostile =
                 hostile;
+        }
+
+        // 115일차: "구조"는 NPC 한 명당 한 번만 허용한다.
+        public void MarkRescued()
+        {
+            hasBeenRescued =
+                true;
         }
 
         private static int ClampAffinity(

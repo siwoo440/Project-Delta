@@ -197,6 +197,33 @@ namespace ProjectDelta.Data
             data.EventFlags.Sort(
                 StringComparer.Ordinal);
 
+            // 115일차: NPC 관계 상태 전체를 저장한다 - 층 이동·불러오기 후에도
+            // 호감도·적대 상태가 유지되게 한다.
+            foreach (KeyValuePair<string, NpcRelationshipState> pair
+                     in NpcRelationshipRegistry.All)
+            {
+                if (pair.Value == null)
+                {
+                    continue;
+                }
+
+                data.NpcStates.Add(
+                    new NpcRunState
+                    {
+                        NpcId = pair.Key,
+                        Affinity = pair.Value.Affinity,
+                        EncounterCount = pair.Value.EncounterCount,
+                        IsHostile = pair.Value.IsHostile,
+                        HasBeenRescued = pair.Value.HasBeenRescued
+                    });
+            }
+
+            data.NpcStates.Sort(
+                (left, right) =>
+                    string.CompareOrdinal(
+                        left.NpcId,
+                        right.NpcId));
+
             return data;
         }
 
@@ -378,6 +405,30 @@ namespace ProjectDelta.Data
             // 불러오기 후 다시 실행되지 않게 한다.
             context.Events.RestoreFrom(
                 savedRun.EventFlags);
+
+            // 115일차: NPC 관계 상태를 복원한다 - NpcRelationshipRegistry는 정적 저장소라
+            // 새 프로세스/새 회차에서도 이전 값이 남아있을 수 있으므로 먼저 비운다.
+            NpcRelationshipRegistry.Clear();
+
+            if (savedRun.NpcStates != null)
+            {
+                foreach (NpcRunState npcState in savedRun.NpcStates)
+                {
+                    if (npcState == null
+                        || string.IsNullOrEmpty(
+                            npcState.NpcId))
+                    {
+                        continue;
+                    }
+
+                    NpcRelationshipRegistry.Restore(
+                        npcState.NpcId,
+                        npcState.Affinity,
+                        npcState.IsHostile,
+                        npcState.EncounterCount,
+                        npcState.HasBeenRescued);
+                }
+            }
         }
 
         public static void BeginRestore(

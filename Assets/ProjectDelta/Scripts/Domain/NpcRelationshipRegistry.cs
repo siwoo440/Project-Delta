@@ -2,12 +2,40 @@ using System.Collections.Generic;
 
 namespace ProjectDelta.Domain
 {
-    // 113일차: 세이브 구조 연결 전까지 고유 NPC별 관계 상태를 플레이 세션 안에서 공유한다.
-    // 115일차 관계 저장 구현 시 이 저장소의 내용을 영구 저장 데이터로 옮긴다.
+    // 113일차: 고유 NPC별 관계 상태를 플레이 세션 안에서 공유한다.
+    // 115일차: 저장/불러오기 시점에 DungeonSaveMapper가 Restore/All을 통해
+    // 이 저장소 전체를 RunData와 동기화한다 - 그래서 층 이동·재접속 후에도
+    // 호감도·적대 상태가 유지된다.
     public static class NpcRelationshipRegistry
     {
         private static readonly Dictionary<string, NpcRelationshipState> States =
             new Dictionary<string, NpcRelationshipState>();
+
+        public static IReadOnlyDictionary<string, NpcRelationshipState> All =>
+            States;
+
+        // 저장 데이터에 있던 상태 하나를 그대로 등록한다(이미 있으면 덮어쓴다).
+        public static void Restore(
+            string npcId,
+            int affinity,
+            bool isHostile,
+            int encounterCount,
+            bool hasBeenRescued)
+        {
+            if (string.IsNullOrEmpty(
+                    npcId))
+            {
+                return;
+            }
+
+            States[npcId] =
+                new NpcRelationshipState(
+                    npcId,
+                    affinity,
+                    isHostile,
+                    encounterCount,
+                    hasBeenRescued);
+        }
 
         public static NpcRelationshipState GetOrCreate(
             string npcId,
