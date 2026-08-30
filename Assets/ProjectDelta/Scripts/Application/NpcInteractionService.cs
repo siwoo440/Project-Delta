@@ -36,7 +36,7 @@ namespace ProjectDelta.Application
 
                     return new NpcInteractionResult(
                         NpcInteractionResultType.OpenService,
-                        $"서비스 연결 준비 완료: {definition.ServiceTypes} / 실제 기능은 114일차에서 확장합니다.");
+                        "이용할 서비스를 선택하세요.");
 
                 case NpcInteractionCommand.Leave:
                 default:

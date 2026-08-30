@@ -6,14 +6,55 @@ using UnityEngine;
 
 namespace ProjectDelta.Presentation
 {
-    // 113일차: 정식 NPC 배치 규칙을 만들기 전, 첫 번째 테스트 NPC 한 명을 절차 던전에 자동 배치한다.
+    // 113일차: 정식 NPC 배치 규칙을 만들기 전, 첫 번째 테스트 NPC 한 명을 절차 던전에 자동 배치했다.
+    // 114일차: 서비스별로 하나씩(상인/치료사/지도사/보물사냥꾼) 총 4명을 배치하도록 확장한다 -
+    // 실제 방 선정·서비스 데이터 소스는 아직 정식 콘텐츠가 아니라 역할별 런타임 정의다.
     public sealed class NpcRuntimeBootstrapController : MonoBehaviour
     {
-        private const string TestNpcId = "NPC_MERCHANT_TEST";
+        private struct NpcRoleConfig
+        {
+            public string Id;
+            public string DisplayName;
+            public NpcServiceType ServiceTypes;
+
+            public NpcRoleConfig(
+                string id,
+                string displayName,
+                NpcServiceType serviceTypes)
+            {
+                Id = id;
+                DisplayName = displayName;
+                ServiceTypes = serviceTypes;
+            }
+        }
+
+        private static readonly NpcRoleConfig[] RoleConfigs =
+        {
+            new NpcRoleConfig(
+                "NPC_MERCHANT_TEST",
+                "상인",
+                NpcServiceType.Trade),
+            new NpcRoleConfig(
+                "NPC_HEALER_TEST",
+                "치료사",
+                NpcServiceType.Healing),
+            new NpcRoleConfig(
+                "NPC_GUIDE_TEST",
+                "지도사",
+                NpcServiceType.MapInformation
+                | NpcServiceType.ExplorationInformation),
+            new NpcRoleConfig(
+                "NPC_TREASURE_HUNTER_TEST",
+                "보물사냥꾼",
+                NpcServiceType.RelicTrade
+                | NpcServiceType.RelicResearch)
+        };
 
         private PlayerGridMovementController movementController;
         private DungeonFloorController floorController;
-        private NpcDefinition runtimeDefinition;
+        private readonly List<NpcDefinition> runtimeDefinitions =
+            new List<NpcDefinition>();
+
         private bool spawnCompleted;
 
         private void Awake()
@@ -46,46 +87,69 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            if (!TrySpawnTestNpc())
-            {
-                return;
-            }
+            SpawnRoleNpcs();
 
             spawnCompleted =
                 true;
         }
 
-        private bool TrySpawnTestNpc()
+        private void SpawnRoleNpcs()
         {
             List<RoomView> candidates =
                 CollectTargetRooms();
 
-            for (int roomIndex = 0;
-                 roomIndex < candidates.Count;
-                 roomIndex++)
+            int candidateIndex =
+                0;
+
+            for (int roleIndex = 0;
+                 roleIndex < RoleConfigs.Length;
+                 roleIndex++)
             {
-                RoomView targetRoom =
-                    candidates[roomIndex];
+                NpcRoleConfig role =
+                    RoleConfigs[roleIndex];
 
-                if (!TryChooseSpawnPosition(
-                        targetRoom,
-                        out GridPosition spawnPosition))
+                bool spawned =
+                    false;
+
+                // 이미 소진한 방부터 다시 훑되, 방마다 실제로 빈 칸이 있는지는
+                // TryChooseSpawnPosition이 최종 판단한다 - 방이 모자라면 재사용한다.
+                for (int attempt = 0;
+                     attempt < candidates.Count
+                     && !spawned;
+                     attempt++)
                 {
-                    continue;
+                    int index =
+                        (candidateIndex + attempt)
+                        % candidates.Count;
+
+                    RoomView targetRoom =
+                        candidates[index];
+
+                    if (!TryChooseSpawnPosition(
+                            targetRoom,
+                            role.Id,
+                            out GridPosition spawnPosition))
+                    {
+                        continue;
+                    }
+
+                    CreateRoleNpc(
+                        targetRoom,
+                        spawnPosition,
+                        role);
+
+                    candidateIndex =
+                        index + 1;
+
+                    spawned =
+                        true;
                 }
-
-                CreateTestNpc(
-                    targetRoom,
-                    spawnPosition);
-
-                return true;
             }
-
-            return false;
         }
 
         private bool TryChooseSpawnPosition(
             RoomView targetRoom,
+            string npcId,
             out GridPosition spawnPosition)
         {
             spawnPosition =
@@ -122,22 +186,35 @@ namespace ProjectDelta.Presentation
                 targetRoom.PassageController.CanPass,
                 floorController.CurrentSuccessfulSeed,
                 targetRoom.PassageController.RoomId,
-                TestNpcId,
+                npcId,
                 out spawnPosition);
         }
 
-        private void CreateTestNpc(
+        private void CreateRoleNpc(
             RoomView targetRoom,
-            GridPosition spawnPosition)
+            GridPosition spawnPosition,
+            NpcRoleConfig role)
         {
             NpcDefinition npcDefinition =
-                GetOrCreateRuntimeDefinition();
+                GetOrCreateRuntimeDefinition(
+                    role);
 
             NpcRelationshipState relationship =
                 NpcRelationshipRegistry.GetOrCreate(
                     npcDefinition.Id,
                     npcDefinition.InitialAffinity,
                     npcDefinition.StartsHostile);
+
+            NpcServiceRunState serviceState =
+                new NpcServiceRunState();
+
+            if ((role.ServiceTypes
+                    & NpcServiceType.Trade)
+                != 0)
+            {
+                serviceState.Shop.SetProducts(
+                    NpcShopStockBuilder.BuildDefaultStock());
+            }
 
             GameObject npcObject =
                 GameObject.CreatePrimitive(
@@ -182,11 +259,8 @@ namespace ProjectDelta.Presentation
             if (npcRenderer != null)
             {
                 npcRenderer.material.color =
-                    new Color(
-                        0.30f,
-                        0.78f,
-                        0.95f,
-                        1f);
+                    GetRoleColor(
+                        role.ServiceTypes);
             }
 
             RoomContentMarker roomMarker =
@@ -201,13 +275,46 @@ namespace ProjectDelta.Presentation
 
             npcMarker.Configure(
                 npcDefinition,
-                relationship);
+                relationship,
+                serviceState);
 
             targetRoom.RefreshMarkers();
 
             Debug.Log(
-                $"[Project Delta] 113일차 테스트 NPC 배치 / {npcDefinition.DisplayName} / Room={targetRoom.PassageController.RoomId} / Position={spawnPosition}",
+                $"[Project Delta] 114일차 NPC 배치 / {npcDefinition.DisplayName} / Room={targetRoom.PassageController.RoomId} / Position={spawnPosition}",
                 this);
+        }
+
+        private static Color GetRoleColor(
+            NpcServiceType serviceTypes)
+        {
+            if ((serviceTypes & NpcServiceType.Trade) != 0)
+            {
+                return new Color(0.30f, 0.78f, 0.95f, 1f);
+            }
+
+            if ((serviceTypes & NpcServiceType.Healing) != 0)
+            {
+                return new Color(0.35f, 0.90f, 0.45f, 1f);
+            }
+
+            if ((serviceTypes
+                    & (NpcServiceType.MapInformation
+                        | NpcServiceType.ExplorationInformation))
+                != 0)
+            {
+                return new Color(0.95f, 0.85f, 0.30f, 1f);
+            }
+
+            if ((serviceTypes
+                    & (NpcServiceType.RelicTrade
+                        | NpcServiceType.RelicResearch))
+                != 0)
+            {
+                return new Color(0.75f, 0.35f, 0.90f, 1f);
+            }
+
+            return new Color(0.7f, 0.7f, 0.7f, 1f);
         }
 
         private List<RoomView> CollectTargetRooms()
@@ -338,42 +445,52 @@ namespace ProjectDelta.Presentation
             return occupied;
         }
 
-        private NpcDefinition GetOrCreateRuntimeDefinition()
+        private NpcDefinition GetOrCreateRuntimeDefinition(
+            NpcRoleConfig role)
         {
-            if (runtimeDefinition != null)
+            for (int i = 0; i < runtimeDefinitions.Count; i++)
             {
-                return runtimeDefinition;
+                if (runtimeDefinitions[i] != null
+                    && runtimeDefinitions[i].Id == role.Id)
+                {
+                    return runtimeDefinitions[i];
+                }
             }
 
-            runtimeDefinition =
+            NpcDefinition definition =
                 ScriptableObject.CreateInstance<NpcDefinition>();
 
-            runtimeDefinition.name =
-                TestNpcId;
+            definition.name =
+                role.Id;
 
-            runtimeDefinition.hideFlags =
+            definition.hideFlags =
                 HideFlags.DontSave;
 
-            runtimeDefinition.ConfigureRuntime(
-                TestNpcId,
-                "상인",
-                NpcServiceType.Trade,
+            definition.ConfigureRuntime(
+                role.Id,
+                role.DisplayName,
+                role.ServiceTypes,
                 NpcHostilityMode.CanBecomeHostile,
                 0);
 
-            return runtimeDefinition;
+            runtimeDefinitions.Add(
+                definition);
+
+            return definition;
         }
 
         private void OnDestroy()
         {
-            if (runtimeDefinition != null)
+            for (int i = 0; i < runtimeDefinitions.Count; i++)
             {
-                Destroy(
-                    runtimeDefinition);
-
-                runtimeDefinition =
-                    null;
+                if (runtimeDefinitions[i] != null)
+                {
+                    Destroy(
+                        runtimeDefinitions[i]);
+                }
             }
+
+            runtimeDefinitions.Clear();
         }
     }
 }

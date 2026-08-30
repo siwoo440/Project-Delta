@@ -89,6 +89,33 @@ namespace ProjectDelta.Domain
             return true;
         }
 
+        // 114일차: 저주 제거·희생 등 NPC 서비스가 유물을 목록에서 빼야 해서 추가했다.
+        // RemoveRelic도 AddRelic과 같은 이유로 internal - 같은 Domain 어셈블리의
+        // 서비스(NpcRelicService)를 통해서만 호출되어야 한다.
+        internal bool RemoveRelic(
+            string relicId)
+        {
+            if (string.IsNullOrEmpty(
+                    relicId))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < relics.Count; i++)
+            {
+                if (relics[i] != null
+                    && relics[i].RelicId == relicId)
+                {
+                    relics.RemoveAt(
+                        i);
+
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // 기타 영구 강화(139일차 예정)로 최대 보유 수가 늘어날 수 있어 미리 열어둔다.
         public void SetMaxCapacity(
             int maxCapacity)
