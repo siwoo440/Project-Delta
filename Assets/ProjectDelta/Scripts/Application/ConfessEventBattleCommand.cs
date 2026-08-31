@@ -1,25 +1,25 @@
 namespace ProjectDelta.Application
 {
-    // 117일차: 정력을 써서 안전하게 조금씩 쌓는 행동. 구애(CourtEventBattleCommand)보다
-    // 상승폭은 작지만 능력치 차이에 흔들리지 않고 항상 일정하게 오른다.
-    public sealed class SootheEventBattleCommand : IEventBattleCommand
+    // 118일차: 공통 행동 12종 중 하나. 마나를 크게 쓰는 대신 성공하면 호감도가 크게 오르는
+    // 고위험 행동 - 대신 주도권 보정이 크게 깎여 다음 차례를 넘겨줄 확률이 높아진다.
+    public sealed class ConfessEventBattleCommand : IEventBattleCommand
     {
-        private const int BaseFavorGain = 6;
+        private const int BaseFavorGain = 20;
 
         public string Id =>
-            "Soothe";
+            "Confess";
 
         public string DisplayName =>
-            "달래기";
+            "고백";
 
         public int ManaCost =>
-            0;
+            15;
 
         public int StaminaCost =>
-            8;
+            0;
 
         public int InitiativeModifier =>
-            0;
+            -2;
 
         public EventBattleCommandResult Execute(
             EventBattleContext context,
@@ -35,22 +35,27 @@ namespace ProjectDelta.Application
                     "현재 이벤트 전투 정보가 없습니다.");
             }
 
-            if (!context.Player.TrySpendStamina(
-                    StaminaCost))
+            if (!context.Player.TrySpendMana(
+                    ManaCost))
             {
                 return EventBattleCommandResult.Reject(
                     Id,
-                    "정력이 부족합니다.");
+                    "마나가 부족합니다.");
             }
+
+            int statDelta =
+                context.Player.Charm
+                - context.Target.Resistance;
 
             int variance =
                 rng.NextInt(
-                    -1,
-                    3);
+                    -4,
+                    6);
 
             int favorGained =
                 (int)(
                     (BaseFavorGain
+                        + statDelta
                         + variance)
                     * context.PlayerActionFavorMultiplier);
 
@@ -65,7 +70,7 @@ namespace ProjectDelta.Application
 
             return EventBattleCommandResult.Accept(
                 Id,
-                $"달래기 / 호감도 +{favorGained}",
+                $"고백 / 호감도 +{favorGained}",
                 favorGained);
         }
     }

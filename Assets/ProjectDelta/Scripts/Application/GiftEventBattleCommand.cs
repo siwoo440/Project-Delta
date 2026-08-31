@@ -1,25 +1,25 @@
 namespace ProjectDelta.Application
 {
-    // 117일차: 정력을 써서 안전하게 조금씩 쌓는 행동. 구애(CourtEventBattleCommand)보다
-    // 상승폭은 작지만 능력치 차이에 흔들리지 않고 항상 일정하게 오른다.
-    public sealed class SootheEventBattleCommand : IEventBattleCommand
+    // 118일차: 공통 행동 12종 중 하나. 달래기(SootheEventBattleCommand)와 같이 정력 기반 -
+    // 능력치와 무관하게 안정적으로 오르지만 주도권을 다음으로 넘겨줄 확률이 높다.
+    public sealed class GiftEventBattleCommand : IEventBattleCommand
     {
-        private const int BaseFavorGain = 6;
+        private const int BaseFavorGain = 10;
 
         public string Id =>
-            "Soothe";
+            "Gift";
 
         public string DisplayName =>
-            "달래기";
+            "선물";
 
         public int ManaCost =>
             0;
 
         public int StaminaCost =>
-            8;
+            10;
 
         public int InitiativeModifier =>
-            0;
+            -1;
 
         public EventBattleCommandResult Execute(
             EventBattleContext context,
@@ -45,8 +45,8 @@ namespace ProjectDelta.Application
 
             int variance =
                 rng.NextInt(
-                    -1,
-                    3);
+                    -2,
+                    4);
 
             int favorGained =
                 (int)(
@@ -65,7 +65,7 @@ namespace ProjectDelta.Application
 
             return EventBattleCommandResult.Accept(
                 Id,
-                $"달래기 / 호감도 +{favorGained}",
+                $"선물 / 호감도 +{favorGained}",
                 favorGained);
         }
     }

@@ -1,25 +1,24 @@
 namespace ProjectDelta.Application
 {
-    // 117일차: 정력을 써서 안전하게 조금씩 쌓는 행동. 구애(CourtEventBattleCommand)보다
-    // 상승폭은 작지만 능력치 차이에 흔들리지 않고 항상 일정하게 오른다.
-    public sealed class SootheEventBattleCommand : IEventBattleCommand
+    // 118일차: 공통 행동 12종 중 하나. 정력 기반 - 가장 값싸고 주도권 보정이 가장 크다.
+    public sealed class WinkEventBattleCommand : IEventBattleCommand
     {
-        private const int BaseFavorGain = 6;
+        private const int BaseFavorGain = 4;
 
         public string Id =>
-            "Soothe";
+            "Wink";
 
         public string DisplayName =>
-            "달래기";
+            "윙크";
 
         public int ManaCost =>
             0;
 
         public int StaminaCost =>
-            8;
+            4;
 
         public int InitiativeModifier =>
-            0;
+            3;
 
         public EventBattleCommandResult Execute(
             EventBattleContext context,
@@ -65,7 +64,7 @@ namespace ProjectDelta.Application
 
             return EventBattleCommandResult.Accept(
                 Id,
-                $"달래기 / 호감도 +{favorGained}",
+                $"윙크 / 호감도 +{favorGained}",
                 favorGained);
         }
     }

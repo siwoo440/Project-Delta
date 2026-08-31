@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ProjectDelta.Data
@@ -34,6 +36,17 @@ namespace ProjectDelta.Data
         [Header("80일차 전투 드롭")]
         [SerializeField] private MonsterDropTable dropTable;
 
+        // 118일차: 별도 이벤트 전투 공통 행동 12종 중 이 종족이 강점(적게 반응, 50%)·약점
+        // (크게 반응, 150%)을 보이는 행동 ID들. 아직 몬스터별 실제 상성 데이터를 입력하는
+        // 133~135일차(몬스터 콘텐츠 완성) 전이라 기본값은 빈 배열 - 지정되지 않은 행동은
+        // 전부 보통(100%)으로 취급된다(EventBattleAffinityRule).
+        [Header("118일차 이벤트 전투 상성 (강점4·약점4, 나머지는 보통)")]
+        [SerializeField] private string[] eventBattleStrongActionIds =
+            Array.Empty<string>();
+
+        [SerializeField] private string[] eventBattleWeakActionIds =
+            Array.Empty<string>();
+
         public string DisplayName => displayName;
         public MonsterRarity Rarity => rarity;
 
@@ -56,5 +69,13 @@ namespace ProjectDelta.Data
 
         public MonsterDropTable DropTable =>
             dropTable;
+
+        public IReadOnlyList<string> EventBattleStrongActionIds =>
+            eventBattleStrongActionIds
+            ?? Array.Empty<string>();
+
+        public IReadOnlyList<string> EventBattleWeakActionIds =>
+            eventBattleWeakActionIds
+            ?? Array.Empty<string>();
     }
 }

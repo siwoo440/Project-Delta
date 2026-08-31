@@ -19,6 +19,9 @@ namespace ProjectDelta.Application
         public int StaminaCost =>
             0;
 
+        public int InitiativeModifier =>
+            2;
+
         public EventBattleCommandResult Execute(
             EventBattleContext context,
             IRandomSource rng)
@@ -51,9 +54,11 @@ namespace ProjectDelta.Application
                     4);
 
             int favorGained =
-                BaseFavorGain
-                + statDelta
-                + variance;
+                (int)(
+                    (BaseFavorGain
+                        + statDelta
+                        + variance)
+                    * context.PlayerActionFavorMultiplier);
 
             if (favorGained < 0)
             {

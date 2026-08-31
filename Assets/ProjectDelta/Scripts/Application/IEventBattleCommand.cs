@@ -13,6 +13,9 @@ namespace ProjectDelta.Application
 
         int StaminaCost { get; }
 
+        // 118일차: 이 행동을 쓴 쪽이 다음 주도권 굴림에서 받는 보정치 - EventBattleInitiativeRule 참고.
+        int InitiativeModifier { get; }
+
         EventBattleCommandResult Execute(
             EventBattleContext context,
             IRandomSource rng);

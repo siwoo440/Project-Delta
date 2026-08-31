@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ProjectDelta.Application;
 using ProjectDelta.Data;
 using UnityEngine;
@@ -9,25 +10,30 @@ namespace ProjectDelta.Presentation
     // 전투 화면. EventBattleEntryService.TryEnter()로 시작해, 승리(호감도 100)·패배(자원 고갈)·
     // 중단(포기) 중 하나로 끝나면 호출자가 넘겨준 콜백으로 결과를 돌려준다 - 이 컨트롤러
     // 자신은 "이겼을 때 무엇을 할지"를 모른다(115~116일차 확립된 관심사 분리 원칙).
+    // 118일차: 공통 행동 12종(EventBattleActionCatalog)·주도권(누구 차례인가)·종족 상성
+    // 배율을 추가했다 - 이제 플레이어만 계속 누르는 게 아니라 몬스터도 차례를 가져가
+    // 저항한다.
     public sealed class EventBattleController : MonoBehaviour
     {
+        private const float ButtonWidth = 128f;
+        private const float ButtonHeight = 34f;
+        private const int ButtonsPerRow = 4;
+
         [SerializeField] private DungeonFloorController floorController;
 
         private readonly EventBattleSession session =
             new EventBattleSession();
 
-        private readonly IEventBattleCommand courtCommand =
-            new CourtEventBattleCommand();
-
-        private readonly IEventBattleCommand sootheCommand =
-            new SootheEventBattleCommand();
-
         private readonly IRandomSource rng =
             new CombatRng();
 
+        private MonsterDefinition targetDefinition;
+
         private Action onWon;
         private Action onLostOrAborted;
-        private string lastMessage;
+
+        // 118일차: 사용자 요청 - 플레이어 정보 아래에 지금 무슨 상태인지 글자로 항상 보여준다.
+        private string statusText;
 
         public bool IsActive =>
             session.IsActive;
@@ -67,14 +73,24 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
+            targetDefinition =
+                null;
+
+            if (floorController != null)
+            {
+                floorController.TryFindMonsterDefinition(
+                    target.DefinitionId,
+                    out targetDefinition);
+            }
+
             onWon =
                 beginOnWon;
 
             onLostOrAborted =
                 beginOnLostOrAborted;
 
-            lastMessage =
-                string.Empty;
+            statusText =
+                "당신의 차례입니다.";
 
             Debug.Log(
                 $"[Project Delta] 117일차 이벤트 전투 시작 / Source {source} / Target {target.InstanceId}",
@@ -83,16 +99,58 @@ namespace ProjectDelta.Presentation
             return true;
         }
 
-        public void ConfirmCourt()
+        // 118일차: 12종 공통 행동 중 하나를 플레이어 차례에 실행한다.
+        public void ConfirmAction(
+            IEventBattleCommand command)
         {
-            ExecuteAndResolve(
-                courtCommand);
-        }
+            if (!session.IsActive
+                || session.Context == null
+                || command == null
+                || session.Context.InitiativeHolder != EventBattleInitiativeHolder.Player)
+            {
+                return;
+            }
 
-        public void ConfirmSoothe()
-        {
-            ExecuteAndResolve(
-                sootheCommand);
+            EventBattleContext context =
+                session.Context;
+
+            context.PlayerActionFavorMultiplier =
+                EventBattleAffinityRule.ResolveMultiplier(
+                    targetDefinition != null
+                        ? targetDefinition.EventBattleStrongActionIds
+                        : null,
+                    targetDefinition != null
+                        ? targetDefinition.EventBattleWeakActionIds
+                        : null,
+                    command.Id);
+
+            EventBattleCommandResult result =
+                command.Execute(
+                    context,
+                    rng);
+
+            context.PlayerActionFavorMultiplier =
+                1f;
+
+            statusText =
+                result.Message;
+
+            if (!result.Accepted)
+            {
+                return;
+            }
+
+            if (context.HasWon)
+            {
+                Finish(
+                    EventBattleOutcome.Won);
+
+                return;
+            }
+
+            AdvanceInitiative(
+                command.InitiativeModifier,
+                0);
         }
 
         public void ConfirmAbort()
@@ -106,8 +164,50 @@ namespace ProjectDelta.Presentation
                 EventBattleOutcome.Aborted);
         }
 
-        private void ExecuteAndResolve(
-            IEventBattleCommand command)
+        // 118일차: 행동 처리 후 다음 주도권을 굴린다 - 몬스터가 가져가면 곧바로 저항 행동을
+        // 자동으로 처리하고, 다시 그 결과로 주도권을 굴린다(플레이어 차례가 될 때까지 반복).
+        private void AdvanceInitiative(
+            int playerActionInitiativeModifier,
+            int targetActionInitiativeModifier)
+        {
+            EventBattleContext context =
+                session.Context;
+
+            EventBattleInitiativeHolder next =
+                EventBattleInitiativeRule.RollNext(
+                    context.Player.Charm,
+                    playerActionInitiativeModifier,
+                    context.Target.Charm,
+                    targetActionInitiativeModifier,
+                    context.InitiativeHolder,
+                    rng);
+
+            context.SetInitiativeHolder(
+                next);
+
+            if (next == EventBattleInitiativeHolder.Target)
+            {
+                ResolveTargetTurn();
+
+                return;
+            }
+
+            if (!context.PlayerCanAct(
+                    EventBattleActionCatalog.All))
+            {
+                Finish(
+                    EventBattleOutcome.Lost);
+
+                return;
+            }
+
+            statusText =
+                "당신의 차례입니다.";
+        }
+
+        // 118일차: 몬스터도 같은 공통 행동 12종을 공유한다 - 무작위로 하나를 골라 "저항"
+        // 명목으로 호감도를 깎는다. 몬스터는 마나·정력을 쓰지 않으므로 항상 행동할 수 있다.
+        private void ResolveTargetTurn()
         {
             if (!session.IsActive
                 || session.Context == null)
@@ -115,34 +215,63 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            EventBattleCommandResult result =
-                command.Execute(
-                    session.Context,
-                    rng);
+            EventBattleContext context =
+                session.Context;
 
-            lastMessage =
-                result.Message;
+            IReadOnlyList<IEventBattleCommand> catalog =
+                EventBattleActionCatalog.All;
 
-            if (!result.Accepted)
-            {
-                return;
-            }
+            IEventBattleCommand flavor =
+                catalog[
+                    rng.NextInt(
+                        0,
+                        catalog.Count)];
 
-            if (session.Context.HasWon)
-            {
-                Finish(
-                    EventBattleOutcome.Won);
+            int resistBase =
+                5
+                + Mathf.Max(
+                    0,
+                    context.Target.Resistance
+                    - context.Player.Charm)
+                / 4;
 
-                return;
-            }
+            int variance =
+                rng.NextInt(
+                    -1,
+                    4);
 
-            if (!session.Context.PlayerCanAct(
-                    courtCommand.ManaCost,
-                    sootheCommand.StaminaCost))
+            int resistAmount =
+                Mathf.Max(
+                    0,
+                    resistBase
+                    + variance);
+
+            context.AddFavor(
+                -resistAmount);
+
+            string targetName =
+                ResolveTargetDisplayName(
+                    context);
+
+            statusText =
+                $"{targetName}이(가) {flavor.DisplayName}에 저항했다! 호감도 -{resistAmount}";
+
+            Debug.Log(
+                $"[Project Delta] 118일차 이벤트 전투 몬스터 차례 / {statusText}",
+                this);
+
+            if (!context.PlayerCanAct(
+                    catalog))
             {
                 Finish(
                     EventBattleOutcome.Lost);
+
+                return;
             }
+
+            AdvanceInitiative(
+                0,
+                flavor.InitiativeModifier);
         }
 
         private void Finish(
@@ -168,6 +297,9 @@ namespace ProjectDelta.Presentation
             onLostOrAborted =
                 null;
 
+            statusText =
+                string.Empty;
+
             callback?.Invoke();
         }
 
@@ -182,8 +314,24 @@ namespace ProjectDelta.Presentation
             EventBattleContext context =
                 session.Context;
 
-            const float width = 420f;
-            const float height = 170f;
+            IReadOnlyList<IEventBattleCommand> catalog =
+                EventBattleActionCatalog.All;
+
+            int rowCount =
+                Mathf.CeilToInt(
+                    catalog.Count
+                    / (float)ButtonsPerRow);
+
+            float width =
+                ButtonsPerRow
+                * (ButtonWidth + 8f)
+                + 24f;
+
+            float height =
+                150f
+                + rowCount
+                * (ButtonHeight + 6f)
+                + 44f;
 
             Rect panelRect =
                 new Rect(
@@ -257,51 +405,89 @@ namespace ProjectDelta.Presentation
             GUILayout.Label(
                 $"호감도 {context.Favor} / {EventBattleContext.FavorToWin}   |   플레이어 MP {context.Player.CurrentMana}/{context.Player.MaxMana}   정력 {context.Player.CurrentStamina}/{context.Player.MaxStamina}");
 
-            if (!string.IsNullOrEmpty(
-                    lastMessage))
-            {
-                GUILayout.Label(
-                    lastMessage);
-            }
+            // 118일차: 플레이어 칸(정보 줄) 바로 아래에 지금 상태를 글자로 보여준다.
+            GUIStyle statusStyle =
+                new GUIStyle(GUI.skin.label)
+                {
+                    fontStyle = FontStyle.Italic
+                };
+
+            statusStyle.normal.textColor =
+                context.InitiativeHolder
+                == EventBattleInitiativeHolder.Player
+                    ? new Color(0.7f, 0.9f, 1f, 1f)
+                    : new Color(1f, 0.7f, 0.7f, 1f);
+
+            GUILayout.Label(
+                $"상태: {statusText}",
+                statusStyle);
 
             GUILayout.Space(
                 6f);
 
-            GUILayout.BeginHorizontal();
+            bool isPlayerTurn =
+                context.InitiativeHolder
+                == EventBattleInitiativeHolder.Player;
 
-            GUI.enabled =
-                context.Player.CurrentMana
-                >= courtCommand.ManaCost;
-
-            if (GUILayout.Button(
-                    $"구애 (MP {courtCommand.ManaCost})",
-                    GUILayout.Height(30f)))
+            for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
             {
-                ConfirmCourt();
-            }
+                GUILayout.BeginHorizontal();
 
-            GUI.enabled =
-                context.Player.CurrentStamina
-                >= sootheCommand.StaminaCost;
+                for (int column = 0; column < ButtonsPerRow; column++)
+                {
+                    int actionIndex =
+                        rowIndex
+                        * ButtonsPerRow
+                        + column;
 
-            if (GUILayout.Button(
-                    $"달래기 (정력 {sootheCommand.StaminaCost})",
-                    GUILayout.Height(30f)))
-            {
-                ConfirmSoothe();
+                    if (actionIndex >= catalog.Count)
+                    {
+                        break;
+                    }
+
+                    IEventBattleCommand action =
+                        catalog[actionIndex];
+
+                    bool affordable =
+                        context.Player.CurrentMana
+                        >= action.ManaCost
+                        && context.Player.CurrentStamina
+                        >= action.StaminaCost;
+
+                    GUI.enabled =
+                        isPlayerTurn
+                        && affordable;
+
+                    string costLabel =
+                        action.ManaCost > 0
+                            ? $"MP{action.ManaCost}"
+                            : $"정력{action.StaminaCost}";
+
+                    if (GUILayout.Button(
+                            $"{action.DisplayName} ({costLabel})",
+                            GUILayout.Width(ButtonWidth),
+                            GUILayout.Height(ButtonHeight)))
+                    {
+                        ConfirmAction(
+                            action);
+                    }
+                }
+
+                GUILayout.EndHorizontal();
             }
 
             GUI.enabled =
                 true;
 
+            GUILayout.Space(
+                6f);
+
             if (GUILayout.Button(
                     "포기",
-                    GUILayout.Height(30f)))
+                    GUILayout.Height(ButtonHeight)))
             {
                 ConfirmAbort();
             }
-
-            GUILayout.EndHorizontal();
 
             GUILayout.EndArea();
         }
@@ -309,15 +495,11 @@ namespace ProjectDelta.Presentation
         private string ResolveTargetDisplayName(
             EventBattleContext context)
         {
-            if (floorController != null
-                && floorController.TryFindMonsterDefinition(
-                    context.Target.DefinitionId,
-                    out MonsterDefinition definition)
-                && definition != null
+            if (targetDefinition != null
                 && !string.IsNullOrEmpty(
-                    definition.DisplayName))
+                    targetDefinition.DisplayName))
             {
-                return definition.DisplayName;
+                return targetDefinition.DisplayName;
             }
 
             return context.Target.InstanceId;

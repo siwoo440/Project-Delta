@@ -54,15 +54,14 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
-        public void PlayerCanAct_EnoughManaOrStamina_ReturnsTrue()
+        public void PlayerCanAct_AnyActionAffordable_ReturnsTrue()
         {
             EventBattleContext context =
                 CreateContext();
 
             Assert.IsTrue(
                 context.PlayerCanAct(
-                    10,
-                    8));
+                    EventBattleActionCatalog.All));
         }
 
         [Test]
@@ -104,8 +103,7 @@ namespace ProjectDelta.Tests.EditMode
 
             Assert.IsFalse(
                 context.PlayerCanAct(
-                    10,
-                    8));
+                    EventBattleActionCatalog.All));
         }
 
         private static EventBattleContext CreateContext()
