@@ -78,6 +78,10 @@ namespace ProjectDelta.Presentation
         private const string TestPlayerInstanceId = "PLAYER";
         private const int TestPlayerAccuracy = 90;
 
+        // 117일차: 유혇 성공 시 넘어가는 별도 이벤트 전투. 씬에 직접 배치하지 않고
+        // EventBattleRuntimeInstaller가 Player에 자동으로 붙이므로 여기서는 찾기만 한다.
+        private EventBattleController eventBattleController;
+
         private ExplorationMonsterMarker activeMonster;
         private bool wasMoving;
         private bool ownsExplorationControlLock;
@@ -185,6 +189,19 @@ namespace ProjectDelta.Presentation
                 floorController =
                     FindFirstObjectByType<DungeonFloorController>();
             }
+        }
+
+        // 117일차: EventBattleController는 EventBattleRuntimeInstaller가 씬 로드 시점에
+        // 따로 붙이므로, Awake 순서 경쟁을 피하려고 실제로 필요한 순간(유혇 성공)에만 찾는다.
+        private EventBattleController EnsureEventBattleController()
+        {
+            if (eventBattleController == null)
+            {
+                eventBattleController =
+                    FindFirstObjectByType<EventBattleController>();
+            }
+
+            return eventBattleController;
         }
 
         private void OnEnable()
@@ -1792,24 +1809,27 @@ namespace ProjectDelta.Presentation
             return ConfirmInfluenceAttempt(
                 persuadeCommand,
                 PersuadeBaseSuccessPercent,
-                "회유");
+                "회유",
+                triggersEventBattle: false);
         }
 
-        // 116일차: 유혹 - 회유와 같은 구조지만 기준 성공률이 더 낮다. 성공 시 전용 이벤트
-        // 전투로 분기하는 것은 아직 그 이벤트 전투 시스템이 없어 117일차 이후 과제로 남기고,
-        // 지금은 회유와 같은 결과(전투 종료)로 처리한다.
+        // 116일차: 유혹 - 회유와 같은 구조지만 기준 성공률이 더 낮다.
+        // 117일차: 성공하면 바로 평화롭게 끝나는 대신, 117일차에 만든 별도 이벤트 전투
+        // (EventBattleController)로 넘어간다 - 기획서가 요구한 "조우의 유혇, 전용 Context 전환".
         public BattleActionResult ConfirmSeduce()
         {
             return ConfirmInfluenceAttempt(
                 seduceCommand,
                 SeduceBaseSuccessPercent,
-                "유혹");
+                "유혹",
+                triggersEventBattle: true);
         }
 
         private BattleActionResult ConfirmInfluenceAttempt(
             IBattleCommand command,
             int baseSuccessPercent,
-            string logLabel)
+            string logLabel,
+            bool triggersEventBattle)
         {
             if (battleSession.State != BattleState.AwaitingAction
                 || battleSession.Context == null
@@ -1878,6 +1898,35 @@ namespace ProjectDelta.Presentation
 
             if (success)
             {
+                if (triggersEventBattle
+                    && EnsureEventBattleController() != null
+                    && eventBattleController.Begin(
+                        actor,
+                        target,
+                        EventBattleEntrySource.Seduction,
+                        () => FinishBattle(
+                            BattleOutcome.Escaped),
+                        () => ContinueBattleAfterFailedInfluence(
+                            declaration.CommandId,
+                            $"{logLabel} 성공 후 이벤트 전투 실패 / 전투로 복귀")))
+                {
+                    BattleActionResult eventStartedResult =
+                        BattleActionResult.Accept(
+                            declaration.CommandId,
+                            new[] { $"{logLabel} 성공 / 별도 이벤트 전투 시작" },
+                            Array.Empty<BattleDamageChange>(),
+                            Array.Empty<BattleParticipant>(),
+                            true,
+                            null);
+
+                    LastBattleActionResult =
+                        eventStartedResult;
+
+                    return eventStartedResult;
+                }
+
+                // eventBattleController가 없으면(테스트 씬 등) 117일차 이전처럼 곧바로
+                // 평화롭게 끝낸다 - 회유(triggersEventBattle=false)도 항상 이 경로를 탄다.
                 BattleResult battleEndResult =
                     FinishBattle(
                         BattleOutcome.Escaped);
@@ -1897,11 +1946,24 @@ namespace ProjectDelta.Presentation
                 return succeededResult;
             }
 
-            // 실패 - 도주 실패와 같은 방식으로 로그만 남기고 턴을 소모한다.
+            ContinueBattleAfterFailedInfluence(
+                declaration.CommandId,
+                resolutionMessage);
+
+            return LastBattleActionResult;
+        }
+
+        // 116일차: 회유/유혇 실패 시 로그만 남기고 턴을 소모한다(도주 실패와 같은 방식).
+        // 117일차: 유혇 성공 후 시작한 이벤트 전투가 패배·중단으로 끝났을 때도 똑같이
+        // "전투로 복귀"해야 해서 이 메서드로 뽑아 재사용한다.
+        private void ContinueBattleAfterFailedInfluence(
+            string commandId,
+            string message)
+        {
             BattleActionResult resolvedResult =
                 BattleActionResult.Accept(
-                    declaration.CommandId,
-                    new[] { resolutionMessage },
+                    commandId,
+                    new[] { message },
                     Array.Empty<BattleDamageChange>(),
                     Array.Empty<BattleParticipant>(),
                     true,
@@ -1914,12 +1976,12 @@ namespace ProjectDelta.Presentation
             {
                 TestAdvanceBattleTurn();
 
-                return resolvedResult;
+                return;
             }
 
             if (!battleSession.TryEndRound())
             {
-                return resolvedResult;
+                return;
             }
 
             if (BattleOutcomeEvaluator.TryEvaluate(
@@ -1929,12 +1991,12 @@ namespace ProjectDelta.Presentation
                 FinishBattle(
                     roundEndOutcome);
 
-                return resolvedResult;
+                return;
             }
 
             if (!battleSession.TryStartRound())
             {
-                return resolvedResult;
+                return;
             }
 
             Debug.Log(
@@ -1942,8 +2004,6 @@ namespace ProjectDelta.Presentation
                 this);
 
             TestAdvanceBattleTurn();
-
-            return resolvedResult;
         }
 
         // 116일차: 관찰 - 방어(ConfirmDefend)와 같은 구조로 턴을 소모하지만, 상태 변화 대신
