@@ -35,6 +35,11 @@ namespace ProjectDelta.Presentation
         [SerializeField] private Button defendButton;
         [SerializeField] private Button fleeButton;
 
+        // 116일차: 회유·유혹·관찰 - 공격과 같은 방식으로 대상 선택이 필요한 행동이다.
+        [SerializeField] private Button persuadeButton;
+        [SerializeField] private Button seduceButton;
+        [SerializeField] private Button observeButton;
+
         [SerializeField] private Button[] actionButtons =
             new Button[0];
 
@@ -147,6 +152,24 @@ namespace ProjectDelta.Presentation
                 fleeButton.onClick.AddListener(
                     OnFleeButtonClicked);
             }
+
+            if (persuadeButton != null)
+            {
+                persuadeButton.onClick.AddListener(
+                    OnPersuadeButtonClicked);
+            }
+
+            if (seduceButton != null)
+            {
+                seduceButton.onClick.AddListener(
+                    OnSeduceButtonClicked);
+            }
+
+            if (observeButton != null)
+            {
+                observeButton.onClick.AddListener(
+                    OnObserveButtonClicked);
+            }
         }
 
         private void BindEnemySlotClicks()
@@ -213,6 +236,24 @@ namespace ProjectDelta.Presentation
             {
                 fleeButton.onClick.RemoveListener(
                     OnFleeButtonClicked);
+            }
+
+            if (persuadeButton != null)
+            {
+                persuadeButton.onClick.RemoveListener(
+                    OnPersuadeButtonClicked);
+            }
+
+            if (seduceButton != null)
+            {
+                seduceButton.onClick.RemoveListener(
+                    OnSeduceButtonClicked);
+            }
+
+            if (observeButton != null)
+            {
+                observeButton.onClick.RemoveListener(
+                    OnObserveButtonClicked);
             }
         }
 
@@ -297,6 +338,36 @@ namespace ProjectDelta.Presentation
             }
 
             encounterController.ConfirmFlee();
+        }
+
+        private void OnPersuadeButtonClicked()
+        {
+            if (encounterController == null)
+            {
+                return;
+            }
+
+            encounterController.ConfirmPersuade();
+        }
+
+        private void OnSeduceButtonClicked()
+        {
+            if (encounterController == null)
+            {
+                return;
+            }
+
+            encounterController.ConfirmSeduce();
+        }
+
+        private void OnObserveButtonClicked()
+        {
+            if (encounterController == null)
+            {
+                return;
+            }
+
+            encounterController.ConfirmObserve();
         }
 
         private void RefreshBattleState()
@@ -730,6 +801,29 @@ namespace ProjectDelta.Presentation
             {
                 fleeButton.interactable =
                     playerCanAct;
+            }
+
+            bool playerHasTarget =
+                playerCanAct
+                && encounterController.SelectedBattleTarget
+                    != null;
+
+            if (persuadeButton != null)
+            {
+                persuadeButton.interactable =
+                    playerHasTarget;
+            }
+
+            if (seduceButton != null)
+            {
+                seduceButton.interactable =
+                    playerHasTarget;
+            }
+
+            if (observeButton != null)
+            {
+                observeButton.interactable =
+                    playerHasTarget;
             }
 
             bool isBattleActive =

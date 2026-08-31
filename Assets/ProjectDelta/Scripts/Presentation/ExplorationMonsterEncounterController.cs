@@ -48,6 +48,21 @@ namespace ProjectDelta.Presentation
         private readonly IBattleCommand fleeCommand =
             new FleeBattleCommand();
 
+        // 116일차: 전투 중 회유·유혹·관찰 - 이미 있던 공격·방어·도주와 같은 방식으로 붙는다.
+        private readonly IBattleCommand persuadeCommand =
+            new PersuadeBattleCommand();
+
+        private readonly IBattleCommand seduceCommand =
+            new SeduceBattleCommand();
+
+        private readonly IBattleCommand observeCommand =
+            new ObserveBattleCommand();
+
+        // 116일차: 회유/유혹 기준 성공률 - EncounterPersuasionRule.CalculateSuccessPercent 참고.
+        // 유혹이 회유보다 기준값이 낮다 - "더 위험한 시도"라는 차이를 능력치 없이 표현한다.
+        private const int PersuadeBaseSuccessPercent = 50;
+        private const int SeduceBaseSuccessPercent = 35;
+
         // 59일차: 기획서 9.3 "CombatRng - 명중·피해·상태 이상". 더 이상 UnityEngine.Random을
         // 전투 핵심 판정에 직접 쓰지 않고 이 발생원 하나에서만 뽑는다.
         private readonly IRandomSource combatRng =
@@ -143,6 +158,9 @@ namespace ProjectDelta.Presentation
         // 80일차: 가장 최근 승리에서 한 번 판정된 골드·아이템 드롭 결과.
         // 81일차 정식 보상 화면이 재추첨 없이 이 결과를 그대로 표시한다.
         public BattleDropResult LastBattleDropResult { get; private set; }
+
+        // 116일차: "관찰" 행동으로 확인한 대상 능력치 텍스트를 Battle HUD가 그대로 보여준다.
+        public string LastObservationText { get; private set; }
 
         public bool IsBattleRewardPending =>
             pendingVictoryEncounterResult != null
@@ -1760,6 +1778,277 @@ namespace ProjectDelta.Presentation
 
             Debug.Log(
                 $"[Project Delta] 69일차 Battle Round {battleSession.RoundNumber} Start",
+                this);
+
+            TestAdvanceBattleTurn();
+
+            return resolvedResult;
+        }
+
+        // 116일차: 회유 - 도주(ConfirmFlee)와 같은 구조지만, 판정은 BattleEscapeCalculator
+        // 대신 매력/저항 기반 EncounterPersuasionRule을 쓰고, 대상은 현재 선택된 적 하나다.
+        public BattleActionResult ConfirmPersuade()
+        {
+            return ConfirmInfluenceAttempt(
+                persuadeCommand,
+                PersuadeBaseSuccessPercent,
+                "회유");
+        }
+
+        // 116일차: 유혹 - 회유와 같은 구조지만 기준 성공률이 더 낮다. 성공 시 전용 이벤트
+        // 전투로 분기하는 것은 아직 그 이벤트 전투 시스템이 없어 117일차 이후 과제로 남기고,
+        // 지금은 회유와 같은 결과(전투 종료)로 처리한다.
+        public BattleActionResult ConfirmSeduce()
+        {
+            return ConfirmInfluenceAttempt(
+                seduceCommand,
+                SeduceBaseSuccessPercent,
+                "유혹");
+        }
+
+        private BattleActionResult ConfirmInfluenceAttempt(
+            IBattleCommand command,
+            int baseSuccessPercent,
+            string logLabel)
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleParticipant target =
+                battleSession.SelectedTarget;
+
+            BattleCommandResult declaration =
+                command.Execute(
+                    battleSession.Context,
+                    actor,
+                    target);
+
+            if (!declaration.Accepted)
+            {
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
+
+                Debug.LogWarning(
+                    $"[Project Delta] 116일차 {logLabel} 확정 실패 / {declaration.Message}",
+                    this);
+
+                return rejectedResult;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
+            }
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            bool success =
+                EncounterPersuasionRule.TryEvaluate(
+                    baseSuccessPercent,
+                    actor.Charm,
+                    target.Resistance,
+                    combatRng,
+                    out int successPercent);
+
+            string resolutionMessage =
+                success
+                    ? $"{logLabel} 성공 / {actor.InstanceId} → {target.InstanceId} (성공률 {successPercent}%)"
+                    : $"{logLabel} 실패 / {actor.InstanceId} → {target.InstanceId} (성공률 {successPercent}%)";
+
+            Debug.Log(
+                $"[Project Delta] 116일차 Battle {logLabel} 판정 / {resolutionMessage}",
+                this);
+
+            if (success)
+            {
+                BattleResult battleEndResult =
+                    FinishBattle(
+                        BattleOutcome.Escaped);
+
+                BattleActionResult succeededResult =
+                    BattleActionResult.Accept(
+                        declaration.CommandId,
+                        new[] { resolutionMessage },
+                        Array.Empty<BattleDamageChange>(),
+                        Array.Empty<BattleParticipant>(),
+                        true,
+                        battleEndResult);
+
+                LastBattleActionResult =
+                    succeededResult;
+
+                return succeededResult;
+            }
+
+            // 실패 - 도주 실패와 같은 방식으로 로그만 남기고 턴을 소모한다.
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { resolutionMessage },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    true,
+                    null);
+
+            LastBattleActionResult =
+                resolvedResult;
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                TestAdvanceBattleTurn();
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return resolvedResult;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return resolvedResult;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 116일차 Battle Round {battleSession.RoundNumber} Start",
+                this);
+
+            TestAdvanceBattleTurn();
+
+            return resolvedResult;
+        }
+
+        // 116일차: 관찰 - 방어(ConfirmDefend)와 같은 구조로 턴을 소모하지만, 상태 변화 대신
+        // 선택된 대상의 능력치를 LastObservationText에 담아 HUD가 보여줄 수 있게 한다.
+        public BattleActionResult ConfirmObserve()
+        {
+            if (battleSession.State != BattleState.AwaitingAction
+                || battleSession.Context == null
+                || battleSession.CurrentActor == null)
+            {
+                return null;
+            }
+
+            BattleParticipant actor =
+                battleSession.CurrentActor;
+
+            BattleParticipant target =
+                battleSession.SelectedTarget;
+
+            BattleCommandResult declaration =
+                observeCommand.Execute(
+                    battleSession.Context,
+                    actor,
+                    target);
+
+            if (!declaration.Accepted)
+            {
+                BattleActionResult rejectedResult =
+                    BattleActionResult.Reject(
+                        declaration.CommandId,
+                        declaration.Message);
+
+                LastBattleActionResult =
+                    rejectedResult;
+
+                Debug.LogWarning(
+                    $"[Project Delta] 116일차 관찰 확정 실패 / {declaration.Message}",
+                    this);
+
+                return rejectedResult;
+            }
+
+            if (!battleSession.TryBeginResolveAction())
+            {
+                return BattleActionResult.Reject(
+                    declaration.CommandId,
+                    "행동을 처리할 수 없는 상태입니다.");
+            }
+
+            LastActingParticipant =
+                actor;
+
+            LastActionSequence++;
+
+            LastObservationText =
+                $"{target.InstanceId} - HP {target.CurrentHp}/{target.MaxHp} / 공격 {target.Attack} / 방어 {target.Defense} / 속도 {target.Speed} / 매력 {target.Charm} / 저항 {target.Resistance}";
+
+            string resolutionMessage =
+                $"관찰 / {LastObservationText}";
+
+            Debug.Log(
+                $"[Project Delta] 116일차 Battle 관찰 확정 / {resolutionMessage}",
+                this);
+
+            BattleActionResult resolvedResult =
+                BattleActionResult.Accept(
+                    declaration.CommandId,
+                    new[] { resolutionMessage },
+                    Array.Empty<BattleDamageChange>(),
+                    Array.Empty<BattleParticipant>(),
+                    true,
+                    null);
+
+            LastBattleActionResult =
+                resolvedResult;
+
+            if (battleSession.HasPendingActorsThisRound)
+            {
+                TestAdvanceBattleTurn();
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryEndRound())
+            {
+                return resolvedResult;
+            }
+
+            if (BattleOutcomeEvaluator.TryEvaluate(
+                    battleSession.Context,
+                    out BattleOutcome roundEndOutcome))
+            {
+                FinishBattle(
+                    roundEndOutcome);
+
+                return resolvedResult;
+            }
+
+            if (!battleSession.TryStartRound())
+            {
+                return resolvedResult;
+            }
+
+            Debug.Log(
+                $"[Project Delta] 116일차 Battle Round {battleSession.RoundNumber} Start",
                 this);
 
             TestAdvanceBattleTurn();
