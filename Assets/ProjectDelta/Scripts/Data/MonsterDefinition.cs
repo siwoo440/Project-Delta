@@ -13,6 +13,10 @@ namespace ProjectDelta.Data
         // (일반 < 희귀 < 보스 순).
         [SerializeField] private MonsterRarity rarity = MonsterRarity.Normal;
 
+        // 121일차: 일반 몬스터와 구분되는 상위 개체 등급 - 능력치·보상 배율에 쓰인다
+        // (MonsterTierRules). Rarity(76일차, 탐험 화면 대표 외형 우선순위)와는 별개다.
+        [SerializeField] private MonsterTier tier = MonsterTier.Normal;
+
         // 54일차: BattleParticipant를 만드는 데 필요한 전투 능력치 7종 + 자원.
         // 층 보정·개체 등급·난이도 보정·개체 편차(기획서 3.5)는 아직 적용하지 않는다.
         [Header("전투 능력치")]
@@ -49,6 +53,7 @@ namespace ProjectDelta.Data
 
         public string DisplayName => displayName;
         public MonsterRarity Rarity => rarity;
+        public MonsterTier Tier => tier;
 
         public int MaxHp => maxHp;
         public int MaxMana => maxMana;
@@ -62,10 +67,15 @@ namespace ProjectDelta.Data
 
         public MonsterAiProfile AiProfile => aiProfile;
 
+        // 121일차: 등급 배율(MonsterTierRules)을 곱한 값을 돌려준다 - 79일차 PlayerGrowthService가
+        // 이 값을 그대로 합산하므로, 여기서 한 번만 곱하면 보스/정예가 자동으로 경험치를 더 준다.
         public int ExperienceReward =>
             Mathf.Max(
                 0,
-                experienceReward);
+                Mathf.RoundToInt(
+                    experienceReward
+                    * MonsterTierRules.GetRewardMultiplier(
+                        tier)));
 
         public MonsterDropTable DropTable =>
             dropTable;

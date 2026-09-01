@@ -465,19 +465,25 @@ namespace ProjectDelta.Presentation
                     ResolveMonsterDefinition(
                         slotMonsterDefinitionId);
 
+                // 121일차: 정예/보스는 층 보정 없이도(54일차 - 아직 그런 랜덤 편차가 없다)
+                // 등급 배율만큼 능력치가 확정적으로 오른다 - "고정 능력치".
+                float statMultiplier =
+                    MonsterTierRules.GetStatMultiplier(
+                        slotMonster.Tier);
+
                 enemies[slotIndex] =
                     new BattleParticipant(
                         $"{slotMonsterDefinitionId}#{slotIndex + 1}",
                         slotMonsterDefinitionId,
                         BattleTeam.Enemy,
-                        slotMonster.MaxHp,
+                        Mathf.RoundToInt(slotMonster.MaxHp * statMultiplier),
                         slotMonster.Speed,
-                        slotMonster.Attack,
-                        slotMonster.Defense,
+                        Mathf.RoundToInt(slotMonster.Attack * statMultiplier),
+                        Mathf.RoundToInt(slotMonster.Defense * statMultiplier),
                         slotMonster.Accuracy,
                         slotMonster.Evasion,
                         slotMonster.Charm,
-                        slotMonster.Resistance,
+                        Mathf.RoundToInt(slotMonster.Resistance * statMultiplier),
                         slotMonster.MaxMana);
             }
 
@@ -2483,6 +2489,15 @@ namespace ProjectDelta.Presentation
                 if (!activeMonster.TryMarkRoomEncounterCompleted())
                 {
                     return false;
+                }
+
+                // 121일차: 도망(Escaped)이 아니라 실제로 쓰러뜨렸을 때만 계단을 공개한다 -
+                // 보스 방에서 도망쳐 계단을 여는 우회를 막는다. 보스 방이 아닌 방이면
+                // DungeonFloorController가 알아서 아무 일도 하지 않는다.
+                if (result.Outcome == EncounterOutcome.MonsterDefeated)
+                {
+                    floorController?.NotifyRoomEncounterCompleted(
+                        result.RoomId);
                 }
 
                 ApplicationFlow.Current?.SaveDungeonProgress();

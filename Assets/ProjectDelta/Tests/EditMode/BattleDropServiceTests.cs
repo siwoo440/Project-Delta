@@ -88,6 +88,42 @@ namespace ProjectDelta.Tests.EditMode
         }
 
         [Test]
+        public void BossTier_DoublesGoldCompareToNormal()
+        {
+            MonsterDropTable table =
+                CreateTable(
+                    10,
+                    10);
+
+            MonsterDefinition normalMonster =
+                CreateMonster(
+                    "MON_NORMAL",
+                    table,
+                    MonsterTier.Normal);
+
+            MonsterDefinition bossMonster =
+                CreateMonster(
+                    "MON_BOSS",
+                    table,
+                    MonsterTier.Boss);
+
+            BattleDropResult normalResult =
+                BattleDropService.RollBattleDrops(
+                    new[] { normalMonster },
+                    new FixedRandomSource(10));
+
+            BattleDropResult bossResult =
+                BattleDropService.RollBattleDrops(
+                    new[] { bossMonster },
+                    new FixedRandomSource(10));
+
+            Assert.That(
+                bossResult.Gold,
+                Is.EqualTo(
+                    normalResult.Gold * 2));
+        }
+
+        [Test]
         public void ZeroPercentItemNeverDrops()
         {
             ItemDefinition item =
@@ -308,7 +344,8 @@ namespace ProjectDelta.Tests.EditMode
 
         private MonsterDefinition CreateMonster(
             string id,
-            MonsterDropTable table)
+            MonsterDropTable table,
+            MonsterTier tier = MonsterTier.Normal)
         {
             MonsterDefinition monster =
                 ScriptableObject.CreateInstance<MonsterDefinition>();
@@ -322,6 +359,12 @@ namespace ProjectDelta.Tests.EditMode
                 monster,
                 "dropTable",
                 table);
+
+            SetPrivateField(
+                typeof(MonsterDefinition),
+                monster,
+                "tier",
+                tier);
 
             createdObjects.Add(
                 monster);

@@ -372,6 +372,9 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
+            ApplyBossRoomType(
+                run.Dungeon); // 121일차: 몬스터를 채우기 전에 계단 방을 보스 방으로 확정한다.
+
             PlaceRuntimeStairs(run.Dungeon);
 
             GetDungeonState().SetGeneratedFloor(
@@ -473,6 +476,9 @@ namespace ProjectDelta.Presentation
                 ClearGeneratedFloor();
                 return false;
             }
+
+            ApplyBossRoomType(
+                dungeon); // 121일차: 저장에서 복원할 때도 계단 방은 항상 보스 방이다.
 
             PlaceRuntimeStairs(dungeon);
 
@@ -833,6 +839,25 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
+            if (stairsRoomView.transform.Find("Runtime_Stairs") != null)
+            {
+                return; // 이미 배치된 계단을 다시 만들지 않는다.
+            }
+
+            RoomInstance stairsRoomInstance =
+                stairsRoomView.PassageController != null
+                    ? stairsRoomView.PassageController.CurrentInstance
+                    : null;
+
+            // 121일차: 보스 방(계단 방)은 보스를 쓰러뜨리기(RoomInstance.Completed) 전까지
+            // 계단을 감춘다 - NotifyRoomEncounterCompleted()가 쓰러뜨린 순간 이 메서드를 다시 부른다.
+            if (stairsRoomInstance != null
+                && stairsRoomInstance.RoomType == RoomType.Boss
+                && !stairsRoomInstance.Completed)
+            {
+                return;
+            }
+
             GameObject stairsObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
             stairsObject.name = "Runtime_Stairs";
             stairsObject.transform.SetParent(stairsRoomView.transform, false);
@@ -849,6 +874,26 @@ namespace ProjectDelta.Presentation
             RoomContentMarker marker = stairsObject.AddComponent<RoomContentMarker>();
             marker.Configure(RoomContentType.Stairs, GridPosition.Zero);
             stairsRoomView.RefreshMarkers();
+        }
+
+        // 121일차: 몬스터 조우가 완료(승리)됐다고 알려주는 진입점 - ExplorationMonsterEncounterController가
+        // 보스(계단 방) 승리 직후 호출한다. 계단 방이 아니면 아무 일도 하지 않는다.
+        public void NotifyRoomEncounterCompleted(
+            string roomId)
+        {
+            if (string.IsNullOrEmpty(roomId)
+                || CurrentDungeon?.StairsRoom == null
+                || roomId != CurrentDungeon.StairsRoom.RoomId)
+            {
+                return;
+            }
+
+            PlaceRuntimeStairs(
+                CurrentDungeon);
+
+            Debug.Log(
+                $"[Project Delta] 121일차 보스 격파 - 계단 공개 / RoomId={roomId}",
+                this);
         }
 
         // 이후 Player 경계 이동 연결에서 그대로 사용할 수 있는 그래프 전환 조회 API
@@ -934,6 +979,10 @@ namespace ProjectDelta.Presentation
                     dungeon,
                     seed);
 
+                EnsureBossRoomHasMonster(
+                    dungeon,
+                    seed); // 121일차: 계단 방(=보스 방)은 위 보장 로직에서 항상 제외되므로 따로 채운다.
+
                 return;
             }
 
@@ -948,6 +997,185 @@ namespace ProjectDelta.Presentation
             EnsureCombatRoomsHaveMonsters(
                 dungeon,
                 seed);
+
+            EnsureBossRoomHasMonster(
+                dungeon,
+                seed); // 121일차: 계단 방(=보스 방)은 위 보장 로직에서 항상 제외되므로 따로 채운다.
+        }
+
+        // 121일차: 계단 방을 보스 방으로 확정한다 - 몬스터를 채우기 전, 문 연결 직후 호출한다.
+        // "보스가 있는 층은 보스방에 계단이 생긴다" 요구사항을 그대로 반영해, 지금은 모든 층의
+        // 계단 방이 곧 보스 방이다(특정 층만 보스가 있게 하려면 이 메서드 하나만 조건을 걸면 된다).
+        private void ApplyBossRoomType(
+            GeneratedDungeon dungeon)
+        {
+            if (dungeon?.StairsRoom == null)
+            {
+                return;
+            }
+
+            if (!spawnedRooms.TryGetValue(
+                    dungeon.StairsRoom.RoomId,
+                    out RoomView stairsRoomView)
+                || stairsRoomView.PassageController == null
+                || stairsRoomView.PassageController.CurrentInstance == null)
+            {
+                return;
+            }
+
+            stairsRoomView.PassageController.CurrentInstance.SetRoomType(
+                RoomType.Boss);
+        }
+
+        // 121일차: 계단 방(보스 방)에는 일반 Combat 방 보장 로직이 절대 몬스터를 채우지 않는다
+        // (EnsureCombatRoomsHaveMonsters가 시작/계단 방을 명시적으로 제외한다) - 그래서 같은
+        // 배치 절차(TryBuildCombatGuaranteeAssignment·MonsterSpawnPositionService·
+        // CreateRuntimeMonster)를 이 방 하나에 대해서만 따로 실행한다.
+        private void EnsureBossRoomHasMonster(
+            GeneratedDungeon dungeon,
+            int seed)
+        {
+            if (dungeon?.StairsRoom == null)
+            {
+                return;
+            }
+
+            RoomNode room =
+                dungeon.StairsRoom;
+
+            if (spawnedMonsters.ContainsKey(
+                    room.RoomId))
+            {
+                return;
+            }
+
+            if (!spawnedRooms.TryGetValue(
+                    room.RoomId,
+                    out RoomView roomView)
+                || roomView == null
+                || roomView.PassageController == null)
+            {
+                return;
+            }
+
+            RoomInstance roomInstance =
+                roomView.PassageController.CurrentInstance;
+
+            // 이미 깬 보스 방(저장에서 복원)이면 다시 스폰하지 않는다.
+            if (roomInstance == null
+                || roomInstance.Completed)
+            {
+                return;
+            }
+
+            RoomDefinition definition =
+                roomView.PassageController.RoomDefinition;
+
+            if (definition == null)
+            {
+                return;
+            }
+
+            List<EncounterDefinition> fallbackEncounters =
+                CollectCombatGuaranteeEncounters();
+
+            if (fallbackEncounters.Count == 0)
+            {
+                Debug.LogError(
+                    "[Project Delta] 121일차 보스 방 몬스터 배치 실패: 사용할 EncounterDefinition이 하나도 없습니다.",
+                    this);
+
+                return;
+            }
+
+            if (!TryBuildCombatGuaranteeAssignment(
+                    room.RoomId,
+                    seed,
+                    fallbackEncounters,
+                    out RoomEncounterAssignment assignment))
+            {
+                Debug.LogError(
+                    $"[Project Delta] 121일차 보스 방 몬스터 배치 실패: 유효한 몬스터 그룹 없음. RoomId={room.RoomId}",
+                    roomView);
+
+                return;
+            }
+
+            MonsterSpawnPositionService spawnPositionService =
+                new MonsterSpawnPositionService();
+
+            List<RoomExit> connectedExits =
+                CollectConnectedExits(
+                    room);
+
+            List<GridPosition> occupiedPositions =
+                CollectOccupiedContentPositions(
+                    roomView);
+
+            bool hasSpawnPosition =
+                spawnPositionService.TryChoosePosition(
+                    definition.MinX,
+                    definition.MaxX,
+                    definition.MinZ,
+                    definition.MaxZ,
+                    connectedExits,
+                    occupiedPositions,
+                    seed,
+                    room.RoomId,
+                    assignment.MonsterDefinitionId,
+                    out GridPosition spawnPosition);
+
+            if (!hasSpawnPosition)
+            {
+                hasSpawnPosition =
+                    spawnPositionService.TryChoosePosition(
+                        definition.MinX,
+                        definition.MaxX,
+                        definition.MinZ,
+                        definition.MaxZ,
+                        connectedExits,
+                        null,
+                        seed,
+                        room.RoomId,
+                        assignment.MonsterDefinitionId,
+                        out spawnPosition);
+            }
+
+            if (!hasSpawnPosition)
+            {
+                spawnPosition =
+                    ChooseEmergencyMonsterPosition(
+                        definition,
+                        connectedExits);
+
+                Debug.LogWarning(
+                    $"[Project Delta] 보스 방 빈 칸이 없어 비상 위치에 보스를 배치합니다. RoomId={room.RoomId} / Position={spawnPosition}",
+                    roomView);
+            }
+
+            ExplorationMonsterMarker monster =
+                CreateRuntimeMonster(
+                    roomView,
+                    definition,
+                    assignment,
+                    spawnPosition);
+
+            if (monster == null)
+            {
+                return;
+            }
+
+            currentEncounterLayout.TryAdd(
+                assignment);
+
+            spawnedMonsters[room.RoomId] =
+                monster;
+
+            roomView.RefreshMarkers();
+
+            Debug.Log(
+                $"[Project Delta] 121일차 보스 방 몬스터 배치 완료 / RoomId={room.RoomId} / Monster={assignment.MonsterDefinitionId}",
+                this);
         }
 
         // 112일차: RoomType.Combat 방(시작/계단 방 제외)은 인카운터 확률 굴림과 무관하게

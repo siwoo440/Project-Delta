@@ -8,7 +8,11 @@ namespace ProjectDelta.Domain
         Normal = 0,
         Combat = 1,
         Event = 2,
-        Trap = 3
+        Trap = 3,
+
+        // 121일차: 상위 개체(보스) 전용 방. 층마다 하나씩 강제 배치하는 로직은 아직 없다 -
+        // 122일차(보스 Context 4종 상위 개체 연결)에서 실제로 이 방에 보스를 배치한다.
+        Boss = 4
     }
 
     public static class RoomTypeRules
@@ -26,6 +30,9 @@ namespace ProjectDelta.Domain
 
                 case RoomType.Trap:
                     return "함정";
+
+                case RoomType.Boss:
+                    return "보스";
 
                 default:
                     return "일반";
@@ -46,6 +53,9 @@ namespace ProjectDelta.Domain
 
                 case RoomType.Trap:
                     return "T";
+
+                case RoomType.Boss:
+                    return "B";
 
                 default:
                     return "N";

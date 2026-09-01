@@ -71,13 +71,20 @@ namespace ProjectDelta.Application
                 MonsterDropTable table =
                     monster.DropTable;
 
+                // 121일차: 정예/보스는 골드·아이템 드롭 확률에 같은 등급 배율을 곱해 더 후하게 준다.
+                float rewardMultiplier =
+                    MonsterTierRules.GetRewardMultiplier(
+                        monster.Tier);
+
                 totalGold =
                     SaturatingAdd(
                         totalGold,
-                        RollInclusive(
-                            randomSource,
-                            table.MinimumGold,
-                            table.MaximumGold));
+                        (int)(
+                            RollInclusive(
+                                randomSource,
+                                table.MinimumGold,
+                                table.MaximumGold)
+                            * rewardMultiplier));
 
                 IReadOnlyList<MonsterDropEntry> entries =
                     table.ItemDrops;
@@ -91,9 +98,20 @@ namespace ProjectDelta.Application
 
                     if (entry == null
                         || entry.Item == null
-                        || string.IsNullOrEmpty(entry.Item.Id)
-                        || !PassesChance(
-                            entry.ChanceBasisPoints,
+                        || string.IsNullOrEmpty(entry.Item.Id))
+                    {
+                        continue;
+                    }
+
+                    int scaledChanceBasisPoints =
+                        Math.Min(
+                            MonsterDropEntry.MaximumChanceBasisPoints,
+                            (int)(
+                                entry.ChanceBasisPoints
+                                * rewardMultiplier));
+
+                    if (!PassesChance(
+                            scaledChanceBasisPoints,
                             randomSource))
                     {
                         continue;
