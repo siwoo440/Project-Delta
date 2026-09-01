@@ -27,7 +27,7 @@ namespace ProjectDelta.Tests.EditMode
 
             Assert.AreEqual(
                 0,
-                context.Favor);
+                context.SelectedTarget.Favor);
         }
 
         [Test]

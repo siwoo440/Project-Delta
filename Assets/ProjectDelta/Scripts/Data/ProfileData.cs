@@ -26,7 +26,17 @@ namespace ProjectDelta.Data
         public List<string> UnlockedSkillIds = new List<string>();
         public List<string> BonusStartingSkillCandidateIds = new List<string>();
 
-        // TODO AdultActionDefinition 구현 시 추가: 성인 이벤트 행동 숙련도와 경험치
+        // 119일차: 별도 이벤트 전투 공통 행동 12종(EventBattleActionCatalog, 118일차)의
+        // 영구 숙련도 - 행동 ID를 키로 쓴다. 실행 취소/롤백 없이(기획서 9.1) 오래 쓸수록 쌓인다.
+        public Dictionary<string, EventBattleActionProficiencyRecord> EventBattleActionProficiency =
+            new Dictionary<string, EventBattleActionProficiencyRecord>();
+    }
+
+    [Serializable]
+    public sealed class EventBattleActionProficiencyRecord
+    {
+        public int Level = 1;
+        public int Experience;
     }
 
     [Serializable]

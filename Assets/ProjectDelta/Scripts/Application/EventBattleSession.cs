@@ -47,7 +47,7 @@ namespace ProjectDelta.Application
             Result =
                 new EventBattleResult(
                     outcome,
-                    Context.Favor,
+                    ResolveFinalFavor(),
                     Context.AttemptCount);
 
             State =
@@ -70,6 +70,33 @@ namespace ProjectDelta.Application
                 null;
 
             return true;
+        }
+
+        // 119일차: 대상이 여러 명이라 "최종 호감도" 하나로 요약해야 한다 - 승리한 대상이
+        // 있으면 그 값(100), 없으면 가장 진행이 많이 된 대상의 값을 대표로 쓴다.
+        private int ResolveFinalFavor()
+        {
+            if (Context?.Targets == null)
+            {
+                return 0;
+            }
+
+            int best =
+                0;
+
+            for (int index = 0; index < Context.Targets.Count; index++)
+            {
+                int favor =
+                    Context.Targets[index].Favor;
+
+                if (favor > best)
+                {
+                    best =
+                        favor;
+                }
+            }
+
+            return best;
         }
 
         public void ForceReset()

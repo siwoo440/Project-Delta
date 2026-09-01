@@ -95,7 +95,7 @@ namespace ProjectDelta.Tests.EditMode
                 0);
 
             Assert.AreEqual(
-                context.Favor,
+                context.SelectedTarget.Favor,
                 result.FavorGained);
 
             Assert.AreEqual(
@@ -129,7 +129,7 @@ namespace ProjectDelta.Tests.EditMode
                 new EventBattleContext(
                     EventBattleEntrySource.Seduction,
                     player,
-                    target);
+                    new[] { new EventBattleParticipantState(target) });
 
             EventBattleCommandResult result =
                 new CourtEventBattleCommand()
@@ -142,7 +142,7 @@ namespace ProjectDelta.Tests.EditMode
 
             Assert.AreEqual(
                 0,
-                context.Favor);
+                context.SelectedTarget.Favor);
         }
 
         [Test]
@@ -210,7 +210,7 @@ namespace ProjectDelta.Tests.EditMode
                     10,
                     20,
                     20),
-                CreateTarget());
+                new[] { new EventBattleParticipantState(CreateTarget()) });
         }
 
         private static BattleParticipant CreateTarget()

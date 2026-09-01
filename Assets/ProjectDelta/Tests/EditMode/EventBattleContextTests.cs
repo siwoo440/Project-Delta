@@ -6,47 +6,45 @@ namespace ProjectDelta.Tests.EditMode
     public sealed class EventBattleContextTests
     {
         [Test]
-        public void AddFavor_ClampsToFavorToWin()
+        public void SelectedTarget_AddFavor_ClampsToFavorToWinAndMarksWon()
         {
             EventBattleContext context =
                 CreateContext();
 
-            context.AddFavor(
+            context.SelectedTarget.AddFavor(
                 999);
 
             Assert.AreEqual(
                 EventBattleContext.FavorToWin,
-                context.Favor);
+                context.SelectedTarget.Favor);
 
             Assert.IsTrue(
                 context.HasWon);
         }
 
         [Test]
-        public void AddFavor_ClampsToZero()
+        public void SelectedTarget_AddFavor_ClampsToZero()
         {
             EventBattleContext context =
                 CreateContext();
 
-            context.AddFavor(
+            context.SelectedTarget.AddFavor(
                 -999);
 
             Assert.AreEqual(
                 0,
-                context.Favor);
+                context.SelectedTarget.Favor);
         }
 
         [Test]
-        public void AddFavor_TracksAttemptCount()
+        public void RegisterAttempt_TracksAttemptCount()
         {
             EventBattleContext context =
                 CreateContext();
 
-            context.AddFavor(
-                5);
+            context.RegisterAttempt();
 
-            context.AddFavor(
-                5);
+            context.RegisterAttempt();
 
             Assert.AreEqual(
                 2,
@@ -99,7 +97,7 @@ namespace ProjectDelta.Tests.EditMode
                 new EventBattleContext(
                     EventBattleEntrySource.Seduction,
                     player,
-                    target);
+                    new[] { new EventBattleParticipantState(target) });
 
             Assert.IsFalse(
                 context.PlayerCanAct(
@@ -141,7 +139,7 @@ namespace ProjectDelta.Tests.EditMode
             return new EventBattleContext(
                 EventBattleEntrySource.Seduction,
                 player,
-                target);
+                new[] { new EventBattleParticipantState(target) });
         }
     }
 }

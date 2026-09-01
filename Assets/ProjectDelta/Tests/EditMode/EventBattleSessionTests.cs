@@ -52,7 +52,7 @@ namespace ProjectDelta.Tests.EditMode
             EventBattleContext context =
                 CreateContext();
 
-            context.AddFavor(
+            context.SelectedTarget.AddFavor(
                 40);
 
             session.TryBegin(
@@ -172,7 +172,7 @@ namespace ProjectDelta.Tests.EditMode
             return new EventBattleContext(
                 EventBattleEntrySource.Seduction,
                 player,
-                target);
+                new[] { new EventBattleParticipantState(target) });
         }
     }
 }

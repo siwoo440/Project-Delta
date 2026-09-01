@@ -27,7 +27,7 @@ namespace ProjectDelta.Application
         {
             if (context == null
                 || context.Player == null
-                || context.Target == null
+                || context.SelectedTarget == null
                 || rng == null)
             {
                 return EventBattleCommandResult.Reject(
@@ -45,7 +45,7 @@ namespace ProjectDelta.Application
 
             int statDelta =
                 context.Player.Charm
-                - context.Target.Resistance;
+                - context.SelectedTarget.Participant.Resistance;
 
             int variance =
                 rng.NextInt(
@@ -65,7 +65,7 @@ namespace ProjectDelta.Application
                     0;
             }
 
-            context.AddFavor(
+            context.SelectedTarget.AddFavor(
                 favorGained);
 
             return EventBattleCommandResult.Accept(

@@ -173,6 +173,35 @@ namespace ProjectDelta.Application
             return saved;
         }
 
+        // 119일차: Presentation은 Infrastructure(AppRoot/SaveService)를 직접 참조하지
+        // 않는다(어셈블리 계층 - Presentation → Application → Data/Domain). ApplicationFlow는
+        // 이미 Application 어셈블리에 있으면서 SaveService를 들고 있어서, 프로필 읽기/쓰기도
+        // Run 저장(TryWriteDungeonProgress 등)과 같은 방식으로 여기서 중계한다.
+        public ProfileData ReadOrCreateProfile()
+        {
+            if (_saveService == null)
+            {
+                return new ProfileData();
+            }
+
+            return _saveService.HasProfile()
+                ? _saveService.ReadProfile()
+                : new ProfileData();
+        }
+
+        public void WriteProfile(
+            ProfileData profile)
+        {
+            if (profile == null
+                || _saveService == null)
+            {
+                return;
+            }
+
+            _saveService.WriteProfile(
+                profile);
+        }
+
         public void OpenSettings()
         {
             _log.Info("Opening SettingsScene");

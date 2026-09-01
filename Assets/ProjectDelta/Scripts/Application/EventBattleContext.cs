@@ -2,22 +2,24 @@ using System.Collections.Generic;
 
 namespace ProjectDelta.Application
 {
-    // 117일차: 일반 BattleContext(47일차)와 상호 배타적인 전용 Context. 기존 BattleParticipant를
-    // 그대로 재사용한다 - 정력·마나 자원과 매력·저항 능력치가 이미 있어 새 참가자 타입을 또
-    // 만들 필요가 없었다. 대신 이 전투에서만 의미 있는 값(호감도 진행도·진입 경로)을 따로 담는다.
-    // 118일차: 주도권(누가 다음에 행동하는가)과, 지금 실행 중인 행동에 곱해야 할 종족 상성
-    // 배율을 추가로 담는다.
+    // 117일차: 일반 BattleContext(47일차)와 상호 배타적인 전용 Context.
+    // 118일차: 주도권(누가 다음에 행동하는가)과 종족 상성 배율을 추가했다.
+    // 119일차: 대상을 하나(Target)에서 최대 3명(Targets)으로 늘렸다 - 각자 개별
+    // EventBattleParticipantState(호감도·만족 이탈·보스 단계)를 갖는다. 플레이어는 지금
+    // 어떤 대상에게 행동할지 SelectedTargetIndex로 고른다(일반 전투의 SelectedTarget과 같은 개념).
     public sealed class EventBattleContext
     {
         public const int FavorToWin = 100;
+
+        public const int MaxTargets = 3;
 
         public EventBattleEntrySource Source { get; }
 
         public BattleParticipant Player { get; }
 
-        public BattleParticipant Target { get; }
+        public IReadOnlyList<EventBattleParticipantState> Targets { get; }
 
-        public int Favor { get; private set; }
+        public int SelectedTargetIndex { get; private set; }
 
         public int AttemptCount { get; private set; }
 
@@ -26,16 +28,17 @@ namespace ProjectDelta.Application
             EventBattleInitiativeHolder.Player;
 
         // 118일차: 컨트롤러가 IEventBattleCommand.Execute() 호출 직전에 종족 상성
-        // (EventBattleAffinityRule)으로 계산해 넣어두는 배율. 각 행동은 이 값을 곱해 최종
-        // 호감도 증가량을 정한다 - 몬스터의 자체 저항 행동에는 적용하지 않으므로 매번 1로
-        // 되돌려 둔다.
+        // (EventBattleAffinityRule)으로 계산해 넣어두는 배율.
         public float PlayerActionFavorMultiplier { get; set; } =
             1f;
+
+        // 119일차: 몬스터 전용 행동 AI가 "방금 플레이어가 뭘 했는가"에 반응할 수 있도록 기록한다.
+        public string LastPlayerActionId { get; set; }
 
         public EventBattleContext(
             EventBattleEntrySource source,
             BattleParticipant player,
-            BattleParticipant target)
+            IReadOnlyList<EventBattleParticipantState> targets)
         {
             Source =
                 source;
@@ -43,25 +46,86 @@ namespace ProjectDelta.Application
             Player =
                 player;
 
-            Target =
-                target;
+            Targets =
+                targets;
+
+            SelectedTargetIndex =
+                FindFirstActiveIndex();
         }
 
-        public void AddFavor(
-            int amount)
+        // 119일차: 지금 행동의 대상 - 없으면(전원 이탈/승리) null.
+        public EventBattleParticipantState SelectedTarget =>
+            SelectedTargetIndex >= 0
+            && Targets != null
+            && SelectedTargetIndex < Targets.Count
+                ? Targets[SelectedTargetIndex]
+                : null;
+
+        public bool TrySelectTarget(
+            int index)
+        {
+            if (Targets == null
+                || index < 0
+                || index >= Targets.Count
+                || !Targets[index].IsActive)
+            {
+                return false;
+            }
+
+            SelectedTargetIndex =
+                index;
+
+            return true;
+        }
+
+        public void RegisterAttempt()
         {
             AttemptCount++;
-
-            Favor =
-                Favor + amount < 0
-                    ? 0
-                    : Favor + amount > FavorToWin
-                        ? FavorToWin
-                        : Favor + amount;
         }
 
-        public bool HasWon =>
-            Favor >= FavorToWin;
+        // 119일차: 최소 한 명이라도 공략(HasWon)했으면 전체 결과를 승리로 본다.
+        public bool HasWon
+        {
+            get
+            {
+                if (Targets == null)
+                {
+                    return false;
+                }
+
+                for (int index = 0; index < Targets.Count; index++)
+                {
+                    if (Targets[index].HasWon)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        // 119일차: 활성 대상(행동 가능한 대상)이 하나도 안 남았는가 - 전원 승리/만족 이탈했다는 뜻.
+        public bool AllTargetsResolved
+        {
+            get
+            {
+                if (Targets == null)
+                {
+                    return true;
+                }
+
+                for (int index = 0; index < Targets.Count; index++)
+                {
+                    if (Targets[index].IsActive)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
 
         public void SetInitiativeHolder(
             EventBattleInitiativeHolder holder)
@@ -99,6 +163,25 @@ namespace ProjectDelta.Application
             }
 
             return false;
+        }
+
+        private int FindFirstActiveIndex()
+        {
+            if (Targets == null)
+            {
+                return -1;
+            }
+
+            for (int index = 0; index < Targets.Count; index++)
+            {
+                if (Targets[index] != null
+                    && Targets[index].IsActive)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
         }
     }
 }
