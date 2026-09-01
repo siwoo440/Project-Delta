@@ -51,6 +51,16 @@ namespace ProjectDelta.Data
         [SerializeField] private string[] eventBattleWeakActionIds =
             Array.Empty<string>();
 
+        // 122일차: 상위 개체(보스) 전용 - Tier가 Boss가 아닌 몬스터는 사용하지 않는다.
+        // 페이즈 수(체력 구간별 패턴 전환)와 후퇴·항복 가능 여부를 BossPhaseRule/전투 흐름이 읽는다.
+        [Header("122일차 보스 전용 (Tier == Boss일 때만 의미 있음)")]
+        [Min(1)]
+        [SerializeField] private int phaseCount = 1;
+
+        [SerializeField] private bool canRetreat = true;
+
+        [SerializeField] private bool canSurrenderOnly;
+
         public string DisplayName => displayName;
         public MonsterRarity Rarity => rarity;
         public MonsterTier Tier => tier;
@@ -87,5 +97,16 @@ namespace ProjectDelta.Data
         public IReadOnlyList<string> EventBattleWeakActionIds =>
             eventBattleWeakActionIds
             ?? Array.Empty<string>();
+
+        public int PhaseCount =>
+            Mathf.Max(
+                1,
+                phaseCount);
+
+        public bool CanRetreat =>
+            canRetreat;
+
+        public bool CanSurrenderOnly =>
+            canSurrenderOnly;
     }
 }

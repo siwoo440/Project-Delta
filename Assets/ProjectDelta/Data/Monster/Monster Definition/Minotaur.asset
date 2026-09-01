@@ -15,6 +15,7 @@ MonoBehaviour:
   id: MON_MINOTAUR
   displayName: "\uBBF8\uB178\uD0C0\uC6B0\uB974"
   rarity: 2
+  tier: 2
   maxHp: 90
   maxMana: 10
   speed: 5
@@ -27,3 +28,12 @@ MonoBehaviour:
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
   experienceReward: 120
   dropTable: {fileID: 11400000, guid: 1dc9622008e636e41a63bd89b2e322c4, type: 2}
+  eventBattleStrongActionIds:
+  - Whisper
+  - Listen
+  eventBattleWeakActionIds:
+  - Court
+  - Embrace
+  phaseCount: 2
+  canRetreat: 1
+  canSurrenderOnly: 0

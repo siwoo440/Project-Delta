@@ -1077,7 +1077,7 @@ namespace ProjectDelta.Presentation
             }
 
             List<EncounterDefinition> fallbackEncounters =
-                CollectCombatGuaranteeEncounters();
+                CollectBossEncounters();
 
             if (fallbackEncounters.Count == 0)
             {
@@ -1353,6 +1353,56 @@ namespace ProjectDelta.Presentation
             }
 
             return encounters;
+        }
+
+        // 122일차: "전용 방과 연결" - 지금 층 번호로 보스 로스터(Tier == Boss로 지정된
+        // 몬스터들)를 순서대로 돌려가며 정한다. 골라낸 보스를 목록 맨 앞에 둬서
+        // TryBuildCombatGuaranteeAssignment(첫 유효 항목을 쓴다)가 항상 그 보스를 쓰게 한다.
+        // Boss 등급 몬스터가 하나도 없으면(콘텐츠 미비) 기존 전체 후보로 안전하게 되돌아간다.
+        private List<EncounterDefinition> CollectBossEncounters()
+        {
+            List<EncounterDefinition> all =
+                CollectCombatGuaranteeEncounters();
+
+            List<EncounterDefinition> bossOnly =
+                new List<EncounterDefinition>();
+
+            for (int index = 0; index < all.Count; index++)
+            {
+                EncounterDefinition encounter =
+                    all[index];
+
+                if (encounter != null
+                    && encounter.Monster != null
+                    && encounter.Monster.Tier == MonsterTier.Boss)
+                {
+                    bossOnly.Add(encounter);
+                }
+            }
+
+            if (bossOnly.Count == 0)
+            {
+                return all;
+            }
+
+            int floor =
+                GetDungeonState().CurrentFloor;
+
+            int chosenIndex =
+                ((floor - 1) % bossOnly.Count
+                    + bossOnly.Count)
+                % bossOnly.Count;
+
+            List<EncounterDefinition> ordered =
+                new List<EncounterDefinition>
+                {
+                    bossOnly[chosenIndex]
+                };
+
+            ordered.AddRange(
+                bossOnly);
+
+            return ordered;
         }
 
         private static bool TryBuildCombatGuaranteeAssignment(

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using ProjectDelta.Application;
+using ProjectDelta.Data;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -407,7 +408,42 @@ namespace ProjectDelta.Presentation
                     : string.Empty;
 
             battleStateText.text =
-                $"Battle : {encounterController.CurrentBattleState} / Round {encounterController.BattleRoundNumber}{actorText}{commandText}";
+                $"Battle : {encounterController.CurrentBattleState} / Round {encounterController.BattleRoundNumber}{actorText}{commandText}"
+                + ResolveBossPhaseText(
+                    encounterController.CurrentBattleContext);
+        }
+
+        // 122일차: 상대 중 보스(Tier == Boss)가 있으면 현재 체력 구간 기준 페이즈를 덧붙여 보여준다.
+        private static string ResolveBossPhaseText(
+            BattleContext context)
+        {
+            if (context?.Enemies == null)
+            {
+                return string.Empty;
+            }
+
+            foreach (BattleParticipant enemy in context.Enemies)
+            {
+                if (enemy == null
+                    || !enemy.IsAlive
+                    || !RuntimeMonsterDefinitionLookup.TryFind(
+                        enemy.DefinitionId,
+                        out MonsterDefinition definition)
+                    || definition.Tier != MonsterTier.Boss)
+                {
+                    continue;
+                }
+
+                int phase =
+                    BossPhaseRule.GetCurrentPhase(
+                        enemy.CurrentHp,
+                        enemy.MaxHp,
+                        definition.PhaseCount);
+
+                return $" / {definition.DisplayName} {phase}/{definition.PhaseCount}페이즈";
+            }
+
+            return string.Empty;
         }
 
         private void RefreshParticipants()

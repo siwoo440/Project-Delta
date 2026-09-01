@@ -2486,18 +2486,41 @@ namespace ProjectDelta.Presentation
 
             if (result.CompletesRoom)
             {
-                if (!activeMonster.TryMarkRoomEncounterCompleted())
-                {
-                    return false;
-                }
+                // 122일차: "후퇴 후 재전투" - 보스(Tier == Boss, canRetreat)에게서 도망친
+                // 경우에는 방을 완료 처리하지 않는다. 몬스터가 그대로 남아 다시 도전할 수
+                // 있다 - 121일차에서 이미 "승리해야만" 계단이 열리므로, 승리 없이는 방이
+                // 완료되지 않아야 재도전이 자연스럽게 보장된다.
+                MonsterDefinition activeMonsterDefinition =
+                    ResolveMonsterDefinition(
+                        activeMonster.MonsterDefinitionId);
 
-                // 121일차: 도망(Escaped)이 아니라 실제로 쓰러뜨렸을 때만 계단을 공개한다 -
-                // 보스 방에서 도망쳐 계단을 여는 우회를 막는다. 보스 방이 아닌 방이면
-                // DungeonFloorController가 알아서 아무 일도 하지 않는다.
-                if (result.Outcome == EncounterOutcome.MonsterDefeated)
+                bool isBossRetreat =
+                    result.Outcome == EncounterOutcome.Escaped
+                    && activeMonsterDefinition != null
+                    && activeMonsterDefinition.Tier == MonsterTier.Boss
+                    && activeMonsterDefinition.CanRetreat;
+
+                if (isBossRetreat)
                 {
-                    floorController?.NotifyRoomEncounterCompleted(
-                        result.RoomId);
+                    Debug.Log(
+                        $"[Project Delta] 122일차 보스 후퇴 / Room {result.RoomId} / Monster {result.MonsterDefinitionId} - 방을 비우지 않아 다시 도전할 수 있습니다.",
+                        this);
+                }
+                else
+                {
+                    if (!activeMonster.TryMarkRoomEncounterCompleted())
+                    {
+                        return false;
+                    }
+
+                    // 121일차: 도망(Escaped)이 아니라 실제로 쓰러뜨렸을 때만 계단을 공개한다 -
+                    // 보스 방에서 도망쳐 계단을 여는 우회를 막는다. 보스 방이 아닌 방이면
+                    // DungeonFloorController가 알아서 아무 일도 하지 않는다.
+                    if (result.Outcome == EncounterOutcome.MonsterDefeated)
+                    {
+                        floorController?.NotifyRoomEncounterCompleted(
+                            result.RoomId);
+                    }
                 }
 
                 ApplicationFlow.Current?.SaveDungeonProgress();

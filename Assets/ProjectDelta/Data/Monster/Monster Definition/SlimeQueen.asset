@@ -15,6 +15,7 @@ MonoBehaviour:
   id: MON_SLIME_QUEEN
   displayName: "\uC2AC\uB77C\uC784 \uD038"
   rarity: 2
+  tier: 2
   maxHp: 60
   maxMana: 20
   speed: 4
@@ -27,3 +28,12 @@ MonoBehaviour:
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
   experienceReward: 120
   dropTable: {fileID: 11400000, guid: 99bb04e870eb358488ab2949ae25ba9c, type: 2}
+  eventBattleStrongActionIds:
+  - Confess
+  - Embrace
+  eventBattleWeakActionIds:
+  - Soothe
+  - Listen
+  phaseCount: 2
+  canRetreat: 1
+  canSurrenderOnly: 0

@@ -15,6 +15,7 @@ MonoBehaviour:
   id: MON_DRAGONKIN
   displayName: "\uC6A9 \uC218\uC778"
   rarity: 2
+  tier: 2
   maxHp: 110
   maxMana: 20
   speed: 7
@@ -27,3 +28,12 @@ MonoBehaviour:
   aiProfile: {fileID: 11400000, guid: a9310eef2d674474d9b2c5b1905b11c0, type: 2}
   experienceReward: 120
   dropTable: {fileID: 11400000, guid: d796751abf9967843bf76e6b7ab22e61, type: 2}
+  eventBattleStrongActionIds:
+  - Flatter
+  - Dance
+  eventBattleWeakActionIds:
+  - Confess
+  - Sing
+  phaseCount: 2
+  canRetreat: 1
+  canSurrenderOnly: 0

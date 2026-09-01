@@ -132,10 +132,16 @@ namespace ProjectDelta.Presentation
             SetSlotVisible(
                 true);
 
+            // 122일차: DefinitionId(영문/ID 그대로)를 보여주던 걸 실제 한글 표시 이름으로 바꿨다.
+            // 참가자 ID 규칙("PLAYER"는 그대로, 몬스터는 RuntimeMonsterDefinitionLookup)에 맞춰
+            // MonsterDefinitionId를 조회한다 - 몬스터 정의가 없으면(플레이어 등) 그대로 보여준다.
             if (nameText != null)
             {
                 nameText.text =
-                    participant.DefinitionId;
+                    participant.DefinitionId == "PLAYER"
+                        ? "플레이어"
+                        : RuntimeMonsterDefinitionLookup.ResolveDisplayName(
+                            participant.DefinitionId);
             }
 
             ApplyPortrait(
