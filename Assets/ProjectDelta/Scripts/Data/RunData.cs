@@ -23,6 +23,10 @@ namespace ProjectDelta.Data
         public BattleEncounterCheckpointData BattleEncounterCheckpoint =
             new BattleEncounterCheckpointData();
 
+        // 120일차: 별도 이벤트 전투 버전 체크포인트(EventBattleCheckpointStore).
+        public EventBattleCheckpointData EventBattleCheckpoint =
+            new EventBattleCheckpointData();
+
         public List<CharacterRunState> CharacterStates =
             new List<CharacterRunState>();
 

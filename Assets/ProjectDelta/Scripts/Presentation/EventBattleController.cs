@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ProjectDelta.Application;
 using ProjectDelta.Data;
+using ProjectDelta.Domain;
 using UnityEngine;
 
 namespace ProjectDelta.Presentation
@@ -16,12 +17,23 @@ namespace ProjectDelta.Presentation
     // 영구 숙련도(Lv.1~5, ProfileData)를 읽고 쌓는다.
     public sealed class EventBattleController : MonoBehaviour
     {
-        private const float ButtonWidth = 128f;
+        // 120일차: 행동 그리드와 아이템 목록을 같은 자리에서 전환해 보여준다.
+        private enum ServiceScreen
+        {
+            Actions,
+            Items
+        }
+
+        // 120일차: 오른쪽 열(RightColumnWidth) 폭에 맞춰 3열로 줄였다(118일차엔 4열/128px).
+        private const float ButtonWidth = 112f;
         private const float ButtonHeight = 34f;
-        private const int ButtonsPerRow = 4;
+        private const int ButtonsPerRow = 3;
 
         // 119일차: 호감도가 이 값 이상인 대상은 자기 차례가 될 때마다 이 확률(%)로 만족하고 떠난다.
         private const int SatisfiedDepartureChancePercent = 15;
+
+        // 120일차: 전투 로그에 보여줄 최근 줄 수.
+        private const int MaxLogLines = 6;
 
         [SerializeField] private DungeonFloorController floorController;
 
@@ -33,6 +45,17 @@ namespace ProjectDelta.Presentation
 
         private MonsterDefinition[] targetDefinitions;
         private string lastMonsterActionId;
+
+        // 120일차: EventBattleCheckpointStore.Capture()에 넘길 방 ID - 저장/복원(120일차)에 쓴다.
+        private PlayerGridMovementController movementController;
+
+        // 120일차: "전투 로그" - 상태 텍스트 한 줄 대신 최근 몇 줄의 기록을 보여준다.
+        private readonly List<string> battleLog =
+            new List<string>();
+
+        private Vector2 logScrollPosition;
+        private ServiceScreen serviceScreen =
+            ServiceScreen.Actions;
 
         // 119일차: Begin()에서 한 번 읽어 이벤트 전투가 끝날 때까지 들고 있다가 Finish()에서
         // 한 번에 저장한다 - 행동마다 디스크에 읽고 쓰지 않기 위해서다.
@@ -53,6 +76,12 @@ namespace ProjectDelta.Presentation
             {
                 floorController =
                     FindFirstObjectByType<DungeonFloorController>();
+            }
+
+            if (movementController == null)
+            {
+                movementController =
+                    GetComponent<PlayerGridMovementController>();
             }
         }
 
@@ -125,8 +154,15 @@ namespace ProjectDelta.Presentation
             lastMonsterActionId =
                 null;
 
-            statusText =
-                "당신의 차례입니다.";
+            serviceScreen =
+                ServiceScreen.Actions;
+
+            battleLog.Clear();
+
+            AppendLog(
+                "당신의 차례입니다.");
+
+            CaptureCheckpoint();
 
             Debug.Log(
                 $"[Project Delta] 117일차 이벤트 전투 시작 / Source {source} / 대상 {context.Targets.Count}명",
@@ -187,8 +223,8 @@ namespace ProjectDelta.Presentation
 
             context.RegisterAttempt();
 
-            statusText =
-                result.Message;
+            AppendLog(
+                result.Message);
 
             if (!result.Accepted)
             {
@@ -232,6 +268,67 @@ namespace ProjectDelta.Presentation
 
             Finish(
                 EventBattleOutcome.Aborted);
+        }
+
+        // 120일차: 기존 93일차 ItemUseService.CommitBattle을 그대로 재사용한다 - 이벤트 전투도
+        // Player가 진짜 BattleParticipant라 다른 코드 없이 바로 쓸 수 있었다. 호감도에는
+        // 영향이 없고 자원 회복만 하지만, 턴은 그대로 소모한다(플레이어 차례가 아니면 실패).
+        public ItemUseResult ConfirmUseItem(
+            int slotIndex,
+            ItemDefinition definition)
+        {
+            if (!session.IsActive
+                || session.Context == null
+                || session.Context.InitiativeHolder != EventBattleInitiativeHolder.Player)
+            {
+                return ItemUseResult.Failed(
+                    ItemUseFailureReason.BattleActionUnavailable);
+            }
+
+            InventoryRunState inventory =
+                RunContext.Current?.Inventory;
+
+            if (inventory == null)
+            {
+                return ItemUseResult.Failed(
+                    ItemUseFailureReason.InvalidInventory);
+            }
+
+            EventBattleContext context =
+                session.Context;
+
+            ItemUseResult result =
+                ItemUseService.CommitBattle(
+                    inventory,
+                    slotIndex,
+                    context.Player,
+                    definition);
+
+            if (!result.Success)
+            {
+                return result;
+            }
+
+            context.RegisterAttempt();
+
+            string itemName =
+                definition != null
+                && !string.IsNullOrEmpty(
+                    definition.DisplayName)
+                    ? definition.DisplayName
+                    : "아이템";
+
+            AppendLog(
+                $"{itemName} 사용 / HP +{result.HpRecovered} MP +{result.ManaRecovered} 정력 +{result.StaminaRecovered}");
+
+            serviceScreen =
+                ServiceScreen.Actions;
+
+            AdvanceInitiative(
+                0,
+                0);
+
+            return result;
         }
 
         // 118일차: 행동 처리 후 다음 주도권을 굴린다 - 몬스터가 가져가면 곧바로 저항 행동을
@@ -305,8 +402,8 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
-            statusText =
-                "당신의 차례입니다.";
+            AppendLog(
+                "당신의 차례입니다.");
 
             return true;
         }
@@ -347,8 +444,8 @@ namespace ProjectDelta.Presentation
                     ResolveTargetDisplayName(
                         index);
 
-                statusText =
-                    $"{name}이(가) 만족하여 떠났습니다.";
+                AppendLog(
+                    $"{name}이(가) 만족하여 떠났습니다.");
 
                 Debug.Log(
                     $"[Project Delta] 119일차 만족 이탈 / {name}",
@@ -447,11 +544,14 @@ namespace ProjectDelta.Presentation
                 ResolveTargetDisplayName(
                     context.SelectedTargetIndex);
 
-            statusText =
+            string resistMessage =
                 $"{targetName}이(가) {(chosen != null ? chosen.DisplayName : "저항")}에 저항했다! 호감도 -{resistAmount}";
 
+            AppendLog(
+                resistMessage);
+
             Debug.Log(
-                $"[Project Delta] 119일차 이벤트 전투 몬스터 차례 / {statusText}",
+                $"[Project Delta] 119일차 이벤트 전투 몬스터 차례 / {resistMessage}",
                 this);
 
             AdvanceInitiative(
@@ -473,6 +573,9 @@ namespace ProjectDelta.Presentation
 
             SaveProfile();
 
+            // 120일차: 결과가 어떻든 이벤트 전투가 정상 종료됐으니 대기 중이던 체크포인트를 지운다.
+            EventBattleCheckpointStore.Clear();
+
             Action callback =
                 outcome == EventBattleOutcome.Won
                     ? onWon
@@ -489,10 +592,94 @@ namespace ProjectDelta.Presentation
             statusText =
                 string.Empty;
 
+            battleLog.Clear();
+
             profile =
                 null;
 
             callback?.Invoke();
+        }
+
+        // 120일차: 이벤트 전투가 시작되는 순간 저장 직전 상태를 체크포인트로 남긴다 -
+        // 82일차 BattleEncounterCheckpointStore와 같은 원칙으로, 정확한 턴 재현은 하지 않고
+        // "있었다"는 사실과 저장 시점 수치만 남긴다(ApplicationFlow.ContinueGame 참고).
+        private void CaptureCheckpoint()
+        {
+            EventBattleContext context =
+                session.Context;
+
+            if (context == null)
+            {
+                return;
+            }
+
+            string roomId =
+                movementController != null
+                && movementController.PlayerState != null
+                    ? movementController.PlayerState.CurrentRoomId
+                    : null;
+
+            if (string.IsNullOrEmpty(
+                    roomId))
+            {
+                return;
+            }
+
+            List<string> definitionIds =
+                new List<string>();
+
+            List<int> favors =
+                new List<int>();
+
+            List<int> stages =
+                new List<int>();
+
+            for (int index = 0; index < context.Targets.Count; index++)
+            {
+                EventBattleParticipantState state =
+                    context.Targets[index];
+
+                definitionIds.Add(
+                    state.Participant.DefinitionId);
+
+                favors.Add(
+                    state.Favor);
+
+                stages.Add(
+                    state.CurrentStage);
+            }
+
+            EventBattleCheckpointStore.Capture(
+                roomId,
+                context.Source.ToString(),
+                context.AttemptCount,
+                context.Player.CurrentMana,
+                context.Player.CurrentStamina,
+                definitionIds,
+                favors,
+                stages);
+        }
+
+        private void AppendLog(
+            string message)
+        {
+            if (string.IsNullOrEmpty(
+                    message))
+            {
+                return;
+            }
+
+            statusText =
+                message;
+
+            battleLog.Add(
+                message);
+
+            if (battleLog.Count > MaxLogLines)
+            {
+                battleLog.RemoveAt(
+                    0);
+            }
         }
 
         // 119일차: AppRoot가 아직 "지금 로드된 프로필"을 들고 있는 공식 자리가 없어서
@@ -555,6 +742,14 @@ namespace ProjectDelta.Presentation
             return targetDefinitions[targetIndex];
         }
 
+        // 120일차: "전반적으로 UI 배치를 재구성" 요청 - 왼쪽(대상 명단·게이지·자원·상태)과
+        // 오른쪽(행동/아이템 탭 + 전투 로그)으로 나눈 2단 레이아웃으로 다시 짰다.
+        private const float PanelWidth = 620f;
+        private const float LeftColumnWidth = 220f;
+        private const float RightColumnWidth = 360f;
+        private const float ColumnGap = 12f;
+        private const float LogHeight = 96f;
+
         private void OnGUI()
         {
             if (!IsActive
@@ -574,22 +769,23 @@ namespace ProjectDelta.Presentation
                     catalog.Count
                     / (float)ButtonsPerRow);
 
-            float width =
-                ButtonsPerRow
-                * (ButtonWidth + 8f)
-                + 24f;
+            float actionsHeight =
+                rowCount
+                * (ButtonHeight + 6f);
 
             float height =
-                190f
-                + rowCount
-                * (ButtonHeight + 6f)
-                + 44f;
+                Mathf.Max(
+                    260f,
+                    36f
+                    + actionsHeight
+                    + LogHeight
+                    + 90f);
 
             Rect panelRect =
                 new Rect(
-                    (Screen.width - width) * 0.5f,
+                    (Screen.width - PanelWidth) * 0.5f,
                     Screen.height - height - 40f,
-                    width,
+                    PanelWidth,
                     height);
 
             GUI.Box(
@@ -620,127 +816,361 @@ namespace ProjectDelta.Presentation
             GUILayout.Space(
                 4f);
 
-            // 119일차: 대상이 여러 명이면 탭처럼 늘어놓고, 선택된 대상의 게이지를 아래에 보여준다.
-            if (context.Targets.Count > 1)
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(
+                GUILayout.Width(LeftColumnWidth));
+
+            DrawTargetRoster(
+                context);
+
+            DrawResourceBars(
+                context);
+
+            DrawInitiativeBadge(
+                context);
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(
+                ColumnGap);
+
+            GUILayout.BeginVertical(
+                GUILayout.Width(RightColumnWidth));
+
+            DrawServiceTabs();
+
+            if (serviceScreen == ServiceScreen.Items)
             {
-                GUILayout.BeginHorizontal();
+                DrawItemsScreen(
+                    context);
+            }
+            else
+            {
+                DrawActionsScreen(
+                    context,
+                    catalog,
+                    rowCount);
+            }
 
-                for (int index = 0; index < context.Targets.Count; index++)
+            GUILayout.FlexibleSpace();
+
+            DrawLog();
+
+            GUILayout.Space(
+                4f);
+
+            if (GUILayout.Button(
+                    "포기",
+                    GUILayout.Height(ButtonHeight)))
+            {
+                ConfirmAbort();
+            }
+
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndArea();
+        }
+
+        // 119일차에 만든 가로 탭 대신, 대상마다 상자 하나씩 세로로 쌓아 이름·게이지·상태를
+        // 한눈에 보여준다.
+        private void DrawTargetRoster(
+            EventBattleContext context)
+        {
+            for (int index = 0; index < context.Targets.Count; index++)
+            {
+                EventBattleParticipantState state =
+                    context.Targets[index];
+
+                bool isSelected =
+                    index == context.SelectedTargetIndex;
+
+                Rect boxRect =
+                    GUILayoutUtility.GetRect(
+                        LeftColumnWidth,
+                        isSelected
+                            ? 46f
+                            : 34f);
+
+                GUI.Box(
+                    boxRect,
+                    string.Empty);
+
+                if (isSelected)
                 {
-                    EventBattleParticipantState state =
-                        context.Targets[index];
+                    DrawBoxOutline(
+                        boxRect,
+                        new Color(0.85f, 0.35f, 0.55f, 1f));
+                }
 
-                    string label =
-                        ResolveTargetDisplayName(
-                            index);
+                string suffix =
+                    state.HasLeftSatisfied
+                        ? " (이탈)"
+                        : state.HasWon
+                            ? " (성공)"
+                            : state.StageCount > 1
+                                ? $" ({state.CurrentStage}/{state.StageCount}단계)"
+                                : string.Empty;
 
-                    if (state.HasLeftSatisfied)
-                    {
-                        label +=
-                            " (이탈)";
-                    }
-                    else if (state.HasWon)
-                    {
-                        label +=
-                            " (성공)";
-                    }
-                    else if (state.StageCount > 1)
-                    {
-                        label +=
-                            $" ({state.CurrentStage}/{state.StageCount}단계)";
-                    }
+                GUI.enabled =
+                    state.IsActive;
 
-                    GUI.enabled =
-                        state.IsActive;
-
-                    if (GUILayout.Toggle(
-                            index == context.SelectedTargetIndex,
-                            label,
-                            GUI.skin.button))
-                    {
-                        SelectTarget(
-                            index);
-                    }
+                if (GUI.Button(
+                        boxRect,
+                        string.Empty,
+                        GUIStyle.none))
+                {
+                    SelectTarget(
+                        index);
                 }
 
                 GUI.enabled =
                     true;
 
-                GUILayout.EndHorizontal();
+                GUIStyle nameStyle =
+                    new GUIStyle(GUI.skin.label)
+                    {
+                        fontStyle = FontStyle.Bold
+                    };
 
-                GUILayout.Space(
-                    4f);
-            }
+                nameStyle.normal.textColor =
+                    state.IsActive
+                        ? Color.white
+                        : new Color(0.6f, 0.6f, 0.6f, 1f);
 
-            EventBattleParticipantState selected =
-                context.SelectedTarget;
-
-            Rect barBackground =
-                GUILayoutUtility.GetRect(
-                    width - 32f,
-                    18f);
-
-            GUI.Box(
-                barBackground,
-                string.Empty);
-
-            if (selected != null)
-            {
-                Rect barFill =
+                GUI.Label(
                     new Rect(
-                        barBackground.x,
-                        barBackground.y,
-                        barBackground.width
-                        * (selected.Favor
-                            / (float)EventBattleContext.FavorToWin),
-                        barBackground.height);
+                        boxRect.x + 6f,
+                        boxRect.y + 2f,
+                        boxRect.width - 12f,
+                        16f),
+                    $"{ResolveTargetDisplayName(index)}{suffix}",
+                    nameStyle);
 
-                Color previousColor =
-                    GUI.color;
+                Rect miniBarBg =
+                    new Rect(
+                        boxRect.x + 6f,
+                        boxRect.y + 20f,
+                        boxRect.width - 12f,
+                        10f);
 
-                GUI.color =
-                    new Color(0.85f, 0.35f, 0.55f, 1f);
+                GUI.Box(
+                    miniBarBg,
+                    string.Empty);
 
-                GUI.DrawTexture(
-                    barFill,
-                    Texture2D.whiteTexture);
+                DrawFillBar(
+                    miniBarBg,
+                    state.Favor
+                    / (float)EventBattleContext.FavorToWin,
+                    new Color(0.85f, 0.35f, 0.55f, 1f));
 
-                GUI.color =
-                    previousColor;
+                if (isSelected)
+                {
+                    GUI.Label(
+                        new Rect(
+                            boxRect.x + 6f,
+                            boxRect.y + 30f,
+                            boxRect.width - 12f,
+                            14f),
+                        $"호감도 {state.Favor} / {EventBattleContext.FavorToWin}");
+                }
             }
 
             GUILayout.Space(
-                4f);
+                6f);
+        }
 
+        private void DrawResourceBars(
+            EventBattleContext context)
+        {
             GUILayout.Label(
-                selected != null
-                    ? $"{ResolveTargetDisplayName(context.SelectedTargetIndex)} 호감도 {selected.Favor} / {EventBattleContext.FavorToWin}   |   플레이어 MP {context.Player.CurrentMana}/{context.Player.MaxMana}   정력 {context.Player.CurrentStamina}/{context.Player.MaxStamina}"
-                    : $"플레이어 MP {context.Player.CurrentMana}/{context.Player.MaxMana}   정력 {context.Player.CurrentStamina}/{context.Player.MaxStamina}");
+                "플레이어 자원",
+                new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
 
-            // 118일차: 플레이어 칸(정보 줄) 바로 아래에 지금 상태를 글자로 보여준다.
+            DrawLabeledBar(
+                $"MP {context.Player.CurrentMana}/{context.Player.MaxMana}",
+                context.Player.MaxMana > 0
+                    ? context.Player.CurrentMana / (float)context.Player.MaxMana
+                    : 0f,
+                new Color(0.35f, 0.55f, 0.9f, 1f));
+
+            DrawLabeledBar(
+                $"정력 {context.Player.CurrentStamina}/{context.Player.MaxStamina}",
+                context.Player.MaxStamina > 0
+                    ? context.Player.CurrentStamina / (float)context.Player.MaxStamina
+                    : 0f,
+                new Color(0.9f, 0.75f, 0.25f, 1f));
+
+            GUILayout.Space(
+                6f);
+        }
+
+        private void DrawLabeledBar(
+            string label,
+            float ratio,
+            Color color)
+        {
+            GUILayout.Label(
+                label);
+
+            Rect barRect =
+                GUILayoutUtility.GetRect(
+                    LeftColumnWidth,
+                    14f);
+
+            GUI.Box(
+                barRect,
+                string.Empty);
+
+            DrawFillBar(
+                barRect,
+                ratio,
+                color);
+
+            GUILayout.Space(
+                4f);
+        }
+
+        private void DrawFillBar(
+            Rect background,
+            float ratio,
+            Color color)
+        {
+            float clampedRatio =
+                Mathf.Clamp01(
+                    ratio);
+
+            Rect fillRect =
+                new Rect(
+                    background.x,
+                    background.y,
+                    background.width
+                    * clampedRatio,
+                    background.height);
+
+            Color previousColor =
+                GUI.color;
+
+            GUI.color =
+                color;
+
+            GUI.DrawTexture(
+                fillRect,
+                Texture2D.whiteTexture);
+
+            GUI.color =
+                previousColor;
+        }
+
+        private void DrawBoxOutline(
+            Rect rect,
+            Color color)
+        {
+            Color previousColor =
+                GUI.color;
+
+            GUI.color =
+                color;
+
+            GUI.DrawTexture(
+                new Rect(rect.x, rect.y, rect.width, 2f),
+                Texture2D.whiteTexture);
+
+            GUI.DrawTexture(
+                new Rect(rect.x, rect.yMax - 2f, rect.width, 2f),
+                Texture2D.whiteTexture);
+
+            GUI.DrawTexture(
+                new Rect(rect.x, rect.y, 2f, rect.height),
+                Texture2D.whiteTexture);
+
+            GUI.DrawTexture(
+                new Rect(rect.xMax - 2f, rect.y, 2f, rect.height),
+                Texture2D.whiteTexture);
+
+            GUI.color =
+                previousColor;
+        }
+
+        // 118일차: 플레이어 칸(왼쪽 자원 아래)에 지금 상태를 글자로 보여준다.
+        private void DrawInitiativeBadge(
+            EventBattleContext context)
+        {
+            bool isPlayerTurn =
+                context.InitiativeHolder
+                == EventBattleInitiativeHolder.Player;
+
             GUIStyle statusStyle =
                 new GUIStyle(GUI.skin.label)
                 {
-                    fontStyle = FontStyle.Italic
+                    fontStyle = FontStyle.Bold,
+                    wordWrap = true
                 };
 
             statusStyle.normal.textColor =
-                context.InitiativeHolder
-                == EventBattleInitiativeHolder.Player
+                isPlayerTurn
                     ? new Color(0.7f, 0.9f, 1f, 1f)
                     : new Color(1f, 0.7f, 0.7f, 1f);
 
             GUILayout.Label(
-                $"상태: {statusText}",
+                isPlayerTurn
+                    ? "지금 차례: 플레이어"
+                    : "지금 차례: 상대",
                 statusStyle);
+        }
+
+        private void DrawServiceTabs()
+        {
+            GUILayout.BeginHorizontal();
+
+            GUI.enabled =
+                serviceScreen != ServiceScreen.Actions;
+
+            if (GUILayout.Button(
+                    "행동",
+                    GUILayout.Height(24f)))
+            {
+                serviceScreen =
+                    ServiceScreen.Actions;
+            }
+
+            GUI.enabled =
+                serviceScreen != ServiceScreen.Items;
+
+            if (GUILayout.Button(
+                    "아이템",
+                    GUILayout.Height(24f)))
+            {
+                serviceScreen =
+                    ServiceScreen.Items;
+            }
+
+            GUI.enabled =
+                true;
+
+            GUILayout.EndHorizontal();
 
             GUILayout.Space(
-                6f);
+                4f);
+        }
 
+        // 120일차: 행동 상성 예고 - 선택된 대상이 강점/약점으로 알려진 행동이면 이름 옆에 표시한다
+        // (133~135일차 전까지는 실제 몬스터 상성 데이터가 없어 대부분 아무 표시도 없다).
+        private void DrawActionsScreen(
+            EventBattleContext context,
+            IReadOnlyList<IEventBattleCommand> catalog,
+            int rowCount)
+        {
             bool isPlayerTurn =
                 context.InitiativeHolder
                 == EventBattleInitiativeHolder.Player
-                && selected != null;
+                && context.SelectedTarget != null;
+
+            MonsterDefinition selectedDefinition =
+                ResolveDefinition(
+                    context.SelectedTargetIndex);
 
             for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
             {
@@ -776,8 +1206,13 @@ namespace ProjectDelta.Presentation
                             ? $"MP{action.ManaCost}"
                             : $"정력{action.StaminaCost}";
 
+                    string affinityTag =
+                        DescribeAffinityTag(
+                            selectedDefinition,
+                            action.Id);
+
                     if (GUILayout.Button(
-                            $"{action.DisplayName} ({costLabel})",
+                            $"{action.DisplayName}{affinityTag} ({costLabel})",
                             GUILayout.Width(ButtonWidth),
                             GUILayout.Height(ButtonHeight)))
                     {
@@ -791,18 +1226,120 @@ namespace ProjectDelta.Presentation
 
             GUI.enabled =
                 true;
+        }
 
-            GUILayout.Space(
-                6f);
-
-            if (GUILayout.Button(
-                    "포기",
-                    GUILayout.Height(ButtonHeight)))
+        private static string DescribeAffinityTag(
+            MonsterDefinition definition,
+            string actionId)
+        {
+            if (definition == null)
             {
-                ConfirmAbort();
+                return string.Empty;
             }
 
-            GUILayout.EndArea();
+            float multiplier =
+                EventBattleAffinityRule.ResolveMultiplier(
+                    definition.EventBattleStrongActionIds,
+                    definition.EventBattleWeakActionIds,
+                    actionId);
+
+            if (multiplier > EventBattleAffinityRule.NormalMultiplier)
+            {
+                return " [약점]";
+            }
+
+            if (multiplier < EventBattleAffinityRule.NormalMultiplier)
+            {
+                return " [강점]";
+            }
+
+            return string.Empty;
+        }
+
+        // 120일차: 93일차 인벤토리 아이템을 그대로 재사용한다 - 정력/마나를 채우는 소비 아이템.
+        private void DrawItemsScreen(
+            EventBattleContext context)
+        {
+            InventoryRunState inventory =
+                RunContext.Current?.Inventory;
+
+            bool isPlayerTurn =
+                context.InitiativeHolder
+                == EventBattleInitiativeHolder.Player;
+
+            bool hasUsableSlot =
+                false;
+
+            if (inventory != null)
+            {
+                for (int slotIndex = 0; slotIndex < inventory.Slots.Count; slotIndex++)
+                {
+                    InventorySlotState slot =
+                        inventory.Slots[slotIndex];
+
+                    if (slot == null
+                        || slot.IsEmpty)
+                    {
+                        continue;
+                    }
+
+                    if (!RuntimeItemDefinitionLookup.TryFind(
+                            slot.ItemId,
+                            out ItemDefinition definition)
+                        || !ItemCategoryRules.CanUse(
+                            definition.Category)
+                        || (definition.UseContext != ItemUseContext.Battle
+                            && definition.UseContext != ItemUseContext.Both))
+                    {
+                        continue;
+                    }
+
+                    hasUsableSlot =
+                        true;
+
+                    GUI.enabled =
+                        isPlayerTurn;
+
+                    if (GUILayout.Button(
+                            $"{slot.DisplayName} ×{slot.Quantity}  [사용]",
+                            GUILayout.Height(28f)))
+                    {
+                        ConfirmUseItem(
+                            slotIndex,
+                            definition);
+                    }
+
+                    GUI.enabled =
+                        true;
+                }
+            }
+
+            if (!hasUsableSlot)
+            {
+                GUILayout.Label(
+                    "쓸 수 있는 아이템이 없습니다.");
+            }
+        }
+
+        private void DrawLog()
+        {
+            GUILayout.Label(
+                "전투 로그",
+                new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+
+            logScrollPosition =
+                GUILayout.BeginScrollView(
+                    logScrollPosition,
+                    GUI.skin.box,
+                    GUILayout.Height(LogHeight));
+
+            for (int index = 0; index < battleLog.Count; index++)
+            {
+                GUILayout.Label(
+                    battleLog[index]);
+            }
+
+            GUILayout.EndScrollView();
         }
 
         private string ResolveTargetDisplayName(

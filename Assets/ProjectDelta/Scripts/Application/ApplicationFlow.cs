@@ -51,6 +51,7 @@ namespace ProjectDelta.Application
 
             DefeatSceneState.Clear();
             BattleEncounterCheckpointStore.Clear(); // 전투 체크포인트 초기화
+            EventBattleCheckpointStore.Clear(); // 120일차: 이벤트 전투 체크포인트 초기화
 
             string runId =
                 Guid.NewGuid().ToString();
@@ -103,6 +104,12 @@ namespace ProjectDelta.Application
 
             BattleEncounterCheckpointStore.Restore(
                 savedRun.BattleEncounterCheckpoint); // 전투 직전 체크포인트 복원
+
+            // 120일차: 이벤트 전투는 정확한 턴 재현 없이 "있었다"는 사실과 저장 직전 수치만
+            // 로그로 남기고 비운다 - 위 일반 전투 체크포인트가 같은 조우를 처음부터 다시 연다.
+            EventBattleCheckpointStore.RestoreAndClear(
+                savedRun.EventBattleCheckpoint,
+                _log.Info);
 
             DungeonSaveMapper.BeginRestore(
                 savedRun);
@@ -217,6 +224,7 @@ namespace ProjectDelta.Application
                 _saveService?.DeleteRun(ActiveSlot);
                 DungeonSaveMapper.ClearPendingRestore();
                 BattleEncounterCheckpointStore.Clear(); // 패배 체크포인트 제거
+                EventBattleCheckpointStore.Clear(); // 120일차: 패배 시 이벤트 전투 체크포인트 제거
             }
 
             _log.Info("Entering DefeatScene");
@@ -232,6 +240,7 @@ namespace ProjectDelta.Application
                 _saveService?.DeleteRun(ActiveSlot);
                 DungeonSaveMapper.ClearPendingRestore();
                 BattleEncounterCheckpointStore.Clear(); // 런 포기 체크포인트 제거
+                EventBattleCheckpointStore.Clear(); // 120일차: 런 포기 시 이벤트 전투 체크포인트 제거
             }
 
             DefeatSceneState.Clear();
@@ -254,6 +263,9 @@ namespace ProjectDelta.Application
 
             BattleEncounterCheckpointStore.ApplyTo(
                 data); // 대기 중 전투 체크포인트 포함
+
+            EventBattleCheckpointStore.ApplyTo(
+                data); // 120일차: 대기 중 이벤트 전투 체크포인트 포함
 
             _saveService.WriteRun(
                 data,
