@@ -71,6 +71,8 @@ namespace ProjectDelta.Application
             ApplyPermanentGrowth(
                 RunContext.Current.Player,
                 true); // 새 런은 시작부터 영구 강화 보너스만큼 채워서 시작한다.
+            ApplyPermanentInventoryGrowth(
+                RunContext.Current.Inventory);
             LoadWithLoadingScreen(SceneNames.Dungeon);
         }
 
@@ -111,6 +113,28 @@ namespace ProjectDelta.Application
                 finalStats.MaxStamina;
         }
 
+        // 127일차: 인벤토리 슬롯 영구 확장 보너스를 InventoryRunState에 적용한다.
+        // 기존 가방(102일차 BagExpansionService) 보너스는 그대로 보존한다.
+        private void ApplyPermanentInventoryGrowth(
+            InventoryRunState inventory)
+        {
+            if (inventory == null)
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            int bonusSlots =
+                InventorySlotUpgradeRule.GetBonusSlots(
+                    profile.PermanentGrowth.InventorySlotUpgradeLevel);
+
+            inventory.SetCapacityBonuses(
+                bonusSlots,
+                inventory.BagSlotBonus);
+        }
+
         // 126일차: 로비 강화 상점 - 기억의 조각을 소비해 한 단계 강화를 산다.
         // 실행 중인 런이 없을 때(로비)만 호출되므로 RunContext는 건드리지 않는다.
         public bool TryPurchasePermanentStatUpgrade(
@@ -142,6 +166,35 @@ namespace ProjectDelta.Application
 
             profile.PermanentGrowth.PermanentStatUpgradeLevels[statId] =
                 currentLevel + 1;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
+        // 127일차: 로비 강화 상점 - 인벤토리 슬롯 확장 구매.
+        public bool TryPurchaseInventorySlotUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!InventorySlotUpgradeRule.TryGetUpgradeCost(
+                    profile.PermanentGrowth.InventorySlotUpgradeLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.InventorySlotUpgradeLevel++;
 
             WriteProfile(
                 profile);
@@ -192,6 +245,11 @@ namespace ProjectDelta.Application
             DungeonSaveMapper.ApplyBasics(
                 RunContext.Current,
                 savedRun);
+
+            // 127일차: ApplyBasics가 저장 시점의(예전) 인벤토리 슬롯 보너스로 덮어쓰므로,
+            // 프로필 기준의 현재 값으로 다시 한번 확정한다 - 순서가 중요하다.
+            ApplyPermanentInventoryGrowth(
+                RunContext.Current.Inventory);
 
             BattleEncounterCheckpointStore.Restore(
                 savedRun.BattleEncounterCheckpoint); // 전투 직전 체크포인트 복원

@@ -23,8 +23,11 @@ namespace ProjectDelta.Data
         public Dictionary<string, int> PermanentStatUpgradeLevels =
             new Dictionary<string, int>();
 
-        // TODO 6.6절 영구 강화 구현 시 추가: 인벤토리 확장, 유물 보유량 확장,
-        // 상점 강화, 탐험 강화 (영구 능력치 강화는 126일차에 완료)
+        // 127일차: 인벤토리 슬롯 영구 확장 레벨. InventorySlotUpgradeRule이 비용/효과를 계산한다.
+        public int InventorySlotUpgradeLevel;
+
+        // TODO 6.6절 영구 강화 구현 시 추가: 유물 보유량 확장, 상점 강화, 탐험 강화
+        // (영구 능력치 강화는 126일차, 인벤토리 확장은 127일차에 완료)
 
         public int StartingGold;
         public List<string> StartingConsumableItemIds = new List<string>();

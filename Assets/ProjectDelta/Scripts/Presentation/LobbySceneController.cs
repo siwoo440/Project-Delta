@@ -181,6 +181,62 @@ namespace ProjectDelta.Presentation
 
                 y += rowHeight;
             }
+
+            DrawInventorySlotUpgradeRow(
+                panelX,
+                panelWidth,
+                rowHeight,
+                y);
+        }
+
+        // 127일차: 인벤토리 슬롯 확장은 스탯 강화와 별개 트랙(레벨 dict가 아니라 단일 레벨)이라
+        // 위 반복문과 같은 모양이지만 별도로 그린다.
+        private void DrawInventorySlotUpgradeRow(
+            float panelX,
+            float panelWidth,
+            float rowHeight,
+            float y)
+        {
+            int level =
+                profile != null
+                    ? profile.PermanentGrowth.InventorySlotUpgradeLevel
+                    : 0;
+
+            bool hasNextLevel =
+                InventorySlotUpgradeRule.TryGetUpgradeCost(
+                    level,
+                    out int cost);
+
+            string rowLabel =
+                hasNextLevel
+                    ? $"인벤토리 슬롯  Lv.{level} → {level + 1}  ({cost} 조각)"
+                    : $"인벤토리 슬롯  Lv.{level} (최대)";
+
+            GUI.Label(
+                new Rect(panelX, y, panelWidth - 90f, rowHeight),
+                rowLabel,
+                upgradeRowLabelStyle);
+
+            bool canAfford =
+                hasNextLevel
+                && profile != null
+                && profile.PermanentGrowth.MemoryShards >= cost;
+
+            GUI.enabled =
+                canAfford;
+
+            if (GUI.Button(
+                    new Rect(panelX + panelWidth - 80f, y, 80f, rowHeight - 4f),
+                    "구매",
+                    upgradeBuyButtonStyle)
+                && ApplicationFlow.Current != null
+                && ApplicationFlow.Current.TryPurchaseInventorySlotUpgrade())
+            {
+                RefreshProfile();
+            }
+
+            GUI.enabled =
+                true;
         }
 
         private void EnsureStyles()
