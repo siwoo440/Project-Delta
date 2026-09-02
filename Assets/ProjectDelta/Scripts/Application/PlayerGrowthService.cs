@@ -38,6 +38,38 @@ namespace ProjectDelta.Application
             return (int)total;
         }
 
+        // 125일차: 경험치와 같은 방식으로 처치한 몬스터 목록을 기억의 조각 보상으로 환산한다.
+        public static int CalculateMemoryShards(
+            IEnumerable<MonsterDefinition> defeatedMonsters)
+        {
+            if (defeatedMonsters == null)
+            {
+                return 0;
+            }
+
+            long total =
+                0;
+
+            foreach (MonsterDefinition monster
+                     in defeatedMonsters)
+            {
+                if (monster == null)
+                {
+                    continue;
+                }
+
+                total +=
+                    monster.MemoryShardReward;
+
+                if (total >= int.MaxValue)
+                {
+                    return int.MaxValue;
+                }
+            }
+
+            return (int)total;
+        }
+
         public static BattleGrowthResult ApplyBattleExperience(
             PlayerRunState player,
             IEnumerable<MonsterDefinition> defeatedMonsters,

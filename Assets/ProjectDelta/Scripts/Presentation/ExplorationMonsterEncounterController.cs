@@ -163,6 +163,9 @@ namespace ProjectDelta.Presentation
         // 81일차 정식 보상 화면이 재추첨 없이 이 결과를 그대로 표시한다.
         public BattleDropResult LastBattleDropResult { get; private set; }
 
+        // 125일차: 가장 최근 승리에서 지급된 기억의 조각(영구 성장 재화) 수.
+        public int LastMemoryShardsEarned { get; private set; }
+
         // 116일차: "관찰" 행동으로 확인한 대상 능력치 텍스트를 Battle HUD가 그대로 보여준다.
         public string LastObservationText { get; private set; }
 
@@ -2407,6 +2410,46 @@ namespace ProjectDelta.Presentation
                 Destroy(
                     growthDefinition);
             }
+
+            ApplyMemoryShardGrowth(
+                defeatedMonsters);
+        }
+
+        // 125일차: 영구 성장 재화(기억의 조각) 지급 - 런과 무관하게 ProfileData에 즉시 누적한다.
+        // EventBattleController.SaveProfile()과 같은 방식으로 ApplicationFlow를 거쳐 저장한다.
+        private void ApplyMemoryShardGrowth(
+            List<MonsterDefinition> defeatedMonsters)
+        {
+            LastMemoryShardsEarned =
+                PlayerGrowthService.CalculateMemoryShards(
+                    defeatedMonsters);
+
+            if (ApplicationFlow.Current == null)
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ApplicationFlow.Current.ReadOrCreateProfile();
+
+            profile.PermanentGrowth.MemoryShards +=
+                LastMemoryShardsEarned;
+
+            profile.PermanentGrowth.TotalMemoryShardsEarned +=
+                LastMemoryShardsEarned;
+
+            profile.LifetimeStats.TotalMemoryShardsCollected +=
+                LastMemoryShardsEarned;
+
+            profile.LifetimeStats.MonstersDefeated +=
+                defeatedMonsters.Count;
+
+            ApplicationFlow.Current.WriteProfile(
+                profile);
+
+            Debug.Log(
+                $"[Project Delta] 125일차 기억의 조각 +{LastMemoryShardsEarned} / 보유 {profile.PermanentGrowth.MemoryShards}",
+                this);
         }
 
         private void FinalizeActiveEncounter(

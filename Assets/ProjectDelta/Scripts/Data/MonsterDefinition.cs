@@ -37,6 +37,12 @@ namespace ProjectDelta.Data
         [Min(0)]
         [SerializeField] private int experienceReward = 20;
 
+        // 125일차: 영구 성장 재화(기억의 조각) - 런이 끝나도 사라지지 않고 ProfileData에
+        // 누적된다. ExperienceReward(런 내 성장)와 별개로, 층을 넘나드는 장기 성장에 쓰인다.
+        [Header("125일차 기억의 조각 보상")]
+        [Min(0)]
+        [SerializeField] private int memoryShardReward = 1;
+
         [Header("80일차 전투 드롭")]
         [SerializeField] private MonsterDropTable dropTable;
 
@@ -84,6 +90,15 @@ namespace ProjectDelta.Data
                 0,
                 Mathf.RoundToInt(
                     experienceReward
+                    * MonsterTierRules.GetRewardMultiplier(
+                        tier)));
+
+        // 125일차: 경험치와 같은 방식으로 등급 배율을 곱한다 - 보스/정예가 기억의 조각도 더 준다.
+        public int MemoryShardReward =>
+            Mathf.Max(
+                0,
+                Mathf.RoundToInt(
+                    memoryShardReward
                     * MonsterTierRules.GetRewardMultiplier(
                         tier)));
 
