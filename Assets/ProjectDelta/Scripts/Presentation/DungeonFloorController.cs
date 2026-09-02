@@ -262,15 +262,19 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
-            // 123일차: 5개 층 회차 - 5층(마왕성)에서는 계단으로 더 내려가지 않는다.
-            // 5층을 끝내는 건(마왕 처치) 124일차가 붙일 별도 흐름이다.
+            // 124일차: 5층(마왕성)의 계단은 더 내려가는 용도가 아니라 "던전 클리어" 트리거다.
+            // 이 계단은 보스 방이 Completed(마왕 처치)되기 전에는 애초에 나타나지 않으므로
+            // (PlaceRuntimeStairs의 RoomType.Boss 게이팅), 여기 도달했다는 것 자체가 이미
+            // 마왕을 쓰러뜨렸다는 뜻이다 - 곧바로 클리어 처리 후 로비로 돌려보낸다.
             if (GetDungeonState().CurrentFloor >= FloorThemeSchedule.FloorCount)
             {
-                Debug.LogWarning(
-                    "[Project Delta] 123일차 마지막 층에서는 계단을 사용할 수 없습니다.",
+                Debug.Log(
+                    "[Project Delta] 124일차 던전 클리어 - 마왕 처치 후 로비로 복귀합니다.",
                     this);
 
-                return false;
+                ApplicationFlow.Current?.ReturnToLobby();
+
+                return true;
             }
 
             if (useProceduralGeneration)
@@ -1417,6 +1421,10 @@ namespace ProjectDelta.Presentation
         // 몬스터들)를 순서대로 돌려가며 정한다. 골라낸 보스를 목록 맨 앞에 둬서
         // TryBuildCombatGuaranteeAssignment(첫 유효 항목을 쓴다)가 항상 그 보스를 쓰게 한다.
         // Boss 등급 몬스터가 하나도 없으면(콘텐츠 미비) 기존 전체 후보로 안전하게 되돌아간다.
+        // 123일차: 5층(마지막 층)은 순환 로스터가 아니라 항상 이 몬스터(마왕)가 나온다.
+        // 순환 로스터에는 절대 섞이지 않도록 별도로 빼둔다.
+        private const string FinalBossMonsterId = "MON_DEMON_LORD";
+
         private List<EncounterDefinition> CollectBossEncounters()
         {
             List<EncounterDefinition> all =
@@ -1425,26 +1433,54 @@ namespace ProjectDelta.Presentation
             List<EncounterDefinition> bossOnly =
                 new List<EncounterDefinition>();
 
+            EncounterDefinition finalBossEncounter =
+                null;
+
             for (int index = 0; index < all.Count; index++)
             {
                 EncounterDefinition encounter =
                     all[index];
 
-                if (encounter != null
-                    && encounter.Monster != null
-                    && encounter.Monster.Tier == MonsterTier.Boss)
+                if (encounter == null
+                    || encounter.Monster == null
+                    || encounter.Monster.Tier != MonsterTier.Boss)
                 {
-                    bossOnly.Add(encounter);
+                    continue;
                 }
+
+                if (encounter.Monster.Id == FinalBossMonsterId)
+                {
+                    finalBossEncounter =
+                        encounter;
+
+                    continue;
+                }
+
+                bossOnly.Add(encounter);
+            }
+
+            int floor =
+                GetDungeonState().CurrentFloor;
+
+            if (floor >= FloorThemeSchedule.FloorCount)
+            {
+                if (finalBossEncounter != null)
+                {
+                    return new List<EncounterDefinition>
+                    {
+                        finalBossEncounter
+                    };
+                }
+
+                Debug.LogWarning(
+                    "[Project Delta] 123일차 5층 전용 마왕(MON_DEMON_LORD)을 찾지 못해 순환 보스로 대체합니다.",
+                    this);
             }
 
             if (bossOnly.Count == 0)
             {
                 return all;
             }
-
-            int floor =
-                GetDungeonState().CurrentFloor;
 
             int chosenIndex =
                 ((floor - 1) % bossOnly.Count
