@@ -8,6 +8,9 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
     // 22일차: 처음에는 계단 칸 위에 "서서" 상호작용하는 방식이었지만, 계단 모형이 실제로
     // 벽처럼 그 칸을 막고 있어야 해서(RoomDefinition_TestRoom_B의 벽 통로 참고) 문처럼
     // "정면에서" 상호작용하는 방식으로 바꿨다. 그 칸 자체는 이동 불가능한 벽이라 밟고 올라갈 수 없다.
+    // 123일차: "이전 층 복귀 금지" 확인창 - F를 한 번 누르면 곧바로 내려가지 않고 확인
+    // 문구를 띄운다. 같은 정면 계단에서 F를 한 번 더 누르면 실제로 내려가고, Esc나 계단
+    // 정면을 벗어나면 확인이 취소된다.
     public sealed class StairsInteractionController : MonoBehaviour // 플레이어 계단 상호작용 제어
     {
         [SerializeField] private InputActionAsset inputActions; // 프로젝트 입력 액션 에셋
@@ -19,6 +22,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputAction interactAction; // 상호작용 액션
         private string promptText; // 현재 화면 안내 문구
         private GUIStyle promptStyle; // 안내 문구 GUI 스타일
+        private bool awaitingConfirmation; // 123일차: 확인 대기 상태
 
         private void Awake() // 참조 자동 연결
         {
@@ -59,11 +63,40 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 interactAction.performed -= OnInteract; // F 입력 이벤트 해제
             }
+
+            awaitingConfirmation = false; // 123일차: 비활성화되면 확인 대기도 정리한다.
         }
 
         private void Update() // 정면 계단 안내 갱신
         {
-            promptText = FindStairsMarkerInFront() != null ? "계단 내려가기 [F]" : string.Empty; // 정면 계단 여부에 따라 안내 갱신
+            bool hasStairsInFront =
+                FindStairsMarkerInFront() != null;
+
+            if (!hasStairsInFront)
+            {
+                // 123일차: 정면 계단을 벗어나면 확인 대기를 취소한다.
+                awaitingConfirmation = false;
+            }
+
+            if (awaitingConfirmation)
+            {
+                promptText =
+                    "이전 층으로 돌아갈 수 없습니다. 내려가시겠습니까? [F] 확인 / [Esc] 취소";
+            }
+            else
+            {
+                promptText =
+                    hasStairsInFront
+                        ? "계단 내려가기 [F]"
+                        : string.Empty;
+            }
+
+            if (awaitingConfirmation
+                && Keyboard.current != null
+                && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                awaitingConfirmation = false;
+            }
         }
 
         private void OnInteract(InputAction.CallbackContext context) // F 상호작용 처리
@@ -77,6 +110,15 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 return; // 계단 없음 또는 컨트롤러 없음, 상호작용 중단
             }
+
+            // 123일차: 첫 F는 확인 문구만 띄우고, 같은 자리에서 F를 한 번 더 눌러야 실제로 내려간다.
+            if (!awaitingConfirmation)
+            {
+                awaitingConfirmation = true;
+                return;
+            }
+
+            awaitingConfirmation = false;
 
             floorController.TryDescend(movementController); // 다음 층으로 이동 시도
 

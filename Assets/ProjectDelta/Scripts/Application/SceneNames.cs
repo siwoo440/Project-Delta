@@ -4,6 +4,7 @@ namespace ProjectDelta.Application
     {
         public const string Bootstrap = "BootstrapScene";
         public const string Title = "TitleScene";
+        public const string Lobby = "LobbyScene";
         public const string Prologue = "PrologueScene";
         public const string Dungeon = "DungeonScene";
         public const string Defeat = "DefeatScene";

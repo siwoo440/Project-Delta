@@ -12,6 +12,9 @@ EditorBuildSettings:
     path: Assets/ProjectDelta/Scenes/TitleScene.unity
     guid: 3ad60ffb74cb4155ad8f3ac7f3678546
   - enabled: 1
+    path: Assets/ProjectDelta/Scenes/LobbyScene.unity
+    guid: 5eceada64cbf487e9226416d84ef58db
+  - enabled: 1
     path: Assets/ProjectDelta/Scenes/DungeonScene.unity
     guid: 26d6b967f5474d6887997b4b0cf2fcb9
   - enabled: 1

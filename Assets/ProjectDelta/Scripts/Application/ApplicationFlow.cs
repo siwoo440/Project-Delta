@@ -42,6 +42,15 @@ namespace ProjectDelta.Application
             _sceneLoader.LoadSingle(SceneNames.Title);
         }
 
+        // 123일차: 타이틀의 "새 게임"이 던전으로 바로 들어가는 대신 로비를 먼저 거친다 -
+        // 아직 RunContext를 시작하지 않은 상태다(StartNewGame()이 실제로 회차를 시작한다).
+        public void EnterLobby()
+        {
+            DefeatSceneState.Clear();
+            _log.Info("Entering LobbyScene");
+            _sceneLoader.LoadSingle(SceneNames.Lobby);
+        }
+
         public void StartNewGame() => StartNewGame(ActiveSlot);
 
         public void StartNewGame(int slot)
@@ -247,6 +256,29 @@ namespace ProjectDelta.Application
 
             _log.Info("Returning to TitleScene");
             _sceneLoader.LoadSingle(SceneNames.Title);
+        }
+
+        // 123일차: "던전 클리어 후 돌아오는 버튼" - ReturnToTitle()과 완전히 같은 정리
+        // 절차(런 종료·저장 삭제·체크포인트 정리)를 거치지만 타이틀 대신 로비로 돌아간다.
+        // 아직 5층 마왕(124일차)이 없어서 지금은 던전 안 아무 곳에서나 부를 수 있는
+        // 일반적인 "나가기" 버튼이다 - 124일차에서 마왕 처치 시 자동으로 이 메서드를
+        // 부르도록 연결하면 된다.
+        public void ReturnToLobby()
+        {
+            if (RunContext.Current != null)
+            {
+                _log.Info("Returning to lobby - ending current run");
+                RunContext.End();
+                _saveService?.DeleteRun(ActiveSlot);
+                DungeonSaveMapper.ClearPendingRestore();
+                BattleEncounterCheckpointStore.Clear();
+                EventBattleCheckpointStore.Clear();
+            }
+
+            DefeatSceneState.Clear();
+
+            _log.Info("Returning to LobbyScene");
+            _sceneLoader.LoadSingle(SceneNames.Lobby);
         }
 
         private bool TryWriteDungeonProgress()

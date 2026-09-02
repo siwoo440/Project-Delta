@@ -38,7 +38,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "새 게임", buttonStyle)) // 새 게임 버튼
             {
-                ApplicationFlow.Current?.StartNewGame(); // 새 런 시작 후 로딩 화면을 거쳐 던전으로 이동
+                ApplicationFlow.Current?.EnterLobby(); // 123일차: 곧바로 던전 대신 로비로 이동 - 로비의 "던전 입장" 버튼이 실제 런을 시작한다.
             }
 
             y += spacing; // 다음 버튼 위치로 이동

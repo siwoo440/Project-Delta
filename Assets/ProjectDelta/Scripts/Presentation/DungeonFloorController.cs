@@ -200,6 +200,49 @@ namespace ProjectDelta.Presentation
             GenerateAndPlaceCurrentFloor(playerController, true);
         }
 
+        // 123일차: "다음 회복 시점은 층 이동뿐이다"(기획서 3.6.2, 81일차 주석에 이미 있던 계획)를
+        // 실제로 구현한다 - 층을 넘어갈 때 체력·마나·정력을 최대치로 채운다.
+        public int CurrentFloorNumber =>
+            GetDungeonState().CurrentFloor;
+
+        public FloorTheme CurrentFloorTheme =>
+            FloorThemeSchedule.GetTheme(
+                baseSeed,
+                GetDungeonState().CurrentFloor);
+
+        private void RecoverPlayerOnFloorChange()
+        {
+            if (RunContext.Current == null)
+            {
+                return;
+            }
+
+            PlayerRunState player =
+                RunContext.Current.Player;
+
+            StatBlock finalStats =
+                player.GetFinalStats();
+
+            player.CurrentHp =
+                Mathf.Max(
+                    0,
+                    finalStats.MaxHealth);
+
+            player.CurrentMana =
+                Mathf.Max(
+                    0,
+                    finalStats.MaxMana);
+
+            player.CurrentStamina =
+                Mathf.Max(
+                    0,
+                    finalStats.MaxStamina);
+
+            Debug.Log(
+                $"[Project Delta] 123일차 층 이동 회복 / HP {player.CurrentHp} MP {player.CurrentMana} 정력 {player.CurrentStamina}",
+                this);
+        }
+
         private DungeonRunState GetDungeonState()
         {
             if (dungeonState == null)
@@ -219,9 +262,23 @@ namespace ProjectDelta.Presentation
                 return false;
             }
 
+            // 123일차: 5개 층 회차 - 5층(마왕성)에서는 계단으로 더 내려가지 않는다.
+            // 5층을 끝내는 건(마왕 처치) 124일차가 붙일 별도 흐름이다.
+            if (GetDungeonState().CurrentFloor >= FloorThemeSchedule.FloorCount)
+            {
+                Debug.LogWarning(
+                    "[Project Delta] 123일차 마지막 층에서는 계단을 사용할 수 없습니다.",
+                    this);
+
+                return false;
+            }
+
             if (useProceduralGeneration)
             {
                 GetDungeonState().AdvanceFloor();
+
+                RecoverPlayerOnFloorChange();
+
                 return GenerateAndPlaceCurrentFloor(movementController, true);
             }
 
@@ -234,6 +291,7 @@ namespace ProjectDelta.Presentation
             }
 
             GetDungeonState().AdvanceFloor();
+            RecoverPlayerOnFloorChange();
             RoomView newRoomView = SpawnLegacyRoomForCurrentFloor();
             movementController.EnterRoom(newRoomView, GridPosition.Zero, CardinalDirection.North);
             return true;

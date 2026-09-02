@@ -16,6 +16,10 @@ namespace ProjectDelta.Presentation
         [SerializeField]
         private Text roomStatusText;
 
+        // 123일차: 층 번호·테마도 같은 줄에 함께 보여준다.
+        [SerializeField]
+        private DungeonFloorController floorController;
+
         private string lastRoomId;
         private bool hasLastRoomId;
 
@@ -25,6 +29,12 @@ namespace ProjectDelta.Presentation
             {
                 movementController =
                     FindFirstObjectByType<PlayerGridMovementController>();
+            }
+
+            if (floorController == null)
+            {
+                floorController =
+                    FindFirstObjectByType<DungeonFloorController>();
             }
         }
 
@@ -87,11 +97,21 @@ namespace ProjectDelta.Presentation
                     room.RoomType);
 
             // 함정 방은 이미 처리(회피/피해 적용)됐는지도 함께 보여준다.
-            roomStatusText.text =
+            string roomText =
                 room.RoomType == RoomType.Trap
                 && room.TrapTriggered
                     ? $"현재 방: {typeName} (해제됨)"
                     : $"현재 방: {typeName}";
+
+            // 123일차: 5개 층 회차 - 지금 몇 층, 무슨 테마인지 같은 줄에 붙인다.
+            string floorText =
+                floorController != null
+                    ? $"{floorController.CurrentFloorNumber}층 ({FloorThemeRules.GetDisplayName(floorController.CurrentFloorTheme)}) / "
+                    : string.Empty;
+
+            roomStatusText.text =
+                floorText
+                + roomText;
         }
     }
 }
