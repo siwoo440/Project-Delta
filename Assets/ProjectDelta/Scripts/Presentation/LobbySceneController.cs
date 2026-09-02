@@ -187,6 +187,15 @@ namespace ProjectDelta.Presentation
                 panelWidth,
                 rowHeight,
                 y);
+
+            y +=
+                rowHeight;
+
+            DrawRelicSlotUpgradeRow(
+                panelX,
+                panelWidth,
+                rowHeight,
+                y);
         }
 
         // 127일차: 인벤토리 슬롯 확장은 스탯 강화와 별개 트랙(레벨 dict가 아니라 단일 레벨)이라
@@ -231,6 +240,55 @@ namespace ProjectDelta.Presentation
                     upgradeBuyButtonStyle)
                 && ApplicationFlow.Current != null
                 && ApplicationFlow.Current.TryPurchaseInventorySlotUpgrade())
+            {
+                RefreshProfile();
+            }
+
+            GUI.enabled =
+                true;
+        }
+
+        // 128일차: 유물 보유량 확장 - 인벤토리 슬롯 행과 완전히 같은 모양, 다른 규칙/구매만 연결.
+        private void DrawRelicSlotUpgradeRow(
+            float panelX,
+            float panelWidth,
+            float rowHeight,
+            float y)
+        {
+            int level =
+                profile != null
+                    ? profile.PermanentGrowth.RelicSlotUpgradeLevel
+                    : 0;
+
+            bool hasNextLevel =
+                RelicSlotUpgradeRule.TryGetUpgradeCost(
+                    level,
+                    out int cost);
+
+            string rowLabel =
+                hasNextLevel
+                    ? $"유물 보유량  Lv.{level} → {level + 1}  ({cost} 조각)"
+                    : $"유물 보유량  Lv.{level} (최대)";
+
+            GUI.Label(
+                new Rect(panelX, y, panelWidth - 90f, rowHeight),
+                rowLabel,
+                upgradeRowLabelStyle);
+
+            bool canAfford =
+                hasNextLevel
+                && profile != null
+                && profile.PermanentGrowth.MemoryShards >= cost;
+
+            GUI.enabled =
+                canAfford;
+
+            if (GUI.Button(
+                    new Rect(panelX + panelWidth - 80f, y, 80f, rowHeight - 4f),
+                    "구매",
+                    upgradeBuyButtonStyle)
+                && ApplicationFlow.Current != null
+                && ApplicationFlow.Current.TryPurchaseRelicSlotUpgrade())
             {
                 RefreshProfile();
             }

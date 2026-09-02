@@ -73,6 +73,8 @@ namespace ProjectDelta.Application
                 true); // 새 런은 시작부터 영구 강화 보너스만큼 채워서 시작한다.
             ApplyPermanentInventoryGrowth(
                 RunContext.Current.Inventory);
+            ApplyPermanentRelicGrowth(
+                RunContext.Current.Relics);
             LoadWithLoadingScreen(SceneNames.Dungeon);
         }
 
@@ -133,6 +135,25 @@ namespace ProjectDelta.Application
             inventory.SetCapacityBonuses(
                 bonusSlots,
                 inventory.BagSlotBonus);
+        }
+
+        // 128일차: 유물 보유량 영구 확장을 RelicRunState에 적용한다.
+        // DungeonSaveMapper가 아직 유물을 저장/복원하지 않으므로(RelicRunState 참고),
+        // 127일차 인벤토리처럼 ApplyBasics 이후에 다시 덮어쓸 필요가 없다.
+        private void ApplyPermanentRelicGrowth(
+            RelicRunState relics)
+        {
+            if (relics == null)
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            relics.SetMaxCapacity(
+                RelicSlotUpgradeRule.GetMaxCapacity(
+                    profile.PermanentGrowth.RelicSlotUpgradeLevel));
         }
 
         // 126일차: 로비 강화 상점 - 기억의 조각을 소비해 한 단계 강화를 산다.
@@ -202,6 +223,35 @@ namespace ProjectDelta.Application
             return true;
         }
 
+        // 128일차: 로비 강화 상점 - 유물 보유량 확장 구매.
+        public bool TryPurchaseRelicSlotUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!RelicSlotUpgradeRule.TryGetUpgradeCost(
+                    profile.PermanentGrowth.RelicSlotUpgradeLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.RelicSlotUpgradeLevel++;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
         public bool HasSavedRun() => HasSavedRun(ActiveSlot);
 
         public bool HasSavedRun(int slot)
@@ -250,6 +300,9 @@ namespace ProjectDelta.Application
             // 프로필 기준의 현재 값으로 다시 한번 확정한다 - 순서가 중요하다.
             ApplyPermanentInventoryGrowth(
                 RunContext.Current.Inventory);
+
+            ApplyPermanentRelicGrowth(
+                RunContext.Current.Relics);
 
             BattleEncounterCheckpointStore.Restore(
                 savedRun.BattleEncounterCheckpoint); // 전투 직전 체크포인트 복원
