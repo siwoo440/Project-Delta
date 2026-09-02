@@ -20,6 +20,11 @@ namespace ProjectDelta.Domain
         // EquipmentService가 장착/해제/교체 시점마다 최신 값으로 갱신한다.
         public StatBlock EquipmentBonuses = new StatBlock();
 
+        // 126일차: 기억의 조각으로 산 영구 능력치 강화 보너스. ApplicationFlow가 런 시작 시점에
+        // ProfileData.PermanentGrowth.PermanentStatUpgradeLevels로부터 한 번 계산해 채워 넣는다
+        // (PlayerRunState/Domain은 ProfileData/Data를 몰라도 되도록, 완성된 StatBlock만 받는다).
+        public StatBlock PermanentBonusStats = new StatBlock();
+
         public int CurrentHp;
         public int CurrentMana;
         public int CurrentStamina;
@@ -44,7 +49,8 @@ namespace ProjectDelta.Domain
                 BaseStats,
                 AllocatedStats,
                 TemporaryStats,
-                EquipmentBonuses);
+                EquipmentBonuses,
+                PermanentBonusStats);
         }
 
         // 99일차: 장비 변경 직후 현재 자원이 새로운 최대치를 넘지 않도록 정리한다.

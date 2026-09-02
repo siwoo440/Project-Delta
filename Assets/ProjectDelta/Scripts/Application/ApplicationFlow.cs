@@ -68,7 +68,85 @@ namespace ProjectDelta.Application
             _log.Info($"Starting new game: {runId} (slot {slot})");
             DungeonSaveMapper.ClearPendingRestore();
             RunContext.Begin(runId);
+            ApplyPermanentGrowth(
+                RunContext.Current.Player,
+                true); // 새 런은 시작부터 영구 강화 보너스만큼 채워서 시작한다.
             LoadWithLoadingScreen(SceneNames.Dungeon);
+        }
+
+        // 126일차: 기억의 조각으로 산 영구 능력치 강화를 런 시작 시점에 한 번 계산해 채운다.
+        // ProfileData(Data)와 StatBlock(Domain)을 둘 다 아는 Application에서만 연결할 수 있다
+        // (PlayerRunState/Domain은 ProfileData를 몰라야 한다).
+        private void ApplyPermanentGrowth(
+            PlayerRunState player,
+            bool refillCurrentResources)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            player.PermanentBonusStats =
+                PermanentStatUpgradeRule.BuildBonusStats(
+                    profile.PermanentGrowth.PermanentStatUpgradeLevels);
+
+            if (!refillCurrentResources)
+            {
+                return;
+            }
+
+            StatBlock finalStats =
+                player.GetFinalStats();
+
+            player.CurrentHp =
+                finalStats.MaxHealth;
+
+            player.CurrentMana =
+                finalStats.MaxMana;
+
+            player.CurrentStamina =
+                finalStats.MaxStamina;
+        }
+
+        // 126일차: 로비 강화 상점 - 기억의 조각을 소비해 한 단계 강화를 산다.
+        // 실행 중인 런이 없을 때(로비)만 호출되므로 RunContext는 건드리지 않는다.
+        public bool TryPurchasePermanentStatUpgrade(
+            string statId)
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!PermanentStatUpgradeRule.TryGetUpgradeCost(
+                    profile.PermanentGrowth.PermanentStatUpgradeLevels,
+                    statId,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            int currentLevel =
+                PermanentStatUpgradeRule.GetLevel(
+                    profile.PermanentGrowth.PermanentStatUpgradeLevels,
+                    statId);
+
+            profile.PermanentGrowth.PermanentStatUpgradeLevels[statId] =
+                currentLevel + 1;
+
+            WriteProfile(
+                profile);
+
+            return true;
         }
 
         public bool HasSavedRun() => HasSavedRun(ActiveSlot);
@@ -106,6 +184,10 @@ namespace ProjectDelta.Application
 
             RunContext.Begin(
                 savedRun.BasicInfo.RunId);
+
+            ApplyPermanentGrowth(
+                RunContext.Current.Player,
+                false); // 이어하기는 저장된 현재 자원을 그대로 쓴다 - 강제로 채우지 않는다.
 
             DungeonSaveMapper.ApplyBasics(
                 RunContext.Current,

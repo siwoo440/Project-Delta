@@ -18,8 +18,13 @@ namespace ProjectDelta.Data
         public int MemoryShards;
         public int TotalMemoryShardsEarned;
 
-        // TODO 6.6절 영구 강화 구현 시 추가: 영구 능력치 강화, 인벤토리 확장,
-        // 유물 보유량 확장, 상점 강화, 탐험 강화
+        // 126일차: 영구 능력치 강화 - PermanentStatUpgradeRule.UpgradableStatIds를 키로 쓴다.
+        // 레벨이 오를수록 GetFinalStats()에 합산되는 보너스 스탯도, 다음 구매 비용도 커진다.
+        public Dictionary<string, int> PermanentStatUpgradeLevels =
+            new Dictionary<string, int>();
+
+        // TODO 6.6절 영구 강화 구현 시 추가: 인벤토리 확장, 유물 보유량 확장,
+        // 상점 강화, 탐험 강화 (영구 능력치 강화는 126일차에 완료)
 
         public int StartingGold;
         public List<string> StartingConsumableItemIds = new List<string>();
