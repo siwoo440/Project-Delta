@@ -1,102 +1,113 @@
 using ProjectDelta.Application; // ApplicationFlow.Current 사용
 using UnityEngine; // Unity 기본 기능 사용
+using UnityEngine.UI; // Canvas UI 기능 사용
 
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 {
-    // 24일차: 새 게임 흐름을 눈으로 확인하기 위한 임시 타이틀 화면. Canvas/Button 없이
-    // 기존 방/미니맵 프롬프트와 같은 OnGUI 방식으로 만들어서 최소한으로 유지한다.
-    // TODO: 실제 타이틀 UI(아트/애니메이션)는 이후 별도 일차에서 정식으로 만든다.
-    public sealed class TitleSceneController : MonoBehaviour // 타이틀 화면 임시 버튼 제어
+    // 24일차: OnGUI 임시 화면으로 시작했다가, 139일차에 기획서 8.2절 "화면별 정식 UI"
+    // 전환의 첫 대상으로 CG·도전과제 갤러리(133~134일차)와 같은 런타임 Canvas 방식으로
+    // 옮겼다. 버튼 구성/이동 로직 자체는 그대로 두고 그리는 방식만 바꿨다.
+    public sealed class TitleSceneController : MonoBehaviour // 타이틀 화면 버튼 제어
     {
-        private GUIStyle titleStyle; // 제목 글자 스타일
-        private GUIStyle buttonStyle; // 버튼 글자 스타일
+        private const float ButtonWidth = 220f; // 버튼 가로 크기
+        private const float ButtonHeight = 50f; // 버튼 세로 크기
+        private const float Spacing = ButtonHeight + 16f; // 버튼 사이 간격 포함 세로 이동량
 
-        private void OnEnable() // 타이틀 진입 시 UI 배율 값 갱신
+        private void Awake()
         {
-            UiScaleSettings.Refresh(); // 136일차: 설정 화면에서 바뀐 배율을 반영
+            RuntimeUiFactory.EnsureEventSystem(); // UI 입력 처리에 필요한 EventSystem 준비
+
+            Transform canvasTransform = // 배경+제목까지 포함한 Canvas 생성
+                RuntimeUiFactory.BuildScreenCanvas(
+                    transform,
+                    "TitleCanvas",
+                    "Project Delta");
+
+            BuildButtons(
+                canvasTransform);
         }
 
-        private void OnGUI() // 타이틀 임시 UI 표시
+        private void BuildButtons(
+            Transform parent)
         {
-            EnsureStyles(); // 스타일 준비
+            bool hasSavedRun = // 26일차: 저장된 런 존재 여부 확인
+                ApplicationFlow.Current != null
+                && ApplicationFlow.Current.HasSavedRun();
 
-            Matrix4x4 previousMatrix = // 136일차: UI 배율 적용 - 끝에서 반드시 복원
-                UiScaleSettings.ApplyGuiMatrix();
-
-            float centerX = Screen.width / 2f; // 화면 가로 중앙 좌표
-            GUI.Label(new Rect(centerX - 200f, Screen.height * 0.25f, 400f, 60f), "Project Delta", titleStyle); // 제목 표시
-
-            float buttonWidth = 220f; // 버튼 가로 크기
-            float buttonHeight = 50f; // 버튼 세로 크기
-            float spacing = buttonHeight + 16f; // 버튼 사이 간격 포함 세로 이동량
-            float buttonX = centerX - (buttonWidth / 2f); // 버튼 가로 중앙 정렬 좌표
-            float y = Screen.height * 0.4f; // 첫 버튼 세로 시작 좌표
-
-            bool hasSavedRun = ApplicationFlow.Current != null && ApplicationFlow.Current.HasSavedRun(); // 26일차: 저장된 런 존재 여부 확인
+            float y = 0f; // 첫 버튼부터의 누적 세로 오프셋(0에서 시작해 매번 내려감)
 
             if (hasSavedRun) // 저장된 런이 있을 때만 이어하기 버튼 표시
             {
-                if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "이어하기", buttonStyle)) // 이어하기 버튼
-                {
-                    ApplicationFlow.Current?.ContinueGame(); // 저장된 런 복원 후 로딩 화면을 거쳐 던전으로 이동
-                }
+                RuntimeUiFactory.CreateCenteredButton(
+                    parent,
+                    "ContinueButton",
+                    new Vector2(0f, y),
+                    new Vector2(ButtonWidth, ButtonHeight),
+                    "이어하기",
+                    20,
+                    () => ApplicationFlow.Current?.ContinueGame(), // 저장된 런 복원 후 로딩 화면을 거쳐 던전으로 이동
+                    out _);
 
-                y += spacing; // 다음 버튼 위치로 이동
+                y -= Spacing; // 다음 버튼 위치로 이동
             }
 
-            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "새 게임", buttonStyle)) // 새 게임 버튼
-            {
-                ApplicationFlow.Current?.EnterLobby(); // 123일차: 곧바로 던전 대신 로비로 이동 - 로비의 "던전 입장" 버튼이 실제 런을 시작한다.
-            }
+            RuntimeUiFactory.CreateCenteredButton(
+                parent,
+                "NewGameButton",
+                new Vector2(0f, y),
+                new Vector2(ButtonWidth, ButtonHeight),
+                "새 게임",
+                20,
+                () => ApplicationFlow.Current?.EnterLobby(), // 123일차: 곧바로 던전 대신 로비로 이동
+                out _);
 
-            y += spacing; // 다음 버튼 위치로 이동
+            y -= Spacing;
 
-            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "설정", buttonStyle)) // 설정 버튼
-            {
-                ApplicationFlow.Current?.OpenSettings(); // 설정 화면으로 이동
-            }
+            RuntimeUiFactory.CreateCenteredButton(
+                parent,
+                "SettingsButton",
+                new Vector2(0f, y),
+                new Vector2(ButtonWidth, ButtonHeight),
+                "설정",
+                20,
+                () => ApplicationFlow.Current?.OpenSettings(),
+                out _);
 
-            y += spacing; // 다음 버튼 위치로 이동
+            y -= Spacing;
 
-            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "CG 목록", buttonStyle)) // 133일차: CG 갤러리 버튼
-            {
-                ApplicationFlow.Current?.OpenCgGallery(); // CG 갤러리 화면으로 이동
-            }
+            RuntimeUiFactory.CreateCenteredButton(
+                parent,
+                "CgGalleryButton",
+                new Vector2(0f, y),
+                new Vector2(ButtonWidth, ButtonHeight),
+                "CG 목록",
+                20,
+                () => ApplicationFlow.Current?.OpenCgGallery(), // 133일차: CG 갤러리
+                out _);
 
-            y += spacing; // 다음 버튼 위치로 이동
+            y -= Spacing;
 
-            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "도전과제", buttonStyle)) // 134일차: 도전과제 갤러리 버튼
-            {
-                ApplicationFlow.Current?.OpenAchievementGallery(); // 도전과제 화면으로 이동
-            }
+            RuntimeUiFactory.CreateCenteredButton(
+                parent,
+                "AchievementGalleryButton",
+                new Vector2(0f, y),
+                new Vector2(ButtonWidth, ButtonHeight),
+                "도전과제",
+                20,
+                () => ApplicationFlow.Current?.OpenAchievementGallery(), // 134일차: 도전과제 갤러리
+                out _);
 
-            y += spacing; // 다음 버튼 위치로 이동
+            y -= Spacing;
 
-            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "종료", buttonStyle)) // 종료 버튼
-            {
-                QuitGame(); // 게임 종료 처리
-            }
-
-            UiScaleSettings.RestoreGuiMatrix( // 136일차: 배율 적용 복원
-                previousMatrix);
-        }
-
-        private void EnsureStyles() // GUI 스타일 최초 1회 생성
-        {
-            if (titleStyle == null) // 제목 스타일 존재 확인
-            {
-                titleStyle = new GUIStyle(GUI.skin.label); // 기본 라벨 스타일 복제
-                titleStyle.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 적용
-                titleStyle.fontSize = 36; // 제목 글자 크기 적용
-                titleStyle.fontStyle = FontStyle.Bold; // 굵게 적용
-                titleStyle.normal.textColor = Color.white; // 흰색 적용
-            }
-
-            if (buttonStyle == null) // 버튼 스타일 존재 확인
-            {
-                buttonStyle = new GUIStyle(GUI.skin.button); // 기본 버튼 스타일 복제
-                buttonStyle.fontSize = 20; // 버튼 글자 크기 적용
-            }
+            RuntimeUiFactory.CreateCenteredButton(
+                parent,
+                "QuitButton",
+                new Vector2(0f, y),
+                new Vector2(ButtonWidth, ButtonHeight),
+                "종료",
+                20,
+                QuitGame,
+                out _);
         }
 
         private static void QuitGame() // 에디터/빌드 환경에 맞는 종료 처리
