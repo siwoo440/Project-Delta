@@ -1,9 +1,11 @@
+using System.Collections.Generic;
 using ProjectDelta.Application;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using DungeonRunState = ProjectDelta.Domain.DungeonRunState; // Data/Domain 동명 타입 충돌 방지
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 namespace ProjectDelta.Presentation
 {
@@ -11,6 +13,11 @@ namespace ProjectDelta.Presentation
     // 114일차: "서비스"를 눌렀을 때 실제 상점·회복·정보·유물 정리 화면으로 이어지게 한다.
     // 115일차: 선물·구조·공격(적대 전환+전투)을 추가하고, 화면을 캐릭터 일러스트(상단)
     // + 대화창(하단 좌)·선택지 버튼(하단 우) 구성으로 다시 짰다.
+    // 130일차: 왼쪽 열(일러스트+정보+행동 버튼) / 오른쪽 열(서비스 내용) 2단 구성으로 개편.
+    // 140일차: 기획서 8.2절 "화면별 정식 UI" 전환 - OnGUI를 런타임 Canvas로 옮겼다.
+    // 판정 로직(NpcInteractionService 등 호출)은 전혀 건드리지 않고, 상태가 바뀔 때마다
+    // 오른쪽 콘텐츠 영역을 통째로 다시 그리는 방식(OnGUI의 "매 프레임 다시 그리기"를
+    // "상태 변경 시점에 다시 그리기"로 옮긴 것)으로 구성했다.
     public sealed class NpcInteractionController : MonoBehaviour
     {
         private enum ServiceScreen
@@ -24,26 +31,45 @@ namespace ProjectDelta.Presentation
             Gift
         }
 
+        private enum ShopTab
+        {
+            Buy,
+            Sell
+        }
+
         private const int HealCost = 15;
         private const int CurseRemovalCost = 20;
         private const int SacrificeReward = 10;
         private const int GiftAffinityGain = 10;
-        private const int RescueAffinityGain = 20;
 
-        // 115일차 UI 레이아웃 상수 - 상단 일러스트 / 하단 좌 대화창 / 하단 우 선택지.
-        // 130일차: 왼쪽 열(일러스트+정보+행동 버튼)과 오른쪽 열(서비스 내용)로 나뉜
-        // 레이아웃 - 참고 이미지의 "초상화+서비스 목록 / 메인 콘텐츠" 2단 구성을 따른다.
         private const float IllustrationSize = 240f;
         private const float LeftColumnWidth = 320f;
         private const float MainAreaWidth = 620f;
         private const float PanelHeight = 520f;
-        private const float ActionButtonHeight = 36f;
         private const float PanelGap = 14f;
+        private const float RowHeight = 34f;
+        private const float RowGap = 4f;
+        private const float ListHeight = 260f;
+
+        private static readonly ItemCategory[] ShopFilterableCategories =
+        {
+            ItemCategory.Consumable,
+            ItemCategory.ExplorationTool,
+            ItemCategory.Equipment,
+            ItemCategory.Relic
+        };
+
+        private static readonly Color NormalButtonColor =
+            new Color(0.2f, 0.2f, 0.26f, 1f);
+
+        private static readonly Color SelectedButtonColor =
+            new Color(0.30f, 0.45f, 0.65f, 1f);
 
         private PlayerGridMovementController movementController;
         private PlayerLookController lookController;
         private Transform viewTransform;
         private NpcContentMarker openNpc;
+
         private readonly NpcInteractionService interactionService =
             new NpcInteractionService();
 
@@ -56,34 +82,21 @@ namespace ProjectDelta.Presentation
         private ServiceScreen serviceScreen =
             ServiceScreen.None;
 
-        // 130일차: 상점 목록이 길어질 수 있어 구매/판매를 각각 스크롤 영역으로 감싼다.
-        private Vector2 shopBuyScroll;
-        private Vector2 shopSellScroll;
-
-        // 130일차: 유물 정리 화면도 상인 화면과 같은 스크롤 목록 스타일을 쓴다.
-        private Vector2 relicScreenScroll;
-
-        private const float ShopListHeight = 280f;
-
-        private enum ShopTab
-        {
-            Buy,
-            Sell
-        }
-
         private ShopTab shopTab =
             ShopTab.Buy;
 
-        // 130일차: 구매 탭 카테고리 필터 - null이면 "전체".
         private ItemCategory? shopCategoryFilter;
 
-        private static readonly ItemCategory[] ShopFilterableCategories =
-        {
-            ItemCategory.Consumable,
-            ItemCategory.ExplorationTool,
-            ItemCategory.Equipment,
-            ItemCategory.Relic
-        };
+        // Canvas UI 참조 - Awake에서 한 번만 만들고, 상태가 바뀔 때마다 다시 그린다.
+        private Text promptUiText;
+        private GameObject panelRoot;
+        private Image illustrationImage;
+        private Text illustrationNameText;
+        private Text infoText;
+        private Text servicesLabelText;
+        private Button serviceButton;
+        private Button attackButton;
+        private RectTransform mainContentRoot;
 
         private void Awake()
         {
@@ -106,6 +119,10 @@ namespace ProjectDelta.Presentation
 
             encounterController =
                 FindFirstObjectByType<ExplorationMonsterEncounterController>();
+
+            RuntimeUiFactory.EnsureEventSystem();
+
+            BuildCanvas();
         }
 
         private void Update()
@@ -126,8 +143,8 @@ namespace ProjectDelta.Presentation
                 || movementController.IsMoving
                 || movementController.IsInputLocked)
             {
-                promptText =
-                    string.Empty;
+                SetPromptText(
+                    string.Empty);
 
                 return;
             }
@@ -135,10 +152,10 @@ namespace ProjectDelta.Presentation
             NpcContentMarker npc =
                 FindNpcInFront();
 
-            promptText =
+            SetPromptText(
                 npc != null
                     ? $"{npc.Definition?.DisplayName ?? "NPC"} 대화 [F]"
-                    : string.Empty;
+                    : string.Empty);
 
             if (npc != null
                 && Keyboard.current != null
@@ -147,6 +164,24 @@ namespace ProjectDelta.Presentation
                 OpenInteraction(
                     npc);
             }
+        }
+
+        private void SetPromptText(
+            string text)
+        {
+            promptText =
+                text;
+
+            if (promptUiText == null)
+            {
+                return;
+            }
+
+            promptUiText.text =
+                text;
+
+            promptUiText.gameObject.SetActive(
+                !string.IsNullOrEmpty(text));
         }
 
         private void OpenInteraction(
@@ -165,8 +200,8 @@ namespace ProjectDelta.Presentation
             isPanelOpen =
                 true;
 
-            promptText =
-                string.Empty;
+            SetPromptText(
+                string.Empty);
 
             statusText =
                 "무엇을 할지 선택하세요.";
@@ -177,8 +212,7 @@ namespace ProjectDelta.Presentation
             openNpc.RelationshipState.RegisterEncounter();
 
             // 130일차: 대화 UI가 화면을 크게 차지하는 동안 뒤에 있는 NPC 3D 모델(캡슐)이
-            // 겹쳐 보이지 않도록 렌더러만 끈다 - GameObject 자체를 끄면 이 컨트롤러가
-            // 들고 있는 openNpc(NpcContentMarker)까지 함께 비활성화돼버리므로 안 된다.
+            // 겹쳐 보이지 않도록 렌더러만 끈다.
             SetNpcModelVisible(
                 npc,
                 false);
@@ -191,6 +225,12 @@ namespace ProjectDelta.Presentation
 
             lookController?.SetCursorFreeForUi(
                 true);
+
+            panelRoot.SetActive(
+                true);
+
+            RefreshLeftColumn();
+            RefreshMainArea();
         }
 
         private static void SetNpcModelVisible(
@@ -237,6 +277,9 @@ namespace ProjectDelta.Presentation
             }
 
             lookController?.SetCursorFreeForUi(
+                false);
+
+            panelRoot.SetActive(
                 false);
         }
 
@@ -299,49 +342,467 @@ namespace ProjectDelta.Presentation
             return null;
         }
 
-        private void OnGUI()
-        {
-            if (!isPanelOpen)
-            {
-                DrawPrompt();
-                return;
-            }
+        // ===================== Canvas 빌드 =====================
 
-            DrawInteractionPanel();
+        private void BuildCanvas()
+        {
+            Transform canvasTransform =
+                RuntimeUiFactory.BuildScreenCanvas(
+                    transform,
+                    "NpcInteractionCanvas",
+                    null);
+
+            BuildPromptText(
+                canvasTransform);
+
+            BuildPanel(
+                canvasTransform);
         }
 
-        private void DrawPrompt()
+        private void BuildPromptText(
+            Transform parent)
         {
-            if (string.IsNullOrEmpty(promptText))
-            {
-                return;
-            }
+            RectTransform rect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Prompt",
+                    parent);
 
-            GUIStyle promptStyle =
-                new GUIStyle(GUI.skin.label)
+            rect.anchorMin =
+                new Vector2(0.5f, 0f);
+
+            rect.anchorMax =
+                new Vector2(0.5f, 0f);
+
+            rect.pivot =
+                new Vector2(0.5f, 0f);
+
+            rect.anchoredPosition =
+                new Vector2(0f, 92f);
+
+            rect.sizeDelta =
+                new Vector2(360f, 34f);
+
+            promptUiText =
+                rect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                promptUiText,
+                string.Empty,
+                16,
+                FontStyle.Bold,
+                TextAnchor.MiddleCenter);
+
+            rect.gameObject.SetActive(
+                false);
+        }
+
+        private void BuildPanel(
+            Transform parent)
+        {
+            float totalWidth =
+                LeftColumnWidth
+                + PanelGap
+                + MainAreaWidth;
+
+            RectTransform panelRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "InteractionPanel",
+                    parent);
+
+            panelRoot =
+                panelRect.gameObject;
+
+            panelRect.anchorMin =
+                new Vector2(0.5f, 0.5f);
+
+            panelRect.anchorMax =
+                new Vector2(0.5f, 0.5f);
+
+            panelRect.pivot =
+                new Vector2(0.5f, 0.5f);
+
+            panelRect.anchoredPosition =
+                Vector2.zero;
+
+            panelRect.sizeDelta =
+                new Vector2(totalWidth, PanelHeight);
+
+            BuildLeftColumn(
+                panelRect);
+
+            BuildMainArea(
+                panelRect);
+
+            panelRoot.SetActive(
+                false);
+        }
+
+        private void BuildLeftColumn(
+            Transform parent)
+        {
+            RectTransform columnRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "LeftColumn",
+                    parent);
+
+            columnRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            columnRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            columnRect.pivot =
+                new Vector2(0f, 1f);
+
+            columnRect.anchoredPosition =
+                Vector2.zero;
+
+            columnRect.sizeDelta =
+                new Vector2(LeftColumnWidth, PanelHeight);
+
+            // 일러스트 자리 - 실제 자산이 없어 역할별 색상 + 이름으로 대신한다.
+            RectTransform illustrationRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Illustration",
+                    columnRect);
+
+            illustrationRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            illustrationRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            illustrationRect.pivot =
+                new Vector2(0f, 1f);
+
+            illustrationRect.anchoredPosition =
+                Vector2.zero;
+
+            illustrationRect.sizeDelta =
+                new Vector2(LeftColumnWidth, IllustrationSize);
+
+            illustrationImage =
+                illustrationRect.gameObject.AddComponent<Image>();
+
+            RectTransform illustrationNameRect =
+                RuntimeUiFactory.CreateStretchedRect(
+                    "Name",
+                    illustrationRect);
+
+            illustrationNameText =
+                illustrationNameRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                illustrationNameText,
+                string.Empty,
+                24,
+                FontStyle.Bold,
+                TextAnchor.LowerCenter);
+
+            illustrationNameText.raycastTarget =
+                false;
+
+            float infoY =
+                -(IllustrationSize + PanelGap);
+
+            RectTransform infoRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Info",
+                    columnRect);
+
+            infoRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            infoRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            infoRect.pivot =
+                new Vector2(0f, 1f);
+
+            infoRect.anchoredPosition =
+                new Vector2(0f, infoY);
+
+            infoRect.sizeDelta =
+                new Vector2(LeftColumnWidth, 54f);
+
+            infoText =
+                infoRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                infoText,
+                string.Empty,
+                14,
+                FontStyle.Normal,
+                TextAnchor.UpperLeft);
+
+            float servicesLabelY =
+                infoY
+                - 54f
+                - 4f;
+
+            RectTransform servicesLabelRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "ServicesLabel",
+                    columnRect);
+
+            servicesLabelRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            servicesLabelRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            servicesLabelRect.pivot =
+                new Vector2(0f, 1f);
+
+            servicesLabelRect.anchoredPosition =
+                new Vector2(0f, servicesLabelY);
+
+            servicesLabelRect.sizeDelta =
+                new Vector2(LeftColumnWidth, 22f);
+
+            servicesLabelText =
+                servicesLabelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                servicesLabelText,
+                string.Empty,
+                13,
+                FontStyle.Bold,
+                TextAnchor.UpperLeft);
+
+            servicesLabelText.color =
+                new Color(0.85f, 0.72f, 0.35f);
+
+            float buttonsY =
+                servicesLabelY
+                - 22f
+                - 4f;
+
+            BuildMainButtons(
+                columnRect,
+                buttonsY);
+        }
+
+        private void BuildMainButtons(
+            Transform parent,
+            float startY)
+        {
+            float y =
+                startY;
+
+            BuildLeftColumnButton(
+                parent,
+                "TalkButton",
+                y,
+                "대화",
+                () =>
                 {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontSize = 16,
-                    fontStyle = FontStyle.Bold
-                };
+                    ApplyResult(
+                        interactionService.Resolve(
+                            openNpc.Definition,
+                            openNpc.RelationshipState,
+                            NpcInteractionCommand.Talk));
 
-            promptStyle.normal.textColor =
-                Color.white;
+                    RefreshLeftColumn();
+                });
 
-            Rect promptRect =
-                new Rect(
-                    (Screen.width - 360f) * 0.5f,
-                    Screen.height - 92f,
-                    360f,
-                    34f);
+            y -=
+                RowHeight + RowGap;
 
-            GUI.Label(
-                promptRect,
-                promptText,
-                promptStyle);
+            serviceButton =
+                BuildLeftColumnButton(
+                    parent,
+                    "ServiceButton",
+                    y,
+                    "서비스",
+                    () =>
+                    {
+                        NpcInteractionResult result =
+                            interactionService.Resolve(
+                                openNpc.Definition,
+                                openNpc.RelationshipState,
+                                NpcInteractionCommand.Service);
+
+                        ApplyResult(
+                            result);
+
+                        if (result.ResultType
+                            == NpcInteractionResultType.OpenService)
+                        {
+                            serviceScreen =
+                                ServiceScreen.Menu;
+
+                            RefreshMainArea();
+                        }
+                    });
+
+            y -=
+                RowHeight + RowGap;
+
+            BuildLeftColumnButton(
+                parent,
+                "GiftButton",
+                y,
+                "선물",
+                () =>
+                {
+                    statusText =
+                        string.Empty;
+
+                    serviceScreen =
+                        ServiceScreen.Gift;
+
+                    RefreshMainArea();
+                });
+
+            y -=
+                RowHeight + RowGap;
+
+            attackButton =
+                BuildLeftColumnButton(
+                    parent,
+                    "AttackButton",
+                    y,
+                    "공격",
+                    () =>
+                    {
+                        NpcInteractionResult attackResult =
+                            interactionService.ResolveAttack(
+                                openNpc.Definition,
+                                openNpc.RelationshipState);
+
+                        if (attackResult.ResultType
+                            == NpcInteractionResultType.StartBattle)
+                        {
+                            TriggerNpcBattle();
+                        }
+                        else
+                        {
+                            ApplyResult(
+                                attackResult);
+                        }
+                    });
         }
 
-        private void DrawInteractionPanel()
+        private Button BuildLeftColumnButton(
+            Transform parent,
+            string name,
+            float y,
+            string label,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            RectTransform buttonRect =
+                RuntimeUiFactory.CreateUiObject(
+                    name,
+                    parent);
+
+            buttonRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            buttonRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            buttonRect.pivot =
+                new Vector2(0f, 1f);
+
+            buttonRect.anchoredPosition =
+                new Vector2(0f, y);
+
+            buttonRect.sizeDelta =
+                new Vector2(LeftColumnWidth, RowHeight);
+
+            Image buttonImage =
+                buttonRect.gameObject.AddComponent<Image>();
+
+            buttonImage.color =
+                NormalButtonColor;
+
+            Button button =
+                buttonRect.gameObject.AddComponent<Button>();
+
+            button.targetGraphic =
+                buttonImage;
+
+            button.onClick.AddListener(
+                onClick);
+
+            RectTransform labelRect =
+                RuntimeUiFactory.CreateStretchedRect(
+                    "Label",
+                    buttonRect);
+
+            Text labelText =
+                labelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                labelText,
+                label,
+                16,
+                FontStyle.Normal,
+                TextAnchor.MiddleCenter);
+
+            labelText.raycastTarget =
+                false;
+
+            return button;
+        }
+
+        private void BuildMainArea(
+            Transform parent)
+        {
+            RectTransform mainRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "MainArea",
+                    parent);
+
+            mainRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            mainRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            mainRect.pivot =
+                new Vector2(0f, 1f);
+
+            mainRect.anchoredPosition =
+                new Vector2(LeftColumnWidth + PanelGap, 0f);
+
+            mainRect.sizeDelta =
+                new Vector2(MainAreaWidth, PanelHeight);
+
+            Image backgroundImage =
+                mainRect.gameObject.AddComponent<Image>();
+
+            backgroundImage.color =
+                new Color(0.1f, 0.1f, 0.14f, 0.85f);
+
+            RectTransform contentRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Content",
+                    mainRect);
+
+            contentRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            contentRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            contentRect.pivot =
+                new Vector2(0f, 1f);
+
+            contentRect.anchoredPosition =
+                new Vector2(16f, -12f);
+
+            contentRect.sizeDelta =
+                new Vector2(MainAreaWidth - 32f, PanelHeight - 24f);
+
+            mainContentRoot =
+                contentRect;
+        }
+
+        // ===================== 상태 갱신 =====================
+
+        private void RefreshLeftColumn()
         {
             if (openNpc == null
                 || openNpc.Definition == null
@@ -351,196 +812,27 @@ namespace ProjectDelta.Presentation
                 return;
             }
 
-            float totalWidth =
-                LeftColumnWidth
-                + PanelGap
-                + MainAreaWidth;
-
-            float panelX =
-                (Screen.width - totalWidth) * 0.5f;
-
-            float panelY =
-                (Screen.height - PanelHeight) * 0.5f;
-
-            Rect leftColumnRect =
-                new Rect(
-                    panelX,
-                    panelY,
-                    LeftColumnWidth,
-                    PanelHeight);
-
-            Rect mainAreaRect =
-                new Rect(
-                    leftColumnRect.xMax + PanelGap,
-                    panelY,
-                    MainAreaWidth,
-                    PanelHeight);
-
-            DrawLeftColumn(
-                leftColumnRect);
-
-            DrawMainArea(
-                mainAreaRect);
-        }
-
-        // 130일차: 초상화·이름/호감도·"○○ 서비스" 행동 버튼(대화·서비스·선물·공격)을
-        // 왼쪽 열에 묶어서 항상 보이게 한다 - 참고 이미지의 좌측 패널 구성.
-        // 어떤 서비스 화면(상점·회복 등)이 열려 있든 이 버튼들은 그대로 유지된다.
-        private void DrawLeftColumn(
-            Rect rect)
-        {
-            Rect illustrationRect =
-                new Rect(
-                    rect.x,
-                    rect.y,
-                    rect.width,
-                    IllustrationSize);
-
-            DrawCharacterIllustration(
-                illustrationRect);
-
-            float infoY =
-                illustrationRect.yMax
-                + PanelGap;
-
-            GUIStyle headerStyle =
-                new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 14,
-                    wordWrap = true
-                };
-
-            headerStyle.normal.textColor =
-                Color.white;
-
-            GUI.Label(
-                new Rect(
-                    rect.x,
-                    infoY,
-                    rect.width,
-                    54f),
-                $"호감도 {openNpc.RelationshipState.Affinity}/100 ({openNpc.RelationshipState.Stage})   |   {(openNpc.RelationshipState.IsHostile ? "적대" : "우호")}\n"
-                + (string.IsNullOrEmpty(statusText)
-                    ? "무엇을 할지 선택하세요."
-                    : statusText),
-                headerStyle);
-
-            float servicesLabelY =
-                infoY
-                + 54f
-                + 4f;
-
-            GUIStyle servicesLabelStyle =
-                new GUIStyle(GUI.skin.label)
-                {
-                    fontSize = 13,
-                    fontStyle = FontStyle.Bold
-                };
-
-            servicesLabelStyle.normal.textColor =
-                new Color(0.85f, 0.72f, 0.35f);
-
-            GUI.Label(
-                new Rect(
-                    rect.x,
-                    servicesLabelY,
-                    rect.width,
-                    22f),
-                $"{openNpc.Definition.DisplayName} 서비스",
-                servicesLabelStyle);
-
-            float buttonsY =
-                servicesLabelY
-                + 22f
-                + 4f;
-
-            GUILayout.BeginArea(
-                new Rect(
-                    rect.x,
-                    buttonsY,
-                    rect.width,
-                    rect.yMax - buttonsY));
-
-            DrawMainButtons();
-
-            GUILayout.EndArea();
-        }
-
-        // 130일차: 오른쪽 넓은 영역 - serviceScreen에 따라 상점/회복/정보/유물 정리
-        // 화면을 그대로 보여준다. None이면 대화 상태만 알려주는 안내문을 둔다.
-        private void DrawMainArea(
-            Rect rect)
-        {
-            GUI.Box(
-                rect,
-                string.Empty);
-
-            GUILayout.BeginArea(
-                new Rect(
-                    rect.x + 16f,
-                    rect.y + 12f,
-                    rect.width - 32f,
-                    rect.height - 24f));
-
-            if (serviceScreen == ServiceScreen.None)
-            {
-                GUILayout.Label(
-                    "대화, 서비스, 선물, 공격 중 하나를 선택하세요.\n(Esc로 나가기)");
-            }
-            else
-            {
-                DrawServiceScreen();
-            }
-
-            GUILayout.EndArea();
-        }
-
-        // 115일차: 실제 캐릭터 일러스트 자산이 아직 없어서 역할별 색상 + 이름으로
-        // 자리를 대신한다 - 나중에 진짜 일러스트가 생기면 이 메서드만 바꾸면 된다.
-        private void DrawCharacterIllustration(
-            Rect rect)
-        {
-            GUI.Box(
-                rect,
-                string.Empty);
-
-            Color previousColor =
-                GUI.color;
-
-            GUI.color =
+            illustrationImage.color =
                 GetIllustrationColor(
                     openNpc.Definition.ServiceTypes);
 
-            GUI.DrawTexture(
-                new Rect(
-                    rect.x + 5f,
-                    rect.y + 5f,
-                    rect.width - 10f,
-                    rect.height - 10f),
-                Texture2D.whiteTexture);
+            illustrationNameText.text =
+                openNpc.Definition.DisplayName;
 
-            GUI.color =
-                previousColor;
+            infoText.text =
+                $"호감도 {openNpc.RelationshipState.Affinity}/100 ({openNpc.RelationshipState.Stage})   |   {(openNpc.RelationshipState.IsHostile ? "적대" : "우호")}\n"
+                + (string.IsNullOrEmpty(statusText)
+                    ? "무엇을 할지 선택하세요."
+                    : statusText);
 
-            GUIStyle nameStyle =
-                new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.LowerCenter,
-                    fontSize = 24,
-                    fontStyle = FontStyle.Bold
-                };
+            servicesLabelText.text =
+                $"{openNpc.Definition.DisplayName} 서비스";
 
-            nameStyle.normal.textColor =
-                Color.white;
+            serviceButton.interactable =
+                openNpc.Definition.ServiceTypes != NpcServiceType.None;
 
-            GUI.Label(
-                new Rect(
-                    rect.x,
-                    rect.y,
-                    rect.width,
-                    rect.height - 14f),
-                openNpc.Definition.DisplayName,
-                nameStyle);
+            attackButton.interactable =
+                openNpc.Definition.CanBattle;
         }
 
         private static Color GetIllustrationColor(
@@ -575,89 +867,7 @@ namespace ProjectDelta.Presentation
             return new Color(0.55f, 0.55f, 0.55f, 1f);
         }
 
-        private void DrawMainButtons()
-        {
-            if (GUILayout.Button(
-                    "대화",
-                    GUILayout.Height(36f)))
-            {
-                ApplyResult(
-                    interactionService.Resolve(
-                        openNpc.Definition,
-                        openNpc.RelationshipState,
-                        NpcInteractionCommand.Talk));
-            }
-
-            GUI.enabled =
-                openNpc.Definition.ServiceTypes != NpcServiceType.None;
-
-            if (GUILayout.Button(
-                    "서비스",
-                    GUILayout.Height(36f)))
-            {
-                NpcInteractionResult result =
-                    interactionService.Resolve(
-                        openNpc.Definition,
-                        openNpc.RelationshipState,
-                        NpcInteractionCommand.Service);
-
-                ApplyResult(
-                    result);
-
-                if (result.ResultType
-                    == NpcInteractionResultType.OpenService)
-                {
-                    serviceScreen =
-                        ServiceScreen.Menu;
-                }
-            }
-
-            GUI.enabled =
-                true;
-
-            if (GUILayout.Button(
-                    "선물",
-                    GUILayout.Height(36f)))
-            {
-                statusText =
-                    string.Empty;
-
-                serviceScreen =
-                    ServiceScreen.Gift;
-            }
-
-            GUI.enabled =
-                openNpc.Definition.CanBattle;
-
-            if (GUILayout.Button(
-                    "공격",
-                    GUILayout.Height(36f)))
-            {
-                NpcInteractionResult attackResult =
-                    interactionService.ResolveAttack(
-                        openNpc.Definition,
-                        openNpc.RelationshipState);
-
-                if (attackResult.ResultType
-                    == NpcInteractionResultType.StartBattle)
-                {
-                    TriggerNpcBattle();
-                }
-                else
-                {
-                    ApplyResult(
-                        attackResult);
-                }
-            }
-
-            GUI.enabled =
-                true;
-        }
-
         // 115일차: 적대 전환 즉시 이 NPC를 기존 몬스터 조우 파이프라인에 태운다.
-        // NpcDefinition 고유 능력치 대신 fallback 몬스터 스탯이 쓰일 수 있다는 한계는
-        // ExplorationMonsterEncounterController.ResolveMonsterDefinition의 기존 fallback
-        // 규칙을 그대로 물려받는다 - NPC 전용 능력치 반영은 다음 단계 과제로 남긴다.
         private void TriggerNpcBattle()
         {
             if (openNpc == null
@@ -706,8 +916,11 @@ namespace ProjectDelta.Presentation
             encounterController.TryBeginEncounterAtCurrentPosition();
         }
 
-        private void DrawServiceScreen()
+        private void RefreshMainArea()
         {
+            ClearChildren(
+                mainContentRoot);
+
             switch (serviceScreen)
             {
                 case ServiceScreen.Shop:
@@ -730,364 +943,352 @@ namespace ProjectDelta.Presentation
                     DrawGiftScreen();
                     break;
 
-                default:
+                case ServiceScreen.Menu:
                     DrawServiceMenu();
+                    break;
+
+                default:
+                    CreateLabel(
+                        mainContentRoot,
+                        0f,
+                        "대화, 서비스, 선물, 공격 중 하나를 선택하세요.\n(Esc로 나가기)",
+                        60f);
                     break;
             }
         }
 
-        private void DrawGiftScreen()
+        private static void ClearChildren(
+            Transform parent)
         {
-            InventoryRunState inventory =
-                RunContext.Current?.Inventory;
-
-            bool hasGiftableSlot =
-                false;
-
-            if (inventory != null)
+            for (int i = parent.childCount - 1; i >= 0; i--)
             {
-                for (int slotIndex = 0; slotIndex < inventory.Slots.Count; slotIndex++)
-                {
-                    InventorySlotState slot =
-                        inventory.Slots[slotIndex];
-
-                    if (slot == null
-                        || slot.IsEmpty)
-                    {
-                        continue;
-                    }
-
-                    hasGiftableSlot =
-                        true;
-
-                    if (GUILayout.Button(
-                            $"{slot.DisplayName} ×{slot.Quantity}  [선물하기]",
-                            GUILayout.Height(30f)))
-                    {
-                        GiveGift(
-                            inventory,
-                            slotIndex,
-                            slot.DisplayName);
-                    }
-                }
+                Destroy(
+                    parent.GetChild(i).gameObject);
             }
-
-            if (!hasGiftableSlot)
-            {
-                GUILayout.Label(
-                    "선물할 아이템이 없습니다.");
-            }
-
-            DrawBackButton(
-                ServiceScreen.None);
         }
 
-        private void GiveGift(
-            InventoryRunState inventory,
-            int slotIndex,
-            string itemDisplayName)
-        {
-            if (inventory == null
-                || !inventory.TryRemoveQuantityAt(
-                    slotIndex,
-                    1,
-                    out int removedQuantity)
-                || removedQuantity != 1)
-            {
-                statusText =
-                    "선물을 줄 수 없습니다.";
-
-                return;
-            }
-
-            ApplyResult(
-                interactionService.ResolveGift(
-                    openNpc.RelationshipState,
-                    itemDisplayName,
-                    GiftAffinityGain));
-        }
+        // ===================== 서비스 메뉴 =====================
 
         private void DrawServiceMenu()
         {
             NpcServiceType services =
                 openNpc.Definition.ServiceTypes;
 
-            if ((services & NpcServiceType.Trade) != 0
-                && GUILayout.Button(
-                    "상점",
-                    GUILayout.Height(34f)))
-            {
-                statusText =
-                    string.Empty;
+            float y =
+                0f;
 
-                serviceScreen =
-                    ServiceScreen.Shop;
+            if ((services & NpcServiceType.Trade) != 0)
+            {
+                CreateMenuButton(
+                    y,
+                    "상점",
+                    () =>
+                    {
+                        statusText =
+                            string.Empty;
+
+                        serviceScreen =
+                            ServiceScreen.Shop;
+
+                        RefreshMainArea();
+                    });
+
+                y -=
+                    RowHeight + RowGap;
             }
 
-            if ((services & NpcServiceType.Healing) != 0
-                && GUILayout.Button(
-                    "회복",
-                    GUILayout.Height(34f)))
+            if ((services & NpcServiceType.Healing) != 0)
             {
-                statusText =
-                    string.Empty;
+                CreateMenuButton(
+                    y,
+                    "회복",
+                    () =>
+                    {
+                        statusText =
+                            string.Empty;
 
-                serviceScreen =
-                    ServiceScreen.Heal;
+                        serviceScreen =
+                            ServiceScreen.Heal;
+
+                        RefreshMainArea();
+                    });
+
+                y -=
+                    RowHeight + RowGap;
             }
 
             if ((services
                     & (NpcServiceType.MapInformation
                         | NpcServiceType.ExplorationInformation))
-                != 0
-                && GUILayout.Button(
-                    "정보",
-                    GUILayout.Height(34f)))
+                != 0)
             {
-                statusText =
-                    string.Empty;
+                CreateMenuButton(
+                    y,
+                    "정보",
+                    () =>
+                    {
+                        statusText =
+                            string.Empty;
 
-                serviceScreen =
-                    ServiceScreen.Info;
+                        serviceScreen =
+                            ServiceScreen.Info;
+
+                        RefreshMainArea();
+                    });
+
+                y -=
+                    RowHeight + RowGap;
             }
 
             if ((services
                     & (NpcServiceType.RelicTrade
                         | NpcServiceType.RelicResearch))
-                != 0
-                && GUILayout.Button(
+                != 0)
+            {
+                CreateMenuButton(
+                    y,
                     "유물 정리",
-                    GUILayout.Height(34f)))
-            {
-                statusText =
-                    string.Empty;
+                    () =>
+                    {
+                        statusText =
+                            string.Empty;
 
-                serviceScreen =
-                    ServiceScreen.Relic;
+                        serviceScreen =
+                            ServiceScreen.Relic;
+
+                        RefreshMainArea();
+                    });
+
+                y -=
+                    RowHeight + RowGap;
             }
 
-            GUILayout.Space(
-                6f);
-
-            if (GUILayout.Button(
-                    "뒤로",
-                    GUILayout.Height(30f)))
-            {
-                serviceScreen =
-                    ServiceScreen.None;
-
-                statusText =
-                    "무엇을 할지 선택하세요.";
-            }
+            CreateBackButton(
+                y - 8f,
+                ServiceScreen.None);
         }
+
+        private void CreateMenuButton(
+            float y,
+            string label,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            CreateRow(
+                mainContentRoot,
+                y,
+                RowHeight,
+                MainAreaWidth - 32f,
+                label,
+                onClick);
+        }
+
+        // ===================== 상점 =====================
 
         private void DrawShopScreen()
         {
             ShopRunState shop =
                 openNpc.ServiceState?.Shop;
 
-            DrawShopHeader();
+            float y =
+                0f;
 
-            GUILayout.BeginHorizontal();
+            CreateShopHeader(
+                y);
 
-            DrawShopTabButton(
+            y -=
+                30f + RowGap;
+
+            CreateTabButton(
+                0f,
+                y,
                 "구매",
-                ShopTab.Buy);
+                shopTab == ShopTab.Buy,
+                () =>
+                {
+                    shopTab =
+                        ShopTab.Buy;
 
-            DrawShopTabButton(
+                    RefreshMainArea();
+                });
+
+            CreateTabButton(
+                150f,
+                y,
                 "판매",
-                ShopTab.Sell);
+                shopTab == ShopTab.Sell,
+                () =>
+                {
+                    shopTab =
+                        ShopTab.Sell;
 
-            GUILayout.EndHorizontal();
+                    RefreshMainArea();
+                });
 
-            GUILayout.Space(
-                6f);
+            y -=
+                30f + RowGap;
 
             if (shopTab == ShopTab.Buy)
             {
-                DrawShopCategoryRow();
-
-                shopBuyScroll =
-                    GUILayout.BeginScrollView(
-                        shopBuyScroll,
-                        GUILayout.Height(ShopListHeight));
+                y =
+                    DrawShopCategoryRow(
+                        y);
 
                 DrawBuyList(
-                    shop);
-
-                GUILayout.EndScrollView();
+                    shop,
+                    y);
             }
             else
             {
-                shopSellScroll =
-                    GUILayout.BeginScrollView(
-                        shopSellScroll,
-                        GUILayout.Height(ShopListHeight));
-
-                DrawSellList();
-
-                GUILayout.EndScrollView();
+                DrawSellList(
+                    y);
             }
 
-            DrawBackButton();
+            CreateBackButton(
+                -(PanelHeight - 24f - RowHeight - 8f),
+                ServiceScreen.Menu);
         }
 
-        // 130일차: 참고 이미지 상단의 골드 표시 + 상점 강화 요약을 한 줄로 묶는다.
-        // 130일차: 상인 화면에서 만든 "보유 골드 표시" 머리글을 회복·정보·유물 정리
-        // 화면에도 그대로 재사용해 스타일을 통일한다.
-        private void DrawServiceHeader()
+        private void CreateShopHeader(
+            float y)
         {
-            GUILayout.BeginHorizontal();
-
             int gold =
                 RunContext.Current?.Player.Gold
                 ?? 0;
 
-            GUILayout.Label(
-                $"보유 골드  {gold} G",
-                GUI.skin.box);
+            string summary =
+                BuildShopUpgradeSummary();
 
-            GUILayout.FlexibleSpace();
+            string headerText =
+                string.IsNullOrEmpty(summary)
+                    ? $"보유 골드  {gold} G"
+                    : $"보유 골드  {gold} G      {summary}";
 
-            GUILayout.EndHorizontal();
+            CreateLabel(
+                mainContentRoot,
+                y,
+                headerText,
+                26f);
         }
 
-        private void DrawShopHeader()
+        // 130일차: 상점 강화(할인율·판매가 보너스)가 적용 중이면 그대로 보여준다.
+        private string BuildShopUpgradeSummary()
         {
-            GUILayout.BeginHorizontal();
-
-            int gold =
-                RunContext.Current?.Player.Gold
-                ?? 0;
-
-            GUILayout.Label(
-                $"보유 골드  {gold} G",
-                GUI.skin.box);
-
-            GUILayout.FlexibleSpace();
-
-            DrawShopUpgradeSummary();
-
-            GUILayout.EndHorizontal();
-        }
-
-        private void DrawShopTabButton(
-            string label,
-            ShopTab tab)
-        {
-            GUIStyle tabStyle =
-                new GUIStyle(GUI.skin.button)
-                {
-                    fontStyle = shopTab == tab
-                        ? FontStyle.Bold
-                        : FontStyle.Normal
-                };
-
-            if (GUILayout.Button(
-                    label,
-                    tabStyle,
-                    GUILayout.Height(30f)))
+            if (ApplicationFlow.Current == null)
             {
-                shopTab =
-                    tab;
+                return string.Empty;
             }
+
+            ShopUpgradeSnapshot upgrade =
+                ApplicationFlow.Current.GetShopUpgradeSnapshot();
+
+            int sellPercent =
+                (int)System.Math.Round(
+                    ApplicationFlow.Current.GetShopSellPriceRatio()
+                    * 100.0);
+
+            if (upgrade.DiscountPercent <= 0
+                && sellPercent <= 50)
+            {
+                return string.Empty;
+            }
+
+            return $"강화 적용 중 - 구매 할인 {upgrade.DiscountPercent}% / 판매가 {sellPercent}%";
         }
 
-        // 130일차: 참고 이미지의 카테고리 아이콘 행 - 아이콘 자산이 없어 글자 버튼으로
-        // 대신한다. ItemCategory 8종 중 상점에서 실제로 취급하는 4종만 후보로 둔다.
-        private void DrawShopCategoryRow()
+        private float DrawShopCategoryRow(
+            float y)
         {
-            GUILayout.BeginHorizontal();
+            float x =
+                0f;
 
-            GUIStyle allStyle =
-                new GUIStyle(GUI.skin.button)
+            const float categoryButtonWidth =
+                110f;
+
+            CreateTabButton(
+                x,
+                y,
+                "전체",
+                shopCategoryFilter == null,
+                () =>
                 {
-                    fontStyle = shopCategoryFilter == null
-                        ? FontStyle.Bold
-                        : FontStyle.Normal
-                };
+                    shopCategoryFilter =
+                        null;
 
-            if (GUILayout.Button(
-                    "전체",
-                    allStyle,
-                    GUILayout.Height(26f)))
-            {
-                shopCategoryFilter =
-                    null;
-            }
+                    RefreshMainArea();
+                },
+                categoryButtonWidth);
+
+            x +=
+                categoryButtonWidth + 6f;
 
             for (int i = 0; i < ShopFilterableCategories.Length; i++)
             {
                 ItemCategory category =
                     ShopFilterableCategories[i];
 
-                GUIStyle categoryStyle =
-                    new GUIStyle(GUI.skin.button)
+                CreateTabButton(
+                    x,
+                    y,
+                    ItemCategoryRules.GetDisplayName(
+                        category),
+                    shopCategoryFilter == category,
+                    () =>
                     {
-                        fontStyle = shopCategoryFilter == category
-                            ? FontStyle.Bold
-                            : FontStyle.Normal
-                    };
+                        shopCategoryFilter =
+                            category;
 
-                if (GUILayout.Button(
-                        ItemCategoryRules.GetDisplayName(
-                            category),
-                        categoryStyle,
-                        GUILayout.Height(26f)))
-                {
-                    shopCategoryFilter =
-                        category;
-                }
+                        RefreshMainArea();
+                    },
+                    categoryButtonWidth);
+
+                x +=
+                    categoryButtonWidth + 6f;
             }
 
-            GUILayout.EndHorizontal();
+            return y - 26f - RowGap;
         }
 
         private void DrawBuyList(
-            ShopRunState shop)
+            ShopRunState shop,
+            float startY)
         {
-            if (shop == null
-                || shop.Products.Count == 0)
+            List<(string label, UnityEngine.Events.UnityAction onClick)> items =
+                new List<(string, UnityEngine.Events.UnityAction)>();
+
+            if (shop != null)
             {
-                GUILayout.Label(
-                    "판매할 물건이 없습니다.");
-
-                return;
-            }
-
-            bool hasVisibleProduct =
-                false;
-
-            for (int i = 0; i < shop.Products.Count; i++)
-            {
-                ShopProductState product =
-                    shop.Products[i];
-
-                if (product == null
-                    || !PassesShopCategoryFilter(
-                        product))
+                for (int i = 0; i < shop.Products.Count; i++)
                 {
-                    continue;
-                }
+                    ShopProductState product =
+                        shop.Products[i];
 
-                hasVisibleProduct =
-                    true;
+                    if (product == null
+                        || !PassesShopCategoryFilter(
+                            product))
+                    {
+                        continue;
+                    }
 
-                if (GUILayout.Button(
-                        $"{product.DisplayName}  -  {product.Price} G  [구매]",
-                        GUILayout.Height(30f)))
-                {
-                    BuyProduct(
-                        shop,
-                        i);
+                    int capturedIndex =
+                        i;
+
+                    items.Add(
+                        (
+                            $"{product.DisplayName}  -  {product.Price} G",
+                            () => BuyProduct(
+                                shop,
+                                capturedIndex)
+                        ));
                 }
             }
 
-            if (!hasVisibleProduct)
-            {
-                GUILayout.Label(
-                    "이 분류에 해당하는 물건이 없습니다.");
-            }
+            DrawScrollList(
+                startY,
+                items,
+                "구매",
+                shop == null || shop.Products.Count == 0
+                    ? "판매할 물건이 없습니다."
+                    : "이 분류에 해당하는 물건이 없습니다.");
         }
 
         private bool PassesShopCategoryFilter(
@@ -1104,97 +1305,96 @@ namespace ProjectDelta.Presentation
                 && definition.Category == shopCategoryFilter;
         }
 
-        // 130일차: 상점 강화(할인율·판매가 보너스)가 적용 중이면 그대로 보여준다 -
-        // 강화가 하나도 없으면(전부 0/기본값) 굳이 표시하지 않는다.
-        private void DrawShopUpgradeSummary()
+        private void BuyProduct(
+            ShopRunState shop,
+            int index)
         {
-            if (ApplicationFlow.Current == null)
+            RunContext context =
+                RunContext.Current;
+
+            if (context == null)
             {
-                return;
+                statusText =
+                    "지금은 구매할 수 없습니다.";
+            }
+            else
+            {
+                ShopActionResult result =
+                    ShopService.Buy(
+                        shop,
+                        context.Inventory,
+                        context.Player,
+                        index);
+
+                statusText =
+                    result.Success
+                        ? $"구매했습니다. ({-result.GoldChange} G 소비)"
+                        : DescribeShopFailure(
+                            result.FailureReason);
             }
 
-            ShopUpgradeSnapshot upgrade =
-                ApplicationFlow.Current.GetShopUpgradeSnapshot();
-
-            int sellPercent =
-                (int)System.Math.Round(
-                    ApplicationFlow.Current.GetShopSellPriceRatio()
-                    * 100.0);
-
-            if (upgrade.DiscountPercent <= 0
-                && sellPercent <= 50)
-            {
-                return;
-            }
-
-            GUILayout.Label(
-                $"강화 적용 중 - 구매 할인 {upgrade.DiscountPercent}% / 판매가 {sellPercent}%");
+            RefreshLeftColumn();
+            RefreshMainArea();
         }
 
-        // 114일차: ShopService.Sell은 105일차부터 있었지만 실제로 호출하는 UI가
-        // 없었다 - 여기서 처음 연결했다. 130일차: 판매가 비율이 상점 강화에 따라
-        // 달라져서 ApplicationFlow.GetShopSellPriceRatio()로 매번 다시 계산한다.
-        private void DrawSellList()
+        private void DrawSellList(
+            float startY)
         {
             InventoryRunState inventory =
                 RunContext.Current?.Inventory;
-
-            if (inventory == null
-                || inventory.Slots.Count == 0)
-            {
-                GUILayout.Label(
-                    "팔 수 있는 물건이 없습니다.");
-
-                return;
-            }
 
             double sellPriceRatio =
                 ApplicationFlow.Current != null
                     ? ApplicationFlow.Current.GetShopSellPriceRatio()
                     : ShopService.DefaultSellPriceRatio;
 
-            bool hasSellableSlot =
-                false;
+            List<(string label, UnityEngine.Events.UnityAction onClick)> items =
+                new List<(string, UnityEngine.Events.UnityAction)>();
 
-            for (int slotIndex = 0; slotIndex < inventory.Slots.Count; slotIndex++)
+            if (inventory != null)
             {
-                InventorySlotState slot =
-                    inventory.Slots[slotIndex];
-
-                if (slot == null
-                    || slot.IsEmpty
-                    || !RuntimeItemDefinitionLookup.TryFind(
-                        slot.ItemId,
-                        out ItemDefinition definition)
-                    || !ItemCategoryRules.CanSell(
-                        definition.Category))
+                for (int slotIndex = 0; slotIndex < inventory.Slots.Count; slotIndex++)
                 {
-                    continue;
-                }
+                    InventorySlotState slot =
+                        inventory.Slots[slotIndex];
 
-                hasSellableSlot =
-                    true;
+                    if (slot == null
+                        || slot.IsEmpty
+                        || !RuntimeItemDefinitionLookup.TryFind(
+                            slot.ItemId,
+                            out ItemDefinition definition)
+                        || !ItemCategoryRules.CanSell(
+                            definition.Category))
+                    {
+                        continue;
+                    }
 
-                int sellPrice =
-                    (int)(definition.BasePrice
-                    * sellPriceRatio);
+                    int sellPrice =
+                        (int)(definition.BasePrice
+                        * sellPriceRatio);
 
-                if (GUILayout.Button(
-                        $"{definition.DisplayName} ×{slot.Quantity}  -  {sellPrice} G  [판매]",
-                        GUILayout.Height(30f)))
-                {
-                    SellSlot(
-                        inventory,
-                        slotIndex,
-                        definition);
+                    int capturedSlotIndex =
+                        slotIndex;
+
+                    ItemDefinition capturedDefinition =
+                        definition;
+
+                    items.Add(
+                        (
+                            $"{definition.DisplayName} ×{slot.Quantity}  -  {sellPrice} G",
+                            () => SellSlot(
+                                inventory,
+                                capturedSlotIndex,
+                                capturedDefinition)
+                        ));
                 }
             }
 
-            if (!hasSellableSlot)
-            {
-                GUILayout.Label(
-                    "팔 수 있는 물건이 없습니다.");
-            }
+            DrawScrollList(
+                startY,
+                items,
+                "판매",
+                "팔 수 있는 물건이 없습니다.");
         }
 
         private void SellSlot(
@@ -1209,51 +1409,25 @@ namespace ProjectDelta.Presentation
             {
                 statusText =
                     "지금은 판매할 수 없습니다.";
-
-                return;
             }
-
-            ShopActionResult result =
-                ShopInteractionService.Sell(
-                    inventory,
-                    context.Player,
-                    slotIndex,
-                    definition);
-
-            statusText =
-                result.Success
-                    ? $"판매했습니다. (+{result.GoldChange} G)"
-                    : DescribeShopFailure(
-                        result.FailureReason);
-        }
-
-        private void BuyProduct(
-            ShopRunState shop,
-            int index)
-        {
-            RunContext context =
-                RunContext.Current;
-
-            if (context == null)
+            else
             {
-                statusText =
-                    "지금은 구매할 수 없습니다.";
+                ShopActionResult result =
+                    ShopInteractionService.Sell(
+                        inventory,
+                        context.Player,
+                        slotIndex,
+                        definition);
 
-                return;
+                statusText =
+                    result.Success
+                        ? $"판매했습니다. (+{result.GoldChange} G)"
+                        : DescribeShopFailure(
+                            result.FailureReason);
             }
 
-            ShopActionResult result =
-                ShopService.Buy(
-                    shop,
-                    context.Inventory,
-                    context.Player,
-                    index);
-
-            statusText =
-                result.Success
-                    ? $"구매했습니다. ({-result.GoldChange} G 소비)"
-                    : DescribeShopFailure(
-                        result.FailureReason);
+            RefreshLeftColumn();
+            RefreshMainArea();
         }
 
         private static string DescribeShopFailure(
@@ -1278,9 +1452,18 @@ namespace ProjectDelta.Presentation
             }
         }
 
+        // ===================== 회복 / 정보 =====================
+
         private void DrawHealScreen()
         {
-            DrawServiceHeader();
+            float y =
+                0f;
+
+            CreateServiceHeader(
+                y);
+
+            y -=
+                26f + RowGap;
 
             PlayerRunState player =
                 RunContext.Current?.Player;
@@ -1290,40 +1473,68 @@ namespace ProjectDelta.Presentation
                 StatBlock finalStats =
                     player.GetFinalStats();
 
-                GUILayout.Label(
-                    $"체력 {player.CurrentHp}/{finalStats.MaxHealth}   마나 {player.CurrentMana}/{finalStats.MaxMana}   정력 {player.CurrentStamina}/{finalStats.MaxStamina}");
+                CreateLabel(
+                    mainContentRoot,
+                    y,
+                    $"체력 {player.CurrentHp}/{finalStats.MaxHealth}   마나 {player.CurrentMana}/{finalStats.MaxMana}   정력 {player.CurrentStamina}/{finalStats.MaxStamina}",
+                    24f);
             }
 
-            if (GUILayout.Button(
-                    $"회복하기 ({HealCost} G)",
-                    GUILayout.Height(34f)))
-            {
-                NpcServiceActionResult result =
-                    NpcHealingService.Heal(
-                        player,
-                        HealCost);
+            y -=
+                24f + RowGap;
 
-                statusText =
-                    result.Success
-                        ? $"체력·마나·정력을 모두 회복했습니다. ({-result.GoldChange} G 소비)"
-                        : DescribeServiceFailure(
-                            result.FailureReason);
-            }
+            CreateRow(
+                mainContentRoot,
+                y,
+                RowHeight,
+                MainAreaWidth - 32f,
+                $"회복하기 ({HealCost} G)",
+                () =>
+                {
+                    NpcServiceActionResult result =
+                        NpcHealingService.Heal(
+                            player,
+                            HealCost);
 
-            DrawBackButton();
+                    statusText =
+                        result.Success
+                            ? $"체력·마나·정력을 모두 회복했습니다. ({-result.GoldChange} G 소비)"
+                            : DescribeServiceFailure(
+                                result.FailureReason);
+
+                    RefreshLeftColumn();
+                    RefreshMainArea();
+                });
+
+            CreateBackButton(
+                y - RowHeight - 8f,
+                ServiceScreen.Menu);
         }
 
         private void DrawInfoScreen()
         {
-            DrawServiceHeader();
+            float y =
+                0f;
+
+            CreateServiceHeader(
+                y);
+
+            y -=
+                26f + RowGap;
 
             DungeonRunState dungeon =
                 RunContext.Current?.Dungeon;
 
             if (dungeon == null)
             {
-                GUILayout.Label(
-                    "정보를 불러올 수 없습니다.");
+                CreateLabel(
+                    mainContentRoot,
+                    y,
+                    "정보를 불러올 수 없습니다.",
+                    24f);
+
+                y -=
+                    24f;
             }
             else
             {
@@ -1363,38 +1574,73 @@ namespace ProjectDelta.Presentation
                     }
                 }
 
-                GUILayout.Label(
-                    $"{dungeon.CurrentFloor}층 - 지금까지 둘러본 {visited}개 방 기준");
+                CreateLabel(
+                    mainContentRoot,
+                    y,
+                    $"{dungeon.CurrentFloor}층 - 지금까지 둘러본 {visited}개 방 기준",
+                    22f);
 
-                GUILayout.Label(
-                    $"전투 {combatCount} / 함정 {trapCount} / 이벤트 {eventCount} / 일반 {normalCount}");
+                y -=
+                    22f;
 
-                GUILayout.Label(
-                    "가보지 않은 방의 정보는 알려줄 수 없습니다.");
+                CreateLabel(
+                    mainContentRoot,
+                    y,
+                    $"전투 {combatCount} / 함정 {trapCount} / 이벤트 {eventCount} / 일반 {normalCount}",
+                    22f);
+
+                y -=
+                    22f;
+
+                CreateLabel(
+                    mainContentRoot,
+                    y,
+                    "가보지 않은 방의 정보는 알려줄 수 없습니다.",
+                    22f);
+
+                y -=
+                    22f;
             }
 
-            DrawBackButton();
+            CreateBackButton(
+                y - 8f,
+                ServiceScreen.Menu);
         }
+
+        private void CreateServiceHeader(
+            float y)
+        {
+            int gold =
+                RunContext.Current?.Player.Gold
+                ?? 0;
+
+            CreateLabel(
+                mainContentRoot,
+                y,
+                $"보유 골드  {gold} G",
+                26f);
+        }
+
+        // ===================== 유물 정리 =====================
 
         private void DrawRelicScreen()
         {
-            DrawServiceHeader();
+            float y =
+                0f;
+
+            CreateServiceHeader(
+                y);
+
+            y -=
+                30f + RowGap;
 
             RelicRunState relics =
                 RunContext.Current?.Relics;
 
-            relicScreenScroll =
-                GUILayout.BeginScrollView(
-                    relicScreenScroll,
-                    GUILayout.Height(ShopListHeight));
+            List<(string label, UnityEngine.Events.UnityAction onClick)> items =
+                new List<(string, UnityEngine.Events.UnityAction)>();
 
-            if (relics == null
-                || relics.Relics.Count == 0)
-            {
-                GUILayout.Label(
-                    "정리할 유물이 없습니다.");
-            }
-            else
+            if (relics != null)
             {
                 for (int i = 0; i < relics.Relics.Count; i++)
                 {
@@ -1406,58 +1652,83 @@ namespace ProjectDelta.Presentation
                         continue;
                     }
 
-                    GUILayout.BeginHorizontal();
-
-                    GUILayout.Label(
-                        relic.IsCursed
-                            ? $"{relic.DisplayName} (저주)"
-                            : relic.DisplayName);
+                    RelicInstanceState capturedRelic =
+                        relic;
 
                     if (relic.IsCursed)
                     {
-                        if (GUILayout.Button(
-                                $"저주 제거 ({CurseRemovalCost} G)",
-                                GUILayout.Width(160f)))
-                        {
-                            NpcServiceActionResult result =
-                                NpcRelicService.RemoveCursedRelic(
+                        items.Add(
+                            (
+                                $"{relic.DisplayName} (저주)  -  저주 제거 {CurseRemovalCost} G",
+                                () => RemoveCurse(
                                     relics,
-                                    RunContext.Current.Player,
-                                    relic.RelicId,
-                                    CurseRemovalCost);
-
-                            statusText =
-                                result.Success
-                                    ? $"{relic.DisplayName}의 저주를 제거했습니다."
-                                    : DescribeServiceFailure(
-                                        result.FailureReason);
-                        }
+                                    capturedRelic)
+                            ));
                     }
-                    else if (GUILayout.Button(
-                                 $"희생 (+{SacrificeReward} G)",
-                                 GUILayout.Width(160f)))
+                    else
                     {
-                        NpcServiceActionResult result =
-                            NpcRelicService.SacrificeRelic(
-                                relics,
-                                RunContext.Current.Player,
-                                relic.RelicId,
-                                SacrificeReward);
-
-                        statusText =
-                            result.Success
-                                ? $"{relic.DisplayName}을(를) 희생하고 {result.GoldChange} G를 받았습니다."
-                                : DescribeServiceFailure(
-                                    result.FailureReason);
+                        items.Add(
+                            (
+                                $"{relic.DisplayName}  -  희생 +{SacrificeReward} G",
+                                () => SacrificeRelic(
+                                    relics,
+                                    capturedRelic)
+                            ));
                     }
-
-                    GUILayout.EndHorizontal();
                 }
             }
 
-            GUILayout.EndScrollView();
+            DrawScrollList(
+                y,
+                items,
+                "실행",
+                "정리할 유물이 없습니다.");
 
-            DrawBackButton();
+            CreateBackButton(
+                -(PanelHeight - 24f - RowHeight - 8f),
+                ServiceScreen.Menu);
+        }
+
+        private void RemoveCurse(
+            RelicRunState relics,
+            RelicInstanceState relic)
+        {
+            NpcServiceActionResult result =
+                NpcRelicService.RemoveCursedRelic(
+                    relics,
+                    RunContext.Current.Player,
+                    relic.RelicId,
+                    CurseRemovalCost);
+
+            statusText =
+                result.Success
+                    ? $"{relic.DisplayName}의 저주를 제거했습니다."
+                    : DescribeServiceFailure(
+                        result.FailureReason);
+
+            RefreshLeftColumn();
+            RefreshMainArea();
+        }
+
+        private void SacrificeRelic(
+            RelicRunState relics,
+            RelicInstanceState relic)
+        {
+            NpcServiceActionResult result =
+                NpcRelicService.SacrificeRelic(
+                    relics,
+                    RunContext.Current.Player,
+                    relic.RelicId,
+                    SacrificeReward);
+
+            statusText =
+                result.Success
+                    ? $"{relic.DisplayName}을(를) 희생하고 {result.GoldChange} G를 받았습니다."
+                    : DescribeServiceFailure(
+                        result.FailureReason);
+
+            RefreshLeftColumn();
+            RefreshMainArea();
         }
 
         private static string DescribeServiceFailure(
@@ -1482,22 +1753,483 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        private void DrawBackButton(
-            ServiceScreen target = ServiceScreen.Menu)
+        // ===================== 선물 =====================
+
+        private void DrawGiftScreen()
         {
-            GUILayout.Space(
-                6f);
+            InventoryRunState inventory =
+                RunContext.Current?.Inventory;
 
-            if (GUILayout.Button(
-                    "뒤로",
-                    GUILayout.Height(30f)))
+            List<(string label, UnityEngine.Events.UnityAction onClick)> items =
+                new List<(string, UnityEngine.Events.UnityAction)>();
+
+            if (inventory != null)
             {
-                serviceScreen =
-                    target;
+                for (int slotIndex = 0; slotIndex < inventory.Slots.Count; slotIndex++)
+                {
+                    InventorySlotState slot =
+                        inventory.Slots[slotIndex];
 
-                statusText =
-                    string.Empty;
+                    if (slot == null
+                        || slot.IsEmpty)
+                    {
+                        continue;
+                    }
+
+                    int capturedSlotIndex =
+                        slotIndex;
+
+                    string capturedDisplayName =
+                        slot.DisplayName;
+
+                    items.Add(
+                        (
+                            $"{slot.DisplayName} ×{slot.Quantity}",
+                            () => GiveGift(
+                                inventory,
+                                capturedSlotIndex,
+                                capturedDisplayName)
+                        ));
+                }
             }
+
+            DrawScrollList(
+                0f,
+                items,
+                "선물하기",
+                "선물할 아이템이 없습니다.");
+
+            CreateBackButton(
+                -(PanelHeight - 24f - RowHeight - 8f),
+                ServiceScreen.None);
+        }
+
+        private void GiveGift(
+            InventoryRunState inventory,
+            int slotIndex,
+            string itemDisplayName)
+        {
+            if (inventory == null
+                || !inventory.TryRemoveQuantityAt(
+                    slotIndex,
+                    1,
+                    out int removedQuantity)
+                || removedQuantity != 1)
+            {
+                statusText =
+                    "선물을 줄 수 없습니다.";
+
+                RefreshMainArea();
+                return;
+            }
+
+            ApplyResult(
+                interactionService.ResolveGift(
+                    openNpc.RelationshipState,
+                    itemDisplayName,
+                    GiftAffinityGain));
+
+            RefreshLeftColumn();
+            RefreshMainArea();
+        }
+
+        // ===================== 공용 그리기 헬퍼 =====================
+
+        private void DrawScrollList(
+            float startY,
+            List<(string label, UnityEngine.Events.UnityAction onClick)> items,
+            string buttonLabel,
+            string emptyMessage)
+        {
+            RectTransform viewportRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "ScrollViewport",
+                    mainContentRoot);
+
+            viewportRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            viewportRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            viewportRect.pivot =
+                new Vector2(0f, 1f);
+
+            viewportRect.anchoredPosition =
+                new Vector2(0f, startY);
+
+            viewportRect.sizeDelta =
+                new Vector2(MainAreaWidth - 32f, ListHeight);
+
+            viewportRect.gameObject.AddComponent<RectMask2D>();
+
+            RectTransform contentRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "ScrollContent",
+                    viewportRect);
+
+            contentRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            contentRect.anchorMax =
+                new Vector2(1f, 1f);
+
+            contentRect.pivot =
+                new Vector2(0.5f, 1f);
+
+            contentRect.anchoredPosition =
+                Vector2.zero;
+
+            contentRect.sizeDelta =
+                new Vector2(0f, Mathf.Max(items.Count, 1) * (RowHeight + RowGap));
+
+            ScrollRect scrollRect =
+                viewportRect.gameObject.AddComponent<ScrollRect>();
+
+            scrollRect.viewport =
+                viewportRect;
+
+            scrollRect.content =
+                contentRect;
+
+            scrollRect.horizontal =
+                false;
+
+            scrollRect.vertical =
+                true;
+
+            if (items.Count == 0)
+            {
+                CreateLabel(
+                    contentRect,
+                    0f,
+                    emptyMessage,
+                    RowHeight);
+
+                return;
+            }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                float rowY =
+                    -(i * (RowHeight + RowGap));
+
+                CreateRow(
+                    contentRect,
+                    rowY,
+                    RowHeight,
+                    MainAreaWidth - 32f,
+                    items[i].label,
+                    items[i].onClick,
+                    buttonLabel);
+            }
+        }
+
+        // 라벨 + 오른쪽 버튼 한 줄. buttonLabel이 null이면 행 전체가 버튼(메뉴용).
+        private void CreateRow(
+            Transform parent,
+            float y,
+            float height,
+            float width,
+            string label,
+            UnityEngine.Events.UnityAction onClick,
+            string buttonLabel = null)
+        {
+            if (buttonLabel == null)
+            {
+                RectTransform fullButtonRect =
+                    RuntimeUiFactory.CreateUiObject(
+                        "MenuRow",
+                        parent);
+
+                fullButtonRect.anchorMin =
+                    new Vector2(0f, 1f);
+
+                fullButtonRect.anchorMax =
+                    new Vector2(0f, 1f);
+
+                fullButtonRect.pivot =
+                    new Vector2(0f, 1f);
+
+                fullButtonRect.anchoredPosition =
+                    new Vector2(0f, y);
+
+                fullButtonRect.sizeDelta =
+                    new Vector2(width, height);
+
+                Image fullButtonImage =
+                    fullButtonRect.gameObject.AddComponent<Image>();
+
+                fullButtonImage.color =
+                    NormalButtonColor;
+
+                Button fullButton =
+                    fullButtonRect.gameObject.AddComponent<Button>();
+
+                fullButton.targetGraphic =
+                    fullButtonImage;
+
+                fullButton.onClick.AddListener(
+                    onClick);
+
+                RectTransform fullLabelRect =
+                    RuntimeUiFactory.CreateStretchedRect(
+                        "Label",
+                        fullButtonRect);
+
+                Text fullLabelText =
+                    fullLabelRect.gameObject.AddComponent<Text>();
+
+                RuntimeUiFactory.ConfigureText(
+                    fullLabelText,
+                    label,
+                    16,
+                    FontStyle.Normal,
+                    TextAnchor.MiddleCenter);
+
+                fullLabelText.raycastTarget =
+                    false;
+
+                return;
+            }
+
+            float actionButtonWidth =
+                170f;
+
+            RectTransform rowRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Row",
+                    parent);
+
+            rowRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            rowRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            rowRect.pivot =
+                new Vector2(0f, 1f);
+
+            rowRect.anchoredPosition =
+                new Vector2(0f, y);
+
+            rowRect.sizeDelta =
+                new Vector2(width, height);
+
+            Image rowImage =
+                rowRect.gameObject.AddComponent<Image>();
+
+            rowImage.color =
+                new Color(0.14f, 0.14f, 0.18f, 0.9f);
+
+            RectTransform labelRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Label",
+                    rowRect);
+
+            labelRect.anchorMin =
+                new Vector2(0f, 0f);
+
+            labelRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            labelRect.pivot =
+                new Vector2(0f, 0.5f);
+
+            labelRect.anchoredPosition =
+                new Vector2(10f, 0f);
+
+            labelRect.sizeDelta =
+                new Vector2(width - actionButtonWidth - 20f, 0f);
+
+            Text labelText =
+                labelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                labelText,
+                label,
+                14,
+                FontStyle.Normal,
+                TextAnchor.MiddleLeft);
+
+            RectTransform actionButtonRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Action",
+                    rowRect);
+
+            actionButtonRect.anchorMin =
+                new Vector2(1f, 0.5f);
+
+            actionButtonRect.anchorMax =
+                new Vector2(1f, 0.5f);
+
+            actionButtonRect.pivot =
+                new Vector2(1f, 0.5f);
+
+            actionButtonRect.anchoredPosition =
+                new Vector2(-6f, 0f);
+
+            actionButtonRect.sizeDelta =
+                new Vector2(actionButtonWidth, height - 6f);
+
+            Image actionButtonImage =
+                actionButtonRect.gameObject.AddComponent<Image>();
+
+            actionButtonImage.color =
+                NormalButtonColor;
+
+            Button actionButton =
+                actionButtonRect.gameObject.AddComponent<Button>();
+
+            actionButton.targetGraphic =
+                actionButtonImage;
+
+            actionButton.onClick.AddListener(
+                onClick);
+
+            RectTransform actionLabelRect =
+                RuntimeUiFactory.CreateStretchedRect(
+                    "Label",
+                    actionButtonRect);
+
+            Text actionLabelText =
+                actionLabelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                actionLabelText,
+                buttonLabel,
+                13,
+                FontStyle.Normal,
+                TextAnchor.MiddleCenter);
+
+            actionLabelText.raycastTarget =
+                false;
+        }
+
+        private void CreateTabButton(
+            float x,
+            float y,
+            string label,
+            bool isSelected,
+            UnityEngine.Events.UnityAction onClick,
+            float width = 130f)
+        {
+            RectTransform buttonRect =
+                RuntimeUiFactory.CreateUiObject(
+                    $"Tab_{label}",
+                    mainContentRoot);
+
+            buttonRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            buttonRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            buttonRect.pivot =
+                new Vector2(0f, 1f);
+
+            buttonRect.anchoredPosition =
+                new Vector2(x, y);
+
+            buttonRect.sizeDelta =
+                new Vector2(width, 26f);
+
+            Image buttonImage =
+                buttonRect.gameObject.AddComponent<Image>();
+
+            buttonImage.color =
+                isSelected
+                    ? SelectedButtonColor
+                    : NormalButtonColor;
+
+            Button button =
+                buttonRect.gameObject.AddComponent<Button>();
+
+            button.targetGraphic =
+                buttonImage;
+
+            button.onClick.AddListener(
+                onClick);
+
+            RectTransform labelRect =
+                RuntimeUiFactory.CreateStretchedRect(
+                    "Label",
+                    buttonRect);
+
+            Text labelText =
+                labelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                labelText,
+                label,
+                13,
+                isSelected
+                    ? FontStyle.Bold
+                    : FontStyle.Normal,
+                TextAnchor.MiddleCenter);
+
+            labelText.raycastTarget =
+                false;
+        }
+
+        private void CreateLabel(
+            Transform parent,
+            float y,
+            string text,
+            float height)
+        {
+            RectTransform labelRect =
+                RuntimeUiFactory.CreateUiObject(
+                    "Label",
+                    parent);
+
+            labelRect.anchorMin =
+                new Vector2(0f, 1f);
+
+            labelRect.anchorMax =
+                new Vector2(0f, 1f);
+
+            labelRect.pivot =
+                new Vector2(0f, 1f);
+
+            labelRect.anchoredPosition =
+                new Vector2(0f, y);
+
+            labelRect.sizeDelta =
+                new Vector2(MainAreaWidth - 32f, height);
+
+            Text labelText =
+                labelRect.gameObject.AddComponent<Text>();
+
+            RuntimeUiFactory.ConfigureText(
+                labelText,
+                text,
+                14,
+                FontStyle.Normal,
+                TextAnchor.UpperLeft);
+        }
+
+        private void CreateBackButton(
+            float y,
+            ServiceScreen target)
+        {
+            CreateRow(
+                mainContentRoot,
+                y,
+                RowHeight,
+                MainAreaWidth - 32f,
+                "뒤로",
+                () =>
+                {
+                    serviceScreen =
+                        target;
+
+                    statusText =
+                        string.Empty;
+
+                    RefreshLeftColumn();
+                    RefreshMainArea();
+                });
         }
 
         private void ApplyResult(
