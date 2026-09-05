@@ -92,7 +92,10 @@ namespace ProjectDelta.Infrastructure
             Services.Register<ISceneLoaderService>(sceneLoader);
             log.Info("Scene loader service ready");
 
-            _applicationFlow = new ApplicationFlow(sceneLoader, log, saveService, steamAchievementBridge);
+            _applicationFlow = new ApplicationFlow(sceneLoader, log, saveService, steamAchievementBridge, input);
+
+            // 137일차: 저장된 키 리매핑을 실제 액션에 반영한 뒤 게임을 시작한다.
+            _applicationFlow.ApplyKeyBindingsFromSettings();
 
             yield return null;
         }

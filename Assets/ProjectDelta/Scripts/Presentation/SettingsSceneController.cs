@@ -2,6 +2,9 @@ using ProjectDelta.Application; // ApplicationFlow.Current 사용
 using ProjectDelta.Data; // SettingsData 사용
 using UnityEngine; // Unity 기본 기능 사용
 
+// 137일차: 키 리매핑에 쓰는 액션 표시 이름 목록.
+using RebindableAction = System.ValueTuple<string, string>;
+
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 {
     // 24일차: 항목 없는 임시 화면이었다가, 136일차에 기획서 8.1절 "UI 배율 옵션"과
@@ -14,6 +17,20 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private GUIStyle selectedButtonStyle; // 선택된 배율 버튼 스타일
 
         private SettingsData settings; // 현재 설정 값
+
+        // 137일차: 기획서 8.1절 "키보드/마우스/게임패드 리매핑" - 탐험 맵의 이동·상호작용
+        // 5개 액션만 우선 다룬다(장치를 가리지 않고 다음 입력을 그대로 새 바인딩으로 받음).
+        private static readonly RebindableAction[] RebindableActions =
+        {
+            ("MoveForward", "전진"),
+            ("MoveBackward", "후진"),
+            ("MoveLeft", "좌측 이동"),
+            ("MoveRight", "우측 이동"),
+            ("Interact", "상호작용")
+        };
+
+        private bool showKeyRemap; // 키 설정 패널 표시 상태
+        private string rebindingActionName; // 현재 입력을 기다리는 중인 액션(없으면 null)
 
         private void OnEnable() // 설정 화면 진입 시 최신 값 불러오기
         {
@@ -72,13 +89,100 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             y += spacing + 20f; // 다음 항목으로 이동
 
+            if (GUI.Button( // 키 설정 패널 열기/닫기 버튼
+                    new Rect(centerX - (buttonWidth / 2f), y, buttonWidth, buttonHeight),
+                    showKeyRemap
+                        ? "키 설정 닫기"
+                        : "키 설정",
+                    buttonStyle))
+            {
+                showKeyRemap = // 키 설정 패널 표시 상태 반전
+                    !showKeyRemap;
+            }
+
+            y += spacing + 20f; // 다음 항목으로 이동
+
             if (GUI.Button(new Rect(centerX - (buttonWidth / 2f), y, buttonWidth, buttonHeight), "뒤로가기", buttonStyle)) // 뒤로가기 버튼
             {
                 ApplicationFlow.Current?.ReturnToTitle(); // 타이틀 화면으로 이동
             }
 
+            if (showKeyRemap) // 키 설정 패널 표시 여부 확인
+            {
+                DrawKeyRemapPanel( // 키 설정 패널 표시
+                    centerX,
+                    y + spacing);
+            }
+
             UiScaleSettings.RestoreGuiMatrix( // 136일차: 배율 적용 복원
                 previousMatrix);
+        }
+
+        // 137일차: 액션 5개를 나열해 각각 현재 바인딩과 재설정 버튼을 보여준다.
+        private void DrawKeyRemapPanel(
+            float centerX,
+            float y)
+        {
+            float rowWidth = 420f; // 한 줄 전체 가로 크기
+            float rowHeight = 40f; // 한 줄 세로 크기
+            float rebindButtonWidth = 140f; // 재설정 버튼 가로 크기
+
+            for (int i = 0; i < RebindableActions.Length; i++)
+            {
+                (string actionName, string displayName) =
+                    RebindableActions[i];
+
+                float rowY =
+                    y + (i * (rowHeight + 8f));
+
+                GUI.Label( // 액션 표시 이름
+                    new Rect(centerX - (rowWidth / 2f), rowY, rowWidth - rebindButtonWidth - 12f, rowHeight),
+                    displayName,
+                    labelStyle);
+
+                bool isWaitingForInput = // 이 액션이 지금 입력을 기다리는 중인지 확인
+                    rebindingActionName == actionName;
+
+                string bindingLabel = // 재설정 버튼에 표시할 문구
+                    isWaitingForInput
+                        ? "입력 대기 중..."
+                        : ApplicationFlow.Current?.GetKeyBindingDisplayString(
+                              InputMapNames.Exploration,
+                              actionName)
+                          ?? "-";
+
+                if (GUI.Button( // 재설정 버튼(현재 바인딩 표시 겸용)
+                        new Rect(centerX + (rowWidth / 2f) - rebindButtonWidth, rowY, rebindButtonWidth, rowHeight),
+                        bindingLabel,
+                        buttonStyle)
+                    && !isWaitingForInput)
+                {
+                    string capturedActionName = // 콜백에서 쓸 액션 이름 캡처
+                        actionName;
+
+                    rebindingActionName =
+                        actionName;
+
+                    ApplicationFlow.Current?.StartKeyRebind(
+                        InputMapNames.Exploration,
+                        actionName,
+                        onCompleted: overridePath =>
+                        {
+                            rebindingActionName =
+                                null;
+
+                            ApplicationFlow.Current?.SaveKeyBinding(
+                                InputMapNames.Exploration,
+                                capturedActionName,
+                                overridePath);
+                        },
+                        onCanceled: () =>
+                        {
+                            rebindingActionName =
+                                null;
+                        });
+                }
+            }
         }
 
         private void DrawUiScaleButtons(

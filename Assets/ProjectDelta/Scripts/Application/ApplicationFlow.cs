@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 using UnityEngine;
@@ -17,6 +18,10 @@ namespace ProjectDelta.Application
         // 연동 전까지는 AppRoot가 NullSteamAchievementBridge를 넘겨준다.
         private readonly ISteamAchievementBridge _steamAchievementBridge;
 
+        // 137일차: 키 리매핑 - Presentation은 Infrastructure(InputService)를 직접
+        // 참조하지 않으므로, 프로필/설정과 같은 방식으로 여기서 중계한다.
+        private readonly IInputService _inputService;
+
         private string _pendingSceneName;
 
         // 109일차: 저장 슬롯 UI가 생기기 전까지는 항상 0번(기존 단일 저장 파일)을 쓴다.
@@ -26,7 +31,8 @@ namespace ProjectDelta.Application
             ISceneLoaderService sceneLoader,
             ILogService log,
             ISaveService saveService,
-            ISteamAchievementBridge steamAchievementBridge = null)
+            ISteamAchievementBridge steamAchievementBridge = null,
+            IInputService inputService = null)
         {
             _sceneLoader =
                 sceneLoader;
@@ -39,6 +45,9 @@ namespace ProjectDelta.Application
 
             _steamAchievementBridge =
                 steamAchievementBridge;
+
+            _inputService =
+                inputService;
 
             Current =
                 this;
@@ -590,6 +599,100 @@ namespace ProjectDelta.Application
 
             _saveService.WriteSettings(
                 settings);
+        }
+
+        // 137일차: 지정한 액션의 현재 바인딩을 사람이 읽을 수 있는 문자열로 돌려준다.
+        public string GetKeyBindingDisplayString(
+            string mapName,
+            string actionName)
+        {
+            return _inputService?.GetBindingDisplayString(
+                mapName,
+                actionName)
+                ?? string.Empty;
+        }
+
+        // 137일차: 장치 상관없이 다음 입력을 새 바인딩으로 받는다 - 화면(Presentation)은
+        // 이 메서드만 부르고, 실제 재설정은 Infrastructure의 InputService가 처리한다.
+        public void StartKeyRebind(
+            string mapName,
+            string actionName,
+            Action<string> onCompleted,
+            Action onCanceled)
+        {
+            if (_inputService == null)
+            {
+                onCanceled?.Invoke();
+                return;
+            }
+
+            _inputService.StartRebind(
+                mapName,
+                actionName,
+                onCompleted,
+                onCanceled);
+        }
+
+        // 137일차: 재설정 결과를 실제 액션에 적용하고, 다음 실행에도 남도록 설정 파일에
+        // upsert 방식으로 저장한다(같은 액션을 다시 재설정하면 기존 항목을 덮어씀).
+        public void SaveKeyBinding(
+            string mapName,
+            string actionName,
+            string overridePath)
+        {
+            if (string.IsNullOrEmpty(overridePath))
+            {
+                return;
+            }
+
+            _inputService?.ApplyBindingOverride(
+                mapName,
+                actionName,
+                overridePath);
+
+            SettingsData settings =
+                ReadOrCreateSettings();
+
+            string actionId =
+                $"{mapName}/{actionName}";
+
+            KeyBindingEntry entry =
+                settings.KeyBindings.Find(
+                    candidate => candidate.ActionId == actionId);
+
+            if (entry == null)
+            {
+                entry =
+                    new KeyBindingEntry
+                    {
+                        ActionId = actionId
+                    };
+
+                settings.KeyBindings.Add(
+                    entry);
+            }
+
+            entry.KeyboardBinding =
+                overridePath;
+
+            SaveSettings(
+                settings);
+        }
+
+        // 137일차: 앱 시작 시 저장된 리매핑을 실제 InputActionAsset에 적용한다 - 저장하지
+        // 않은 항목(기본값 그대로인 액션)은 건드리지 않는다.
+        public void ApplyKeyBindingsFromSettings()
+        {
+            if (_inputService == null)
+            {
+                return;
+            }
+
+            SettingsData settings =
+                ReadOrCreateSettings();
+
+            _inputService.ApplyBindingOverrides(
+                settings.KeyBindings);
         }
 
         public void OpenSettings()
