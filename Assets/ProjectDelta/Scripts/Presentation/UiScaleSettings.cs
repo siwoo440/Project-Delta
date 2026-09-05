@@ -78,6 +78,15 @@ namespace ProjectDelta.Presentation
             scaler.referenceResolution =
                 baseReferenceResolution
                 / Mathf.Max(0.01f, CurrentMultiplier);
+
+            // 138일차: 기획서 8.1절 해상도 대응 - 다른 Canvas 화면들(전투 HUD 등)과 같은
+            // 가로세로 균형(0.5)으로 맞춘다. 이 값을 안 정하면 기본값이 가로 기준(0)이라
+            // 울트라와이드에서 세로만 과하게 넓어 보인다.
+            scaler.screenMatchMode =
+                CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+
+            scaler.matchWidthOrHeight =
+                0.5f;
         }
     }
 }
