@@ -12,6 +12,11 @@ namespace ProjectDelta.Application
         private readonly ISceneLoaderService _sceneLoader;
         private readonly ILogService _log;
         private readonly ISaveService _saveService;
+
+        // 134일차: 도전과제가 True가 되는 순간 Steam API로 넘길 지점 - 실제 Steamworks
+        // 연동 전까지는 AppRoot가 NullSteamAchievementBridge를 넘겨준다.
+        private readonly ISteamAchievementBridge _steamAchievementBridge;
+
         private string _pendingSceneName;
 
         // 109일차: 저장 슬롯 UI가 생기기 전까지는 항상 0번(기존 단일 저장 파일)을 쓴다.
@@ -20,7 +25,8 @@ namespace ProjectDelta.Application
         public ApplicationFlow(
             ISceneLoaderService sceneLoader,
             ILogService log,
-            ISaveService saveService)
+            ISaveService saveService,
+            ISteamAchievementBridge steamAchievementBridge = null)
         {
             _sceneLoader =
                 sceneLoader;
@@ -30,6 +36,9 @@ namespace ProjectDelta.Application
 
             _saveService =
                 saveService;
+
+            _steamAchievementBridge =
+                steamAchievementBridge;
 
             Current =
                 this;
@@ -746,6 +755,49 @@ namespace ProjectDelta.Application
 
             WriteProfile(
                 profile);
+        }
+
+        // 134일차: 이번 평가에서 새로 True가 된 도전과제만 골라 Steam 브릿지로 넘긴다 -
+        // 이미 달성한 항목을 매번 다시 호출하지 않도록 AchievementProgressService가
+        // 걸러준 신규 목록만 받는다.
+        public void SyncSteamAchievements(
+            AchievementProgressSnapshot snapshot)
+        {
+            if (snapshot == null
+                || _steamAchievementBridge == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.NewlyUnlockedIds.Count; i++)
+            {
+                _steamAchievementBridge.UnlockAchievement(
+                    snapshot.NewlyUnlockedIds[i]);
+            }
+        }
+
+        // 134일차: 기획서 7.5절 "Steam 도전과제" 전용 목록 화면 - CG 갤러리와 같은 방식으로
+        // 메인 메뉴에서 진입한다.
+        public void OpenAchievementGallery()
+        {
+            _log.Info("Opening AchievementGalleryScene");
+            _sceneLoader.LoadSingle(SceneNames.Achievement);
+        }
+
+        // 134일차: 도전과제 갤러리 화면이 해금 여부만 가볍게 조회할 때 쓴다 - 판정 자체는
+        // 로비 진입 시 AchievementProgressService.EvaluateAndRecord가 이미 끝내 둔다.
+        public bool IsAchievementUnlocked(
+            string achievementId)
+        {
+            if (string.IsNullOrEmpty(
+                    achievementId))
+            {
+                return false;
+            }
+
+            return ReadOrCreateProfile()
+                .PermanentRecord.UnlockedAchievementIds.Contains(
+                    achievementId);
         }
 
         // 133일차: CG 갤러리 화면이 해금 여부만 가볍게 조회할 때 쓴다.

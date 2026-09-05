@@ -24,6 +24,9 @@ EditorBuildSettings:
     path: Assets/ProjectDelta/Scenes/CgGalleryScene.unity
     guid: 229803df87694e3481ac66f8abe8fd9e
   - enabled: 1
+    path: Assets/ProjectDelta/Scenes/AchievementGalleryScene.unity
+    guid: 586e210d5ae3415983fdfb53e8d090a4
+  - enabled: 1
     path: Assets/ProjectDelta/Scenes/LoadingScene.unity
     guid: eb9a150bb75b4d4a80ee880a2257e56a
   - enabled: 1

@@ -81,15 +81,18 @@ namespace ProjectDelta.Infrastructure
             yield return addressables.InitializeRoutine();
             log.Info("Addressables service ready");
 
-            // TODO: Steam init, Cloud status check
-            log.Info("Steam init skipped (not implemented yet)");
+            // 134일차: 실제 Steamworks 연동 전까지는 로그만 남기는 브릿지를 등록해
+            // 도전과제 True 전환 → Steam 호출 흐름 자체는 지금부터 검증할 수 있게 한다.
+            var steamAchievementBridge = new NullSteamAchievementBridge(log);
+            Services.Register<ISteamAchievementBridge>(steamAchievementBridge);
+            log.Info("Steam init skipped (Steamworks not integrated yet, using null achievement bridge)");
             log.Info("Cloud status check skipped (not implemented yet)");
 
             var sceneLoader = gameObject.AddComponent<SceneLoaderService>();
             Services.Register<ISceneLoaderService>(sceneLoader);
             log.Info("Scene loader service ready");
 
-            _applicationFlow = new ApplicationFlow(sceneLoader, log, saveService);
+            _applicationFlow = new ApplicationFlow(sceneLoader, log, saveService, steamAchievementBridge);
 
             yield return null;
         }

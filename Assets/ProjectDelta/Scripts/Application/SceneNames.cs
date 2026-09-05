@@ -14,5 +14,8 @@ namespace ProjectDelta.Application
 
         // 133일차: 메인 메뉴에서 CG 갤러리로 들어가는 전용 씬.
         public const string CgGallery = "CgGalleryScene";
+
+        // 134일차: 메인 메뉴에서 도전과제 목록으로 들어가는 전용 씬.
+        public const string Achievement = "AchievementGalleryScene";
     }
 }

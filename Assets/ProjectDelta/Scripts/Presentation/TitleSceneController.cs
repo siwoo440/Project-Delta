@@ -57,6 +57,13 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             y += spacing; // 다음 버튼 위치로 이동
 
+            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "도전과제", buttonStyle)) // 134일차: 도전과제 갤러리 버튼
+            {
+                ApplicationFlow.Current?.OpenAchievementGallery(); // 도전과제 화면으로 이동
+            }
+
+            y += spacing; // 다음 버튼 위치로 이동
+
             if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "종료", buttonStyle)) // 종료 버튼
             {
                 QuitGame(); // 게임 종료 처리
