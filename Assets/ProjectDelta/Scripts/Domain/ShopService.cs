@@ -42,12 +42,13 @@ namespace ProjectDelta.Domain
         }
     }
 
-    // 105일차: 상점 구매/판매 규칙(보유 골드 검사, 인벤토리 공간 검증, 판매가 50%)을
-    // 한 곳에서 처리한다.
+    // 105일차: 상점 구매/판매 규칙(보유 골드 검사, 인벤토리 공간 검증)을 한 곳에서 처리한다.
     public static class ShopService
     {
-        // 판매가는 구매가(정가)의 50%로 계산한다(내림).
-        public const double SellPriceRatio = 0.5;
+        // 130일차: 판매가 비율은 상점 강화(ShopUpgradeRule, 기본 50%~70%)에 따라 달라져서
+        // Domain(ProfileData를 모름)이 값을 정할 수 없다 - Application(ApplicationFlow.
+        // GetShopSellPriceRatio)이 계산해 호출자로 넘겨준다. 기본값은 강화 전 50%다.
+        public const double DefaultSellPriceRatio = 0.5;
 
         public static ShopActionResult Buy(
             ShopRunState shop,
@@ -107,7 +108,8 @@ namespace ProjectDelta.Domain
             PlayerRunState player,
             int slotIndex,
             ItemCategory category,
-            int basePrice)
+            int basePrice,
+            double sellPriceRatio = DefaultSellPriceRatio)
         {
             if (inventory == null
                 || player == null)
@@ -145,7 +147,7 @@ namespace ProjectDelta.Domain
 
             int sellPrice =
                 (int)(basePrice
-                * SellPriceRatio);
+                * sellPriceRatio);
 
             int earned =
                 GoldService.Earn(

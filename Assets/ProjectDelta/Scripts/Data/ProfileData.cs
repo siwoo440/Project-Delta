@@ -29,8 +29,15 @@ namespace ProjectDelta.Data
         // 128일차: 유물 보유량 영구 확장 레벨. RelicSlotUpgradeRule이 비용/효과를 계산한다.
         public int RelicSlotUpgradeLevel;
 
-        // TODO 6.6절 영구 강화 구현 시 추가: 상점 강화, 탐험 강화
-        // (영구 능력치 강화는 126일차, 인벤토리 확장은 127일차, 유물 확장은 128일차에 완료)
+        // 130일차: 상점 강화 4종(기획서 6.6절). ShopUpgradeRule이 비용/효과를 계산한다.
+        public int ShopDiscountLevel;
+        public int ShopStockLevel;
+        public int ShopRareChanceLevel;
+        public int ShopSellBonusLevel;
+
+        // TODO 6.6절 영구 강화 구현 시 추가: 탐험 강화
+        // (영구 능력치 강화는 126일차, 인벤토리 확장은 127일차, 유물 확장은 128일차,
+        // 상점 강화는 130일차에 완료)
 
         public int StartingGold;
         public List<string> StartingConsumableItemIds = new List<string>();

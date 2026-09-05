@@ -182,44 +182,98 @@ namespace ProjectDelta.Presentation
                 y += rowHeight;
             }
 
-            DrawInventorySlotUpgradeRow(
-                panelX,
-                panelWidth,
-                rowHeight,
-                y);
+            y +=
+                rowHeight;
+
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "인벤토리 슬롯",
+                profile != null ? profile.PermanentGrowth.InventorySlotUpgradeLevel : 0,
+                InventorySlotUpgradeRule.TryGetUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseInventorySlotUpgrade());
 
             y +=
                 rowHeight;
 
-            DrawRelicSlotUpgradeRow(
-                panelX,
-                panelWidth,
-                rowHeight,
-                y);
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "유물 보유량",
+                profile != null ? profile.PermanentGrowth.RelicSlotUpgradeLevel : 0,
+                RelicSlotUpgradeRule.TryGetUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseRelicSlotUpgrade());
+
+            y +=
+                rowHeight;
+
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "상점 구매 할인",
+                profile != null ? profile.PermanentGrowth.ShopDiscountLevel : 0,
+                ShopUpgradeRule.TryGetDiscountUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseShopDiscountUpgrade());
+
+            y +=
+                rowHeight;
+
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "상점 재고 확장",
+                profile != null ? profile.PermanentGrowth.ShopStockLevel : 0,
+                ShopUpgradeRule.TryGetStockUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseShopStockUpgrade());
+
+            y +=
+                rowHeight;
+
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "희귀 상품 확률",
+                profile != null ? profile.PermanentGrowth.ShopRareChanceLevel : 0,
+                ShopUpgradeRule.TryGetRareChanceUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseShopRareChanceUpgrade());
+
+            y +=
+                rowHeight;
+
+            DrawSimpleUpgradeRow(
+                panelX, panelWidth, rowHeight, y,
+                "상점 판매가",
+                profile != null ? profile.PermanentGrowth.ShopSellBonusLevel : 0,
+                ShopUpgradeRule.TryGetSellBonusUpgradeCost,
+                () => ApplicationFlow.Current != null
+                    && ApplicationFlow.Current.TryPurchaseShopSellBonusUpgrade());
         }
 
-        // 127일차: 인벤토리 슬롯 확장은 스탯 강화와 별개 트랙(레벨 dict가 아니라 단일 레벨)이라
-        // 위 반복문과 같은 모양이지만 별도로 그린다.
-        private void DrawInventorySlotUpgradeRow(
+        // 130일차: 인벤토리 슬롯(127)·유물 보유량(128)·상점 강화 4종(130) 모두 "레벨 하나 +
+        // 비용 조회 델리게이트 + 구매 델리게이트" 모양이 완전히 같아서 공용 행 그리기로 합쳤다.
+        private delegate bool TryGetUpgradeCost(
+            int currentLevel,
+            out int cost);
+
+        private void DrawSimpleUpgradeRow(
             float panelX,
             float panelWidth,
             float rowHeight,
-            float y)
+            float y,
+            string label,
+            int level,
+            TryGetUpgradeCost tryGetCost,
+            System.Func<bool> purchase)
         {
-            int level =
-                profile != null
-                    ? profile.PermanentGrowth.InventorySlotUpgradeLevel
-                    : 0;
-
             bool hasNextLevel =
-                InventorySlotUpgradeRule.TryGetUpgradeCost(
+                tryGetCost(
                     level,
                     out int cost);
 
             string rowLabel =
                 hasNextLevel
-                    ? $"인벤토리 슬롯  Lv.{level} → {level + 1}  ({cost} 조각)"
-                    : $"인벤토리 슬롯  Lv.{level} (최대)";
+                    ? $"{label}  Lv.{level} → {level + 1}  ({cost} 조각)"
+                    : $"{label}  Lv.{level} (최대)";
 
             GUI.Label(
                 new Rect(panelX, y, panelWidth - 90f, rowHeight),
@@ -238,57 +292,7 @@ namespace ProjectDelta.Presentation
                     new Rect(panelX + panelWidth - 80f, y, 80f, rowHeight - 4f),
                     "구매",
                     upgradeBuyButtonStyle)
-                && ApplicationFlow.Current != null
-                && ApplicationFlow.Current.TryPurchaseInventorySlotUpgrade())
-            {
-                RefreshProfile();
-            }
-
-            GUI.enabled =
-                true;
-        }
-
-        // 128일차: 유물 보유량 확장 - 인벤토리 슬롯 행과 완전히 같은 모양, 다른 규칙/구매만 연결.
-        private void DrawRelicSlotUpgradeRow(
-            float panelX,
-            float panelWidth,
-            float rowHeight,
-            float y)
-        {
-            int level =
-                profile != null
-                    ? profile.PermanentGrowth.RelicSlotUpgradeLevel
-                    : 0;
-
-            bool hasNextLevel =
-                RelicSlotUpgradeRule.TryGetUpgradeCost(
-                    level,
-                    out int cost);
-
-            string rowLabel =
-                hasNextLevel
-                    ? $"유물 보유량  Lv.{level} → {level + 1}  ({cost} 조각)"
-                    : $"유물 보유량  Lv.{level} (최대)";
-
-            GUI.Label(
-                new Rect(panelX, y, panelWidth - 90f, rowHeight),
-                rowLabel,
-                upgradeRowLabelStyle);
-
-            bool canAfford =
-                hasNextLevel
-                && profile != null
-                && profile.PermanentGrowth.MemoryShards >= cost;
-
-            GUI.enabled =
-                canAfford;
-
-            if (GUI.Button(
-                    new Rect(panelX + panelWidth - 80f, y, 80f, rowHeight - 4f),
-                    "구매",
-                    upgradeBuyButtonStyle)
-                && ApplicationFlow.Current != null
-                && ApplicationFlow.Current.TryPurchaseRelicSlotUpgrade())
+                && purchase())
             {
                 RefreshProfile();
             }

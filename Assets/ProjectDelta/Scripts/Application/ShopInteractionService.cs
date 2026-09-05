@@ -19,12 +19,19 @@ namespace ProjectDelta.Application
                     ShopActionFailureReason.ItemNotSellable);
             }
 
+            // 130일차: 상점 강화(판매 가격 증가)가 반영된 비율을 사용한다.
+            double sellPriceRatio =
+                ApplicationFlow.Current != null
+                    ? ApplicationFlow.Current.GetShopSellPriceRatio()
+                    : ShopService.DefaultSellPriceRatio;
+
             return ShopService.Sell(
                 inventory,
                 player,
                 slotIndex,
                 definition.Category,
-                definition.BasePrice);
+                definition.BasePrice,
+                sellPriceRatio);
         }
 
         // 상점 재고를 채울 때 ItemDefinition의 정가를 그대로 쓰거나,

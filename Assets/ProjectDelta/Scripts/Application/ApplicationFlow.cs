@@ -252,6 +252,150 @@ namespace ProjectDelta.Application
             return true;
         }
 
+        // 130일차: 로비 강화 상점 - 상점 구매 할인 구매.
+        public bool TryPurchaseShopDiscountUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!ShopUpgradeRule.TryGetDiscountUpgradeCost(
+                    profile.PermanentGrowth.ShopDiscountLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.ShopDiscountLevel++;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
+        // 130일차: 로비 강화 상점 - 상점 재고 확장 구매.
+        public bool TryPurchaseShopStockUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!ShopUpgradeRule.TryGetStockUpgradeCost(
+                    profile.PermanentGrowth.ShopStockLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.ShopStockLevel++;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
+        // 130일차: 로비 강화 상점 - 희귀 상품 확률 구매.
+        public bool TryPurchaseShopRareChanceUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!ShopUpgradeRule.TryGetRareChanceUpgradeCost(
+                    profile.PermanentGrowth.ShopRareChanceLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.ShopRareChanceLevel++;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
+        // 130일차: 로비 강화 상점 - 판매 가격 증가 구매.
+        public bool TryPurchaseShopSellBonusUpgrade()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (!ShopUpgradeRule.TryGetSellBonusUpgradeCost(
+                    profile.PermanentGrowth.ShopSellBonusLevel,
+                    out int cost))
+            {
+                return false;
+            }
+
+            if (profile.PermanentGrowth.MemoryShards < cost)
+            {
+                return false;
+            }
+
+            profile.PermanentGrowth.MemoryShards -=
+                cost;
+
+            profile.PermanentGrowth.ShopSellBonusLevel++;
+
+            WriteProfile(
+                profile);
+
+            return true;
+        }
+
+        // 130일차: 상점 화면·재고 구성 양쪽에서 같은 판매가 비율을 쓰기 위한 공용 조회.
+        // 0.5(기본 50%)에 ShopUpgradeRule.GetSellPricePercent가 반환하는 %를 반영한다.
+        public double GetShopSellPriceRatio()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            return ShopUpgradeRule.GetSellPricePercent(
+                profile.PermanentGrowth.ShopSellBonusLevel)
+                / 100.0;
+        }
+
+        // 130일차: 상점 재고를 구성할 때 필요한 강화 수치(할인율·재고 보너스·희귀 확률)를
+        // 한 번에 조회한다 - NpcShopStockBuilder가 매번 프로필을 따로 읽지 않도록 묶어준다.
+        public ShopUpgradeSnapshot GetShopUpgradeSnapshot()
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            return new ShopUpgradeSnapshot(
+                ShopUpgradeRule.GetDiscountPercent(
+                    profile.PermanentGrowth.ShopDiscountLevel),
+                ShopUpgradeRule.GetBonusStockCount(
+                    profile.PermanentGrowth.ShopStockLevel),
+                ShopUpgradeRule.GetRareChancePercent(
+                    profile.PermanentGrowth.ShopRareChanceLevel));
+        }
+
         public bool HasSavedRun() => HasSavedRun(ActiveSlot);
 
         public bool HasSavedRun(int slot)

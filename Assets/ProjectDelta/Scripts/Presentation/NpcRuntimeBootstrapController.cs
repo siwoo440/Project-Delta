@@ -212,8 +212,17 @@ namespace ProjectDelta.Presentation
                     & NpcServiceType.Trade)
                 != 0)
             {
+                // 130일차: 같은 층에서는 가격·재고가 유지되고(기획서 5.3), 층이 바뀌면
+                // CurrentSuccessfulSeed도 바뀌어 자연스럽게 새 가격/재고가 나온다.
+                string shopNpcId =
+                    npcDefinition.Id
+                    + "_"
+                    + targetRoom.PassageController.RoomId;
+
                 serviceState.Shop.SetProducts(
-                    NpcShopStockBuilder.BuildDefaultStock());
+                    NpcShopStockBuilder.BuildStock(
+                        floorController.CurrentSuccessfulSeed,
+                        shopNpcId));
             }
 
             GameObject npcObject =
