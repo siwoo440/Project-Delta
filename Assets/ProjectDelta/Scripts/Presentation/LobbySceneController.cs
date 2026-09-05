@@ -42,6 +42,8 @@ namespace ProjectDelta.Presentation
         private void OnEnable()
         {
             RefreshProfile(); // 로비 진입 시 프로필과 메타 진행도 갱신
+
+            UiScaleSettings.Refresh(); // 136일차: 설정 화면에서 바뀐 UI 배율 반영
         }
 
         private void RefreshProfile()
@@ -80,6 +82,9 @@ namespace ProjectDelta.Presentation
         private void OnGUI()
         {
             EnsureStyles(); // OnGUI 스타일 준비
+
+            Matrix4x4 previousMatrix = // 136일차: UI 배율 적용 - 끝에서 반드시 복원
+                UiScaleSettings.ApplyGuiMatrix();
 
             float centerX = // 화면 가로 중앙 좌표 계산
                 Screen.width / 2f;
@@ -186,6 +191,9 @@ namespace ProjectDelta.Presentation
                     centerX,
                     y + spacing);
             }
+
+            UiScaleSettings.RestoreGuiMatrix( // 136일차: 배율 적용 복원
+                previousMatrix);
         }
 
         // 126일차: 기억의 조각을 소비해 영구 능력치를 강화하는 임시 상점 패널.

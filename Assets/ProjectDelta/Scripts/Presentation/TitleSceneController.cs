@@ -11,9 +11,17 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private GUIStyle titleStyle; // 제목 글자 스타일
         private GUIStyle buttonStyle; // 버튼 글자 스타일
 
+        private void OnEnable() // 타이틀 진입 시 UI 배율 값 갱신
+        {
+            UiScaleSettings.Refresh(); // 136일차: 설정 화면에서 바뀐 배율을 반영
+        }
+
         private void OnGUI() // 타이틀 임시 UI 표시
         {
             EnsureStyles(); // 스타일 준비
+
+            Matrix4x4 previousMatrix = // 136일차: UI 배율 적용 - 끝에서 반드시 복원
+                UiScaleSettings.ApplyGuiMatrix();
 
             float centerX = Screen.width / 2f; // 화면 가로 중앙 좌표
             GUI.Label(new Rect(centerX - 200f, Screen.height * 0.25f, 400f, 60f), "Project Delta", titleStyle); // 제목 표시
@@ -68,6 +76,9 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 QuitGame(); // 게임 종료 처리
             }
+
+            UiScaleSettings.RestoreGuiMatrix( // 136일차: 배율 적용 복원
+                previousMatrix);
         }
 
         private void EnsureStyles() // GUI 스타일 최초 1회 생성

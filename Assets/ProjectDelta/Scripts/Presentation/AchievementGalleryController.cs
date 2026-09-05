@@ -118,8 +118,12 @@ namespace ProjectDelta.Presentation
             scaler.uiScaleMode =
                 CanvasScaler.ScaleMode.ScaleWithScreenSize;
 
-            scaler.referenceResolution =
-                new Vector2(1920f, 1080f);
+            // 136일차: 설정 화면의 UI 배율(소/보통/대)을 CanvasScaler 화면에도 반영한다.
+            UiScaleSettings.Refresh();
+
+            UiScaleSettings.ApplyToCanvasScaler(
+                scaler,
+                new Vector2(1920f, 1080f));
 
             RectTransform background =
                 CreateStretchedRect(

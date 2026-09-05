@@ -564,6 +564,34 @@ namespace ProjectDelta.Application
                 profile);
         }
 
+        // 136일차: 기획서 8.1절 "UI 배율 옵션"·"자막 지원" - SettingsData/SaveService는
+        // 이미 있었지만(9.1절 저장 규칙과 별개로 즉시 저장) 실제로 읽고 쓰는 곳이 없었다.
+        // 프로필과 같은 방식으로 여기서 중계한다.
+        public SettingsData ReadOrCreateSettings()
+        {
+            if (_saveService == null)
+            {
+                return new SettingsData();
+            }
+
+            return _saveService.HasSettings()
+                ? _saveService.ReadSettings()
+                : new SettingsData();
+        }
+
+        public void SaveSettings(
+            SettingsData settings)
+        {
+            if (settings == null
+                || _saveService == null)
+            {
+                return;
+            }
+
+            _saveService.WriteSettings(
+                settings);
+        }
+
         public void OpenSettings()
         {
             _log.Info("Opening SettingsScene");
