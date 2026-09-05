@@ -561,6 +561,14 @@ namespace ProjectDelta.Application
             _sceneLoader.LoadSingle(SceneNames.Settings);
         }
 
+        // 133일차: 메인 메뉴(타이틀/로비)에서 CG 갤러리로 들어간다 - 진행 중인 런과
+        // 무관한 열람 전용 화면이라 SettingsScene과 같은 방식으로 단순 씬 전환만 한다.
+        public void OpenCgGallery()
+        {
+            _log.Info("Opening CgGalleryScene");
+            _sceneLoader.LoadSingle(SceneNames.CgGallery);
+        }
+
         public void EnterDefeat()
         {
             if (RunContext.Current != null)
@@ -711,6 +719,48 @@ namespace ProjectDelta.Application
 
             WriteProfile(
                 profile);
+        }
+
+        // 133일차: 기획서 7.4절 CG 해금 - 몬스터 관계 CG(EventBattleParticipantState)뿐
+        // 아니라 NPC 관계·엔딩·일반 이벤트 CG가 생겨도 전부 이 메서드 하나로 기록한다.
+        public void UnlockCg(
+            string cgId)
+        {
+            if (string.IsNullOrEmpty(
+                    cgId))
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (profile.PermanentRecord.UnlockedCgIds.Contains(
+                    cgId))
+            {
+                return;
+            }
+
+            profile.PermanentRecord.UnlockedCgIds.Add(
+                cgId);
+
+            WriteProfile(
+                profile);
+        }
+
+        // 133일차: CG 갤러리 화면이 해금 여부만 가볍게 조회할 때 쓴다.
+        public bool IsCgUnlocked(
+            string cgId)
+        {
+            if (string.IsNullOrEmpty(
+                    cgId))
+            {
+                return false;
+            }
+
+            return ReadOrCreateProfile()
+                .PermanentRecord.UnlockedCgIds.Contains(
+                    cgId);
         }
 
         public void ReturnToLobby()

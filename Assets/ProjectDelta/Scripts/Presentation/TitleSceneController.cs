@@ -50,6 +50,13 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             y += spacing; // 다음 버튼 위치로 이동
 
+            if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "CG 목록", buttonStyle)) // 133일차: CG 갤러리 버튼
+            {
+                ApplicationFlow.Current?.OpenCgGallery(); // CG 갤러리 화면으로 이동
+            }
+
+            y += spacing; // 다음 버튼 위치로 이동
+
             if (GUI.Button(new Rect(buttonX, y, buttonWidth, buttonHeight), "종료", buttonStyle)) // 종료 버튼
             {
                 QuitGame(); // 게임 종료 처리

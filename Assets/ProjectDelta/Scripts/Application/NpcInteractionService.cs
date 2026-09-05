@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ProjectDelta.Data;
 using ProjectDelta.Domain;
 
@@ -61,12 +62,46 @@ namespace ProjectDelta.Application
                     "NPC 정보를 불러오지 못했습니다.");
             }
 
+            int previousAffinity =
+                relationship.Affinity;
+
             relationship.ChangeAffinity(
                 affinityGain);
+
+            UnlockNpcCgIfThresholdCrossed(
+                relationship.NpcId,
+                previousAffinity,
+                relationship.Affinity);
 
             return new NpcInteractionResult(
                 NpcInteractionResultType.ContinueInteraction,
                 $"{itemDisplayName}을(를) 선물했습니다. (호감도 +{affinityGain})");
+        }
+
+        // 133일차: 기획서 7.4절 "NPC 관계 이벤트 CG" - 호감도가 오를 때마다 이번에
+        // 새로 넘긴 단계가 있는지 확인해 해금한다(선물·구조 등 호감도가 오르는 모든
+        // 경로에서 공통으로 호출한다).
+        private static void UnlockNpcCgIfThresholdCrossed(
+            string npcId,
+            int previousAffinity,
+            int newAffinity)
+        {
+            if (ApplicationFlow.Current == null)
+            {
+                return;
+            }
+
+            List<string> newlyUnlocked =
+                NpcCgRule.GetNewlyUnlockedCgIds(
+                    npcId,
+                    previousAffinity,
+                    newAffinity);
+
+            for (int i = 0; i < newlyUnlocked.Count; i++)
+            {
+                ApplicationFlow.Current.UnlockCg(
+                    newlyUnlocked[i]);
+            }
         }
 
         // 115일차: NPC 한 명당 한 번만 가능한 "구조" - 도움을 주고 큰 폭으로 호감도를 올린다.
@@ -88,10 +123,18 @@ namespace ProjectDelta.Application
                     "이미 도움을 준 적이 있습니다.");
             }
 
+            int previousAffinity =
+                relationship.Affinity;
+
             relationship.ChangeAffinity(
                 affinityGain);
 
             relationship.MarkRescued();
+
+            UnlockNpcCgIfThresholdCrossed(
+                relationship.NpcId,
+                previousAffinity,
+                relationship.Affinity);
 
             return new NpcInteractionResult(
                 NpcInteractionResultType.ContinueInteraction,

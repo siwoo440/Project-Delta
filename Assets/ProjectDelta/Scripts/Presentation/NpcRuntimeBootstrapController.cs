@@ -11,44 +11,10 @@ namespace ProjectDelta.Presentation
     // 실제 방 선정·서비스 데이터 소스는 아직 정식 콘텐츠가 아니라 역할별 런타임 정의다.
     public sealed class NpcRuntimeBootstrapController : MonoBehaviour
     {
-        private struct NpcRoleConfig
-        {
-            public string Id;
-            public string DisplayName;
-            public NpcServiceType ServiceTypes;
-
-            public NpcRoleConfig(
-                string id,
-                string displayName,
-                NpcServiceType serviceTypes)
-            {
-                Id = id;
-                DisplayName = displayName;
-                ServiceTypes = serviceTypes;
-            }
-        }
-
+        // 133일차: 역할 목록 자체는 NpcRosterCatalog(같은 Presentation 어셈블리)로 옮겼다 -
+        // CgGalleryController도 같은 목록을 참조한다.
         private static readonly NpcRoleConfig[] RoleConfigs =
-        {
-            new NpcRoleConfig(
-                "NPC_MERCHANT_TEST",
-                "상인",
-                NpcServiceType.Trade),
-            new NpcRoleConfig(
-                "NPC_HEALER_TEST",
-                "치료사",
-                NpcServiceType.Healing),
-            new NpcRoleConfig(
-                "NPC_GUIDE_TEST",
-                "지도사",
-                NpcServiceType.MapInformation
-                | NpcServiceType.ExplorationInformation),
-            new NpcRoleConfig(
-                "NPC_TREASURE_HUNTER_TEST",
-                "보물사냥꾼",
-                NpcServiceType.RelicTrade
-                | NpcServiceType.RelicResearch)
-        };
+            NpcRosterCatalog.RoleConfigs;
 
         private PlayerGridMovementController movementController;
         private DungeonFloorController floorController;

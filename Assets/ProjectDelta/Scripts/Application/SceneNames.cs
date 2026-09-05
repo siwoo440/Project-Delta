@@ -11,5 +11,8 @@ namespace ProjectDelta.Application
         public const string Ending = "EndingScene";
         public const string Settings = "SettingsScene";
         public const string Loading = "LoadingScene";
+
+        // 133일차: 메인 메뉴에서 CG 갤러리로 들어가는 전용 씬.
+        public const string CgGallery = "CgGalleryScene";
     }
 }

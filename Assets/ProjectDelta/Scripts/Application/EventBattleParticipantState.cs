@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ProjectDelta.Domain;
 
 namespace ProjectDelta.Application
@@ -50,6 +51,9 @@ namespace ProjectDelta.Application
                 return;
             }
 
+            int previousFavor =
+                Favor;
+
             int newFavor =
                 Favor
                 + amount;
@@ -66,6 +70,10 @@ namespace ProjectDelta.Application
                 {
                     // 118일차 EventBattleContext.FavorToWin 100 도달 - 다음 단계로 넘어가고
                     // 게이지를 다시 채운다(보스 2단계 게이지).
+                    CheckCgUnlocks(
+                        previousFavor,
+                        EventBattleContext.FavorToWin);
+
                     CurrentStage++;
 
                     Favor =
@@ -80,6 +88,10 @@ namespace ProjectDelta.Application
                 HasWon =
                     true;
 
+                CheckCgUnlocks(
+                    previousFavor,
+                    Favor);
+
                 // 132일차: 기획서 7.3절 "몬스터 개별 엔딩" - 이번 회차에 이 종족과
                 // 호감도 100(FavorToWin)을 찍었다는 사실을 기록해둔다. 몬스터 호감도는
                 // 이번 회차에만 유지되므로(NPC와 달리 프로필에 영구 저장하지 않는다),
@@ -92,6 +104,34 @@ namespace ProjectDelta.Application
 
             Favor =
                 newFavor;
+
+            CheckCgUnlocks(
+                previousFavor,
+                Favor);
+        }
+
+        // 133일차: 기획서 7.4절 "몬스터 관계 이벤트 CG - 호감도 20~100 단계별" - 이번
+        // 상승으로 새로 넘긴 구간이 있으면 영구 기록에 해금 표시한다.
+        private void CheckCgUnlocks(
+            int previousFavor,
+            int newFavor)
+        {
+            if (ApplicationFlow.Current == null)
+            {
+                return;
+            }
+
+            List<string> newlyUnlocked =
+                MonsterCgRule.GetNewlyUnlockedCgIds(
+                    Participant.DefinitionId,
+                    previousFavor,
+                    newFavor);
+
+            for (int i = 0; i < newlyUnlocked.Count; i++)
+            {
+                ApplicationFlow.Current.UnlockCg(
+                    newlyUnlocked[i]);
+            }
         }
 
         public void MarkSatisfiedDeparture()
