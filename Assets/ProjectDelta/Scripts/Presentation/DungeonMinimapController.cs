@@ -187,7 +187,8 @@ namespace ProjectDelta.Presentation
             }
         }
 
-        private void OnGUI()
+        // DAY142_DUNGEON_MINIMAP_UGUI_PATCH
+        private void BuildDungeonMinimapRuntimeUi142()
         {
             if (movementController == null
                 || movementController.PlayerState == null)
@@ -400,7 +401,7 @@ namespace ProjectDelta.Presentation
                     graphRect.width * 0.5f, // 중앙 X 계산
                     graphRect.height * 0.5f); // 중앙 Y 계산
 
-            GUI.BeginGroup(graphRect); // 전체 지도 영역 클리핑 시작
+            DungeonMinimapRuntimeGuiProxy.BeginGroup(graphRect); // 전체 지도 영역 클리핑 시작
 
             DrawRevealedLocalMap( // 미니맵과 동일한 발견 타일 지도 그리기
                 mapCenter, // 플레이어 중심점 전달
@@ -418,7 +419,7 @@ namespace ProjectDelta.Presentation
                 snapshot, // 현재 방 정보 전달
                 graphRect.width); // 지도 너비 전달
 
-            GUI.EndGroup(); // 전체 지도 영역 클리핑 종료
+            DungeonMinimapRuntimeGuiProxy.EndGroup(); // 전체 지도 영역 클리핑 종료
 
             return true; // 상세 전체 지도 표시 성공 반환
         }
@@ -435,7 +436,7 @@ namespace ProjectDelta.Presentation
             }
 
             GUIStyle badgeStyle = // 방 종류 배지 스타일 생성
-                new GUIStyle(GUI.skin.label) // 기본 라벨 스타일 복사
+                new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label) // 기본 라벨 스타일 복사
                 {
                     alignment = TextAnchor.MiddleCenter, // 가운데 정렬 사용
                     fontStyle = FontStyle.Bold, // 굵은 글자 사용
@@ -461,24 +462,24 @@ namespace ProjectDelta.Presentation
                     26f); // 배지 높이 지정
 
             Color previousColor = // 기존 GUI 색상 저장
-                GUI.color; // 현재 GUI 색상 읽기
+                DungeonMinimapRuntimeGuiProxy.color; // 현재 GUI 색상 읽기
 
-            GUI.color = // 배지 배경색 지정
+            DungeonMinimapRuntimeGuiProxy.color = // 배지 배경색 지정
                 new Color(0f, 0f, 0f, 0.68f); // 반투명 검정 배경 사용
 
-            GUI.DrawTexture( // 배지 배경 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 배지 배경 그리기
                 badgeRect, // 배지 영역 전달
                 Texture2D.whiteTexture); // 흰 텍스처에 색상 적용
 
-            GUI.color = // 라벨 색상 복원
+            DungeonMinimapRuntimeGuiProxy.color = // 라벨 색상 복원
                 Color.white; // 흰색 사용
 
-            GUI.Label( // 현재 방 종류 텍스트 표시
+            DungeonMinimapRuntimeGuiProxy.Label( // 현재 방 종류 텍스트 표시
                 badgeRect, // 배지 영역 전달
                 $"[{shortLabel}] {displayName}", // 단축 문자와 이름 표시
                 badgeStyle); // 배지 스타일 전달
 
-            GUI.color = // 기존 GUI 색상 복원
+            DungeonMinimapRuntimeGuiProxy.color = // 기존 GUI 색상 복원
                 previousColor; // 저장 색상 사용
         }
 
@@ -518,7 +519,7 @@ namespace ProjectDelta.Presentation
             }
 
             GUIStyle infoStyle =
-                new GUIStyle(GUI.skin.label)
+                new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label)
                 {
                     fontSize = 16,
                     alignment = TextAnchor.MiddleLeft
@@ -534,7 +535,7 @@ namespace ProjectDelta.Presentation
                 panelRect.width
                 - (fullMapPadding * 2f);
 
-            GUI.Label(
+            DungeonMinimapRuntimeGuiProxy.Label(
                 new Rect(
                     left,
                     panelRect.y + 8f,
@@ -543,7 +544,7 @@ namespace ProjectDelta.Presentation
                 $"층 진행도 : {currentFloor} / {displayTotalFloorCount}",
                 infoStyle);
 
-            GUI.Label(
+            DungeonMinimapRuntimeGuiProxy.Label(
                 new Rect(
                     left,
                     panelRect.y + 30f,
@@ -552,7 +553,7 @@ namespace ProjectDelta.Presentation
                 $"탐험률 : {progress.ExploredRoomCount} / {progress.TotalRoomCount}  ({progress.ExplorationPercent:0}%)",
                 infoStyle);
 
-            GUI.Label(
+            DungeonMinimapRuntimeGuiProxy.Label(
                 new Rect(
                     left,
                     panelRect.y + 52f,
@@ -566,7 +567,7 @@ namespace ProjectDelta.Presentation
             Rect panelRect)
         {
             GUIStyle hintStyle =
-                new GUIStyle(GUI.skin.label)
+                new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label)
                 {
                     fontSize = 13,
                     alignment = TextAnchor.MiddleCenter
@@ -579,7 +580,7 @@ namespace ProjectDelta.Presentation
                     0.82f,
                     1f);
 
-            GUI.Label(
+            DungeonMinimapRuntimeGuiProxy.Label(
                 new Rect(
                     panelRect.x + fullMapPadding,
                     panelRect.yMax
@@ -643,14 +644,14 @@ namespace ProjectDelta.Presentation
                     panelRect.width - (mapPadding * 2f), // 지도 너비 계산
                     panelRect.height - headerHeight - mapPadding); // 지도 높이 계산
 
-            GUI.BeginGroup(panelRect); // 미니맵 패널 클리핑 시작
+            DungeonMinimapRuntimeGuiProxy.BeginGroup(panelRect); // 미니맵 패널 클리핑 시작
 
             DrawCurrentRoomTypeHeader( // 현재 방 종류 표시
                 snapshot, // 현재 미니맵 스냅샷 전달
                 panelRect.width, // 헤더 너비 전달
                 headerHeight); // 헤더 높이 전달
 
-            GUI.BeginGroup(localMapRect); // 타일 지도 영역 클리핑 시작
+            DungeonMinimapRuntimeGuiProxy.BeginGroup(localMapRect); // 타일 지도 영역 클리핑 시작
 
             Vector2 mapCenter = // 플레이어 고정 중심점 계산
                 new Vector2( // 중심 좌표 생성
@@ -669,8 +670,8 @@ namespace ProjectDelta.Presentation
                     12f, // 최소 크기 지정
                     localMapCellPixelSize * 0.48f)); // 타일 크기 비례 아이콘 계산
 
-            GUI.EndGroup(); // 타일 지도 영역 클리핑 종료
-            GUI.EndGroup(); // 미니맵 패널 클리핑 종료
+            DungeonMinimapRuntimeGuiProxy.EndGroup(); // 타일 지도 영역 클리핑 종료
+            DungeonMinimapRuntimeGuiProxy.EndGroup(); // 미니맵 패널 클리핑 종료
 
             return true; // 상세 미니맵 표시 성공 반환
         }
@@ -841,7 +842,7 @@ namespace ProjectDelta.Presentation
             float mapHeight) // 지도 높이
         {
             Color previousColor = // 기존 GUI 색상 저장
-                GUI.color; // 현재 GUI 색상 읽기
+                DungeonMinimapRuntimeGuiProxy.color; // 현재 GUI 색상 읽기
 
             foreach (GridPosition position // 공개 타일 반복
                      in revealedTiles) // 공개 타일 집합 사용
@@ -863,21 +864,21 @@ namespace ProjectDelta.Presentation
                     continue; // 화면 밖 타일 건너뛰기
                 }
 
-                GUI.color = // 바닥 타일 색상 지정
+                DungeonMinimapRuntimeGuiProxy.color = // 바닥 타일 색상 지정
                     LocalCellColor; // 기본 바닥 색상 사용
 
-                GUI.DrawTexture( // 바닥 타일 채우기
+                DungeonMinimapRuntimeGuiProxy.DrawTexture( // 바닥 타일 채우기
                     cellRect, // 타일 사각형 전달
                     Texture2D.whiteTexture); // 흰 텍스처 색상 적용
 
-                GUI.color = // 타일 격자 색상 지정
+                DungeonMinimapRuntimeGuiProxy.color = // 타일 격자 색상 지정
                     LocalGridColor; // 격자 색상 사용
 
                 DrawLocalCellOutline( // 타일 테두리 그리기
                     cellRect); // 타일 사각형 전달
             }
 
-            GUI.color = // 기존 GUI 색상 복원
+            DungeonMinimapRuntimeGuiProxy.color = // 기존 GUI 색상 복원
                 previousColor; // 저장된 색상 사용
         }
 
@@ -980,7 +981,7 @@ namespace ProjectDelta.Presentation
                     30); // 최대 글자 크기
 
             GUIStyle contentStyle = // 구성요소 문자 스타일 생성
-                new GUIStyle(GUI.skin.label) // 기본 라벨 스타일 복사
+                new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label) // 기본 라벨 스타일 복사
                 {
                     alignment = TextAnchor.MiddleCenter, // 타일 중앙 정렬 사용
                     fontStyle = FontStyle.Bold, // 굵은 문자 사용
@@ -1032,7 +1033,7 @@ namespace ProjectDelta.Presentation
                 contentStyle.normal.textColor = // 그림자 글자색 지정
                     new Color(0f, 0f, 0f, 0.92f); // 검정 그림자 사용
 
-                GUI.Label( // 구성요소 그림자 문자 표시
+                DungeonMinimapRuntimeGuiProxy.Label( // 구성요소 그림자 문자 표시
                     shadowRect, // 그림자 영역 전달
                     glyph, // 구성요소 문자 전달
                     contentStyle); // 구성요소 스타일 전달
@@ -1041,7 +1042,7 @@ namespace ProjectDelta.Presentation
                     GetLocalContentColor( // 구성요소별 색상 조회
                         marker.ContentType); // 구성요소 종류 전달
 
-                GUI.Label( // 실제 구성요소 문자 표시
+                DungeonMinimapRuntimeGuiProxy.Label( // 실제 구성요소 문자 표시
                     cellRect, // 구성요소 타일 영역 전달
                     glyph, // 구성요소 문자 전달
                     contentStyle); // 구성요소 스타일 전달
@@ -1115,12 +1116,12 @@ namespace ProjectDelta.Presentation
                     cellPixelSize * 0.08f); // 타일 크기 비례 두께 계산
 
             Color previousColor = // 기존 GUI 색상 저장
-                GUI.color; // 현재 GUI 색상 읽기
+                DungeonMinimapRuntimeGuiProxy.color; // 현재 GUI 색상 읽기
 
-            GUI.color = // 벽 색상 지정
+            DungeonMinimapRuntimeGuiProxy.color = // 벽 색상 지정
                 LocalWallColor; // 단일 지형 벽 색상 사용
 
-            GUI.DrawTexture( // 벽 선 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 벽 선 그리기
                 GetLocalEdgeRect( // 벽 사각형 계산
                     cellRect, // 타일 사각형 전달
                     direction, // 벽 방향 전달
@@ -1128,7 +1129,7 @@ namespace ProjectDelta.Presentation
                     false), // 문 축약 사용 안 함
                 Texture2D.whiteTexture); // 흰 텍스처 색상 적용
 
-            GUI.color = // 기존 GUI 색상 복원
+            DungeonMinimapRuntimeGuiProxy.color = // 기존 GUI 색상 복원
                 previousColor; // 저장된 색상 사용
         }
 
@@ -1173,7 +1174,7 @@ namespace ProjectDelta.Presentation
         private static void DrawLocalCellOutline( // 타일 네 방향 격자선 그리기
             Rect cellRect) // 타일 사각형
         {
-            GUI.DrawTexture( // 위쪽 격자선 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 위쪽 격자선 그리기
                 new Rect( // 선 사각형 생성
                     cellRect.x, // 시작 X 지정
                     cellRect.y, // 시작 Y 지정
@@ -1181,7 +1182,7 @@ namespace ProjectDelta.Presentation
                     1f), // 선 두께 지정
                 Texture2D.whiteTexture); // 흰 텍스처 색상 적용
 
-            GUI.DrawTexture( // 아래쪽 격자선 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 아래쪽 격자선 그리기
                 new Rect( // 선 사각형 생성
                     cellRect.x, // 시작 X 지정
                     cellRect.yMax - 1f, // 아래쪽 Y 지정
@@ -1189,7 +1190,7 @@ namespace ProjectDelta.Presentation
                     1f), // 선 두께 지정
                 Texture2D.whiteTexture); // 흰 텍스처 색상 적용
 
-            GUI.DrawTexture( // 왼쪽 격자선 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 왼쪽 격자선 그리기
                 new Rect( // 선 사각형 생성
                     cellRect.x, // 왼쪽 X 지정
                     cellRect.y, // 시작 Y 지정
@@ -1197,7 +1198,7 @@ namespace ProjectDelta.Presentation
                     cellRect.height), // 선 높이 지정
                 Texture2D.whiteTexture); // 흰 텍스처 색상 적용
 
-            GUI.DrawTexture( // 오른쪽 격자선 그리기
+            DungeonMinimapRuntimeGuiProxy.DrawTexture( // 오른쪽 격자선 그리기
                 new Rect( // 선 사각형 생성
                     cellRect.xMax - 1f, // 오른쪽 X 지정
                     cellRect.y, // 시작 Y 지정
@@ -1230,7 +1231,7 @@ namespace ProjectDelta.Presentation
             }
 
             GUIStyle style =
-                new GUIStyle(GUI.skin.label)
+                new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label)
                 {
                     alignment = TextAnchor.MiddleCenter,
                     fontStyle = FontStyle.Bold,
@@ -1248,7 +1249,7 @@ namespace ProjectDelta.Presentation
                 RoomTypeRules.GetDisplayName(
                     currentRoom.RoomType);
 
-            GUI.Label(
+            DungeonMinimapRuntimeGuiProxy.Label(
                 new Rect(
                     4f,
                     2f,
@@ -1347,7 +1348,7 @@ namespace ProjectDelta.Presentation
                     preferredSpacing,
                     markerSize);
 
-            GUI.BeginGroup(panelRect);
+            DungeonMinimapRuntimeGuiProxy.BeginGroup(panelRect);
 
             for (int i = 0;
                  i < snapshot.Rooms.Count;
@@ -1390,7 +1391,7 @@ namespace ProjectDelta.Presentation
                     centerY),
                 iconSize);
 
-            GUI.EndGroup();
+            DungeonMinimapRuntimeGuiProxy.EndGroup();
         }
 
         private void DrawBoundsCenteredMap(
@@ -1449,7 +1450,7 @@ namespace ProjectDelta.Presentation
                     graphRect.width * 0.5f,
                     graphRect.height * 0.5f);
 
-            GUI.BeginGroup(graphRect);
+            DungeonMinimapRuntimeGuiProxy.BeginGroup(graphRect);
 
             IReadOnlyList<DungeonMapConnection> connections =
                 DungeonMapAnalytics.GetVisibleConnections(
@@ -1533,7 +1534,7 @@ namespace ProjectDelta.Presentation
                 playerPoint,
                 iconSize);
 
-            GUI.EndGroup();
+            DungeonMinimapRuntimeGuiProxy.EndGroup();
         }
 
         private float CalculateCurrentCenteredSpacing(
@@ -1642,9 +1643,9 @@ namespace ProjectDelta.Presentation
             float thickness)
         {
             Color previousColor =
-                GUI.color;
+                DungeonMinimapRuntimeGuiProxy.color;
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 ConnectionColor;
 
             if (Mathf.Abs(from.x - to.x)
@@ -1659,7 +1660,7 @@ namespace ProjectDelta.Presentation
                     Mathf.Abs(
                         from.x - to.x);
 
-                GUI.DrawTexture(
+                DungeonMinimapRuntimeGuiProxy.DrawTexture(
                     new Rect(
                         x,
                         from.y - (thickness * 0.5f),
@@ -1678,7 +1679,7 @@ namespace ProjectDelta.Presentation
                     Mathf.Abs(
                         from.y - to.y);
 
-                GUI.DrawTexture(
+                DungeonMinimapRuntimeGuiProxy.DrawTexture(
                     new Rect(
                         from.x - (thickness * 0.5f),
                         y,
@@ -1687,7 +1688,7 @@ namespace ProjectDelta.Presentation
                     Texture2D.whiteTexture);
             }
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 previousColor;
         }
 
@@ -1718,12 +1719,12 @@ namespace ProjectDelta.Presentation
             }
 
             Color previousColor =
-                GUI.color;
+                DungeonMinimapRuntimeGuiProxy.color;
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 GetRoomColor(state);
 
-            GUI.DrawTexture(
+            DungeonMinimapRuntimeGuiProxy.DrawTexture(
                 markerRect,
                 Texture2D.whiteTexture);
 
@@ -1744,14 +1745,14 @@ namespace ProjectDelta.Presentation
                         markerRect.height
                         - (innerPadding * 2f));
 
-                GUI.color =
+                DungeonMinimapRuntimeGuiProxy.color =
                     new Color(
                         0.12f,
                         0.12f,
                         0.12f,
                         0.92f);
 
-                GUI.DrawTexture(
+                DungeonMinimapRuntimeGuiProxy.DrawTexture(
                     innerRect,
                     Texture2D.whiteTexture);
             }
@@ -1759,7 +1760,7 @@ namespace ProjectDelta.Presentation
             if (state != DungeonMinimapRoomState.Unvisited)
             {
                 GUIStyle labelStyle =
-                    new GUIStyle(GUI.skin.label)
+                    new GUIStyle(DungeonMinimapRuntimeGuiProxy.skin.label)
                     {
                         alignment = TextAnchor.MiddleCenter,
                         fontStyle = FontStyle.Bold,
@@ -1771,16 +1772,16 @@ namespace ProjectDelta.Presentation
                 labelStyle.normal.textColor =
                     Color.white;
 
-                GUI.color =
+                DungeonMinimapRuntimeGuiProxy.color =
                     Color.white;
 
-                GUI.Label(
+                DungeonMinimapRuntimeGuiProxy.Label(
                     markerRect,
                     RoomTypeRules.GetShortLabel(roomType),
                     labelStyle);
             }
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 previousColor;
         }
 
@@ -1815,42 +1816,42 @@ namespace ProjectDelta.Presentation
                     iconSize);
 
             Matrix4x4 previousMatrix =
-                GUI.matrix;
+                DungeonMinimapRuntimeGuiProxy.matrix;
 
             Color previousColor =
-                GUI.color;
+                DungeonMinimapRuntimeGuiProxy.color;
 
-            GUIUtility.RotateAroundPivot(
+            DungeonMinimapRuntimeGuiProxy.RotateAroundPivot(
                 angle,
                 center);
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 Color.white;
 
-            GUI.DrawTexture(
+            DungeonMinimapRuntimeGuiProxy.DrawTexture(
                 iconRect,
                 playerIconTexture);
 
-            GUI.matrix =
+            DungeonMinimapRuntimeGuiProxy.matrix =
                 previousMatrix;
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 previousColor;
         }
 
         private static void DrawFullScreenDim()
         {
             Color previousColor =
-                GUI.color;
+                DungeonMinimapRuntimeGuiProxy.color;
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 new Color(
                     0f,
                     0f,
                     0f,
                     0.6f);
 
-            GUI.DrawTexture(
+            DungeonMinimapRuntimeGuiProxy.DrawTexture(
                 new Rect(
                     0f,
                     0f,
@@ -1858,7 +1859,7 @@ namespace ProjectDelta.Presentation
                     Screen.height),
                 Texture2D.whiteTexture);
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 previousColor;
         }
 
@@ -1866,16 +1867,16 @@ namespace ProjectDelta.Presentation
             Rect panelRect)
         {
             Color previousColor =
-                GUI.color;
+                DungeonMinimapRuntimeGuiProxy.color;
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 PanelColor;
 
-            GUI.DrawTexture(
+            DungeonMinimapRuntimeGuiProxy.DrawTexture(
                 panelRect,
                 Texture2D.whiteTexture);
 
-            GUI.color =
+            DungeonMinimapRuntimeGuiProxy.color =
                 previousColor;
         }
 
