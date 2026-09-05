@@ -31,6 +31,11 @@ namespace ProjectDelta.Domain
 
     public static class MainEndingRules
     {
+        // 132일차: 마왕 패배 시 패배 기록("왕 앞에 무릎 꿇다")도 함께 등록해야 하는데,
+        // 그 대상 ID가 123일차 DungeonFloorController의 FinalBossMonsterId와 같아야
+        // 한다 - 두 곳이 각자 문자열을 들고 있다가 어긋나지 않도록 여기를 기준으로 둔다.
+        public const string DemonLordMonsterId = "MON_DEMON_LORD";
+
         public static string GetDisplayName(
             MainEndingId ending)
         {

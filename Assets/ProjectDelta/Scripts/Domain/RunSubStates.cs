@@ -909,7 +909,39 @@ namespace ProjectDelta.Domain
     }
 
     public sealed class SkillRunState { }
-    public sealed class CharacterRunState { }
+    // 132일차: 기획서 7.3절 "몬스터 개별 엔딩" - 이번 회차에 어떤 종족과 호감도
+    // 100(성인 이벤트 전투 승리)을 찍었는지 추적한다. NPC 호감도(NpcRelationshipState.
+    // Affinity)와 달리 몬스터 호감도는 프로필에 영구 저장하지 않고 회차 상태로만 둔다 -
+    // 기획서 "몬스터는 이번 회차만 유지, NPC는 회차를 넘어 유지" 차이를 그대로 반영한다.
+    public sealed class CharacterRunState
+    {
+        private readonly HashSet<string> monsterAffinityMaxedIds =
+            new HashSet<string>();
+
+        public IReadOnlyCollection<string> MonsterAffinityMaxedIds =>
+            monsterAffinityMaxedIds;
+
+        public void MarkMonsterAffinityMaxed(
+            string monsterDefinitionId)
+        {
+            if (string.IsNullOrEmpty(
+                    monsterDefinitionId))
+            {
+                return;
+            }
+
+            monsterAffinityMaxedIds.Add(
+                monsterDefinitionId);
+        }
+
+        public bool IsMonsterAffinityMaxed(
+            string monsterDefinitionId)
+        {
+            return !string.IsNullOrEmpty(monsterDefinitionId)
+                && monsterAffinityMaxedIds.Contains(
+                    monsterDefinitionId);
+        }
+    }
     // 107일차: EventRunState는 Assets/ProjectDelta/Scripts/Domain/EventRunState.cs로 옮겼다.
 
     // 131일차: 5층 마왕전 결과와 최종 선택, 그리고 이번 회차에 확정된 주요 엔딩을 담는다.

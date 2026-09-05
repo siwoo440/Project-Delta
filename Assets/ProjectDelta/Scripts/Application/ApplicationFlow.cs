@@ -639,6 +639,14 @@ namespace ProjectDelta.Application
             RecordMainEnding(
                 ending);
 
+            // 132일차: 기획서 7.3절 "마왕 패배는 주요 엔딩과 패배 기록이 동시 등록" -
+            // 마왕의 종(패배·항복)이 확정되는 바로 이 순간, 마왕 패배 기록도 함께 남긴다.
+            if (ending == MainEndingId.ServantOfTheDemonLord)
+            {
+                RecordDefeat(
+                    MainEndingRules.DemonLordMonsterId);
+            }
+
             return ending;
         }
 
@@ -671,6 +679,35 @@ namespace ProjectDelta.Application
 
             profile.LifetimeStats.TotalMemoryShardsCollected +=
                 reward;
+
+            WriteProfile(
+                profile);
+        }
+
+        // 132일차: 기획서 7.3절 "패배 기록" - 일반 전투 체력 0(BattleDefeatService),
+        // 이벤트 전투 정력 0(EventBattleController Lost), 항복 세 지점에서 호출된다.
+        // "같은 상대에게 어떻게 졌든 하나의 공통 기록"이라 opponentDefinitionId 하나로
+        // 중복 없이만 쌓는다 - 패배 방식별 도입 연출은 UI 쪽(다음 일차) 몫이다.
+        public void RecordDefeat(
+            string opponentDefinitionId)
+        {
+            if (string.IsNullOrEmpty(
+                    opponentDefinitionId))
+            {
+                return;
+            }
+
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            if (profile.PermanentRecord.DefeatRecordIds.Contains(
+                    opponentDefinitionId))
+            {
+                return;
+            }
+
+            profile.PermanentRecord.DefeatRecordIds.Add(
+                opponentDefinitionId);
 
             WriteProfile(
                 profile);

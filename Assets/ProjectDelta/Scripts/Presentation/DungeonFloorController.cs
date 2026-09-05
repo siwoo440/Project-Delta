@@ -1442,7 +1442,9 @@ namespace ProjectDelta.Presentation
         // Boss 등급 몬스터가 하나도 없으면(콘텐츠 미비) 기존 전체 후보로 안전하게 되돌아간다.
         // 123일차: 5층(마지막 층)은 순환 로스터가 아니라 항상 이 몬스터(마왕)가 나온다.
         // 순환 로스터에는 절대 섞이지 않도록 별도로 빼둔다.
-        private const string FinalBossMonsterId = "MON_DEMON_LORD";
+        // 132일차: 패배 기록 쪽(ApplicationFlow)과 같은 ID를 써야 해서 MainEndingRules로
+        // 옮겨두고 여기서는 그 값을 그대로 참조한다.
+        private const string FinalBossMonsterId = MainEndingRules.DemonLordMonsterId;
 
         private List<EncounterDefinition> CollectBossEncounters()
         {

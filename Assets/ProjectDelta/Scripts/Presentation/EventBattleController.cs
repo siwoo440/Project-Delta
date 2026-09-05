@@ -564,6 +564,17 @@ namespace ProjectDelta.Presentation
         private void Finish(
             EventBattleOutcome outcome)
         {
+            // 132일차: 기획서 7.3절 "이벤트 전투 정력 0" 패배 기록 - 그 순간 상대하던
+            // 대상을 기준으로 남긴다(대상이 여럿이면 그중 지금 선택된 대상).
+            if (outcome == EventBattleOutcome.Lost)
+            {
+                string opponentDefinitionId =
+                    session.Context?.SelectedTarget?.Participant?.DefinitionId;
+
+                ApplicationFlow.Current?.RecordDefeat(
+                    opponentDefinitionId);
+            }
+
             session.TryFinish(
                 outcome);
 

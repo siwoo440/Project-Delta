@@ -1,3 +1,5 @@
+using ProjectDelta.Domain;
+
 namespace ProjectDelta.Application
 {
     // 119일차: "다수 참가자(최대 3명), 개별 게이지" 요구사항 - 예전엔 EventBattleContext가
@@ -77,6 +79,13 @@ namespace ProjectDelta.Application
 
                 HasWon =
                     true;
+
+                // 132일차: 기획서 7.3절 "몬스터 개별 엔딩" - 이번 회차에 이 종족과
+                // 호감도 100(FavorToWin)을 찍었다는 사실을 기록해둔다. 몬스터 호감도는
+                // 이번 회차에만 유지되므로(NPC와 달리 프로필에 영구 저장하지 않는다),
+                // RunContext(회차 상태)에만 남긴다.
+                RunContext.Current?.Characters.MarkMonsterAffinityMaxed(
+                    Participant.DefinitionId);
 
                 return;
             }

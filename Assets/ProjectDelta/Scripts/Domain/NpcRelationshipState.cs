@@ -12,6 +12,11 @@ namespace ProjectDelta.Domain
         private bool isHostile;
         private bool hasBeenRescued;
 
+        // 132일차: 기획서 7.3절 "NPC 개별 엔딩" 조건 중 하나("핵심 선택 이벤트 완료").
+        // 실제로 이 값을 true로 만드는 관계 이벤트 콘텐츠는 아직 없어 항상 false다 -
+        // 콘텐츠가 생기면 MarkKeyEventCompleted()를 호출하기만 하면 된다.
+        private bool hasCompletedKeyEvent;
+
         public NpcRelationshipState(
             string npcId,
             int initialAffinity,
@@ -57,6 +62,7 @@ namespace ProjectDelta.Domain
         public int EncounterCount => encounterCount;
         public bool IsHostile => isHostile;
         public bool HasBeenRescued => hasBeenRescued;
+        public bool HasCompletedKeyEvent => hasCompletedKeyEvent;
         public NpcRelationshipStage Stage => NpcRelationshipRules.GetStage(affinity);
 
         public void RegisterEncounter()
@@ -83,6 +89,13 @@ namespace ProjectDelta.Domain
         public void MarkRescued()
         {
             hasBeenRescued =
+                true;
+        }
+
+        // 132일차: NPC 개별 엔딩 조건 - 핵심 선택 이벤트(콘텐츠 미구현)를 완료 표시한다.
+        public void MarkKeyEventCompleted()
+        {
+            hasCompletedKeyEvent =
                 true;
         }
 
