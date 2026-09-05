@@ -22,6 +22,12 @@ namespace ProjectDelta.Presentation
 
         private PlayerRunState playerState;
         private bool isMoving;
+
+        // 135일차: 기획서 8.1절 "입력 버퍼(이동 중 대기 행동 최대 1개)" - 이동 애니메이션이
+        // 끝날 때까지 입력을 버리지 않고 딱 1개만 기억해뒀다가 이동이 끝나는 즉시 실행한다.
+        // 새 입력이 또 들어오면 먼저 있던 대기 입력을 덮어쓴다(항상 최대 1개 유지).
+        private GridMoveInput? pendingInput;
+
         private InputActionMap explorationMap;
         private InputAction moveForwardAction;
         private InputAction moveBackwardAction;
@@ -271,9 +277,23 @@ namespace ProjectDelta.Presentation
             GridMoveInput input)
         {
             if (playerState == null
-                || isMoving
                 || IsInputLocked)
             {
+                // 입력이 잠긴 동안(NPC 대화·전투 진입 등) 대기 중이던 입력은 버린다 -
+                // 잠금이 풀린 뒤 예전 입력이 갑자기 실행되면 안 된다.
+                pendingInput =
+                    null;
+
+                return;
+            }
+
+            if (isMoving)
+            {
+                // 135일차: 이동 중 입력은 버리지 않고 대기시킨다 - 여러 번 눌러도 마지막
+                // 입력 하나만 남는다(최대 1개 유지).
+                pendingInput =
+                    input;
+
                 return;
             }
 
@@ -643,6 +663,19 @@ namespace ProjectDelta.Presentation
 
             isMoving =
                 false;
+
+            // 135일차: 이동이 끝난 시점에 대기 중이던 입력이 있으면 곧바로 소비한다.
+            if (pendingInput.HasValue)
+            {
+                GridMoveInput bufferedInput =
+                    pendingInput.Value;
+
+                pendingInput =
+                    null;
+
+                TryMove(
+                    bufferedInput);
+            }
         }
     }
 }

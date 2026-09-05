@@ -137,11 +137,19 @@ namespace ProjectDelta.Presentation
             // MonsterDefinitionId를 조회한다 - 몬스터 정의가 없으면(플레이어 등) 그대로 보여준다.
             if (nameText != null)
             {
-                nameText.text =
+                string baseName =
                     participant.DefinitionId == "PLAYER"
                         ? "플레이어"
                         : RuntimeMonsterDefinitionLookup.ResolveDisplayName(
                             participant.DefinitionId);
+
+                // 135일차: 기획서 8.1절 "색상만으로 구분하지 않는다" - 생존/전사 여부를
+                // portraitImage 틴트 색 하나로만 보여주던 것에 기호+텍스트를 더해
+                // 색+아이콘+텍스트 3중 신호로 만든다.
+                nameText.text =
+                    participant.IsAlive
+                        ? baseName
+                        : $"☠ {baseName} (전사)";
             }
 
             ApplyPortrait(
