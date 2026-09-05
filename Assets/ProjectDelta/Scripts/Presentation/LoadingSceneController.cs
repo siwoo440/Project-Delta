@@ -1,48 +1,74 @@
 using ProjectDelta.Application; // ApplicationFlow.Current 사용
 using UnityEngine; // Unity 기본 기능 사용
+using UnityEngine.UI; // UGUI 기능 사용
 
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 {
-    // 24일차: 실제 로딩 진행률 표시는 아직 없다. 지금은 "새 게임" → 로딩 화면 → 던전"이라는
-    // 씬 전환 경로 자체를 눈으로 확인하기 위한 자리표시자라, 버튼을 눌러야 다음 씬으로 넘어간다.
-    // TODO: 실제 로딩(Addressables 다운로드 진행률 등)이 필요해지는 일차에 자동 진행으로 바꾼다.
+    // 143일차: 임시 로딩 화면 OnGUI를 런타임 UGUI로 전환한다.
     public sealed class LoadingSceneController : MonoBehaviour // 로딩 화면 임시 진행 제어
     {
-        private GUIStyle labelStyle; // 안내 글자 스타일
-        private GUIStyle buttonStyle; // 버튼 글자 스타일
+        private GameObject canvasObject; // 로딩 화면 Canvas
 
-        private void OnGUI() // 로딩 임시 UI 표시
+        private void Awake() // 로딩 화면 초기화
         {
-            EnsureStyles(); // 스타일 준비
-
-            float centerX = Screen.width / 2f; // 화면 가로 중앙 좌표
-            GUI.Label(new Rect(centerX - 200f, Screen.height * 0.4f, 400f, 60f), "로딩 중...", labelStyle); // 로딩 안내 표시
-
-            float buttonWidth = 220f; // 버튼 가로 크기
-            float buttonHeight = 50f; // 버튼 세로 크기
-            Rect continueRect = new Rect(centerX - (buttonWidth / 2f), Screen.height * 0.55f, buttonWidth, buttonHeight); // 계속하기 버튼 영역
-
-            if (GUI.Button(continueRect, "계속 (임시)", buttonStyle)) // 계속하기 버튼 (자동 진행 전까지의 임시 확인 수단)
-            {
-                ApplicationFlow.Current?.ProceedFromLoadingScreen(); // 예정된 목적지 씬으로 이동
-            }
+            BuildRuntimeUi(); // 로딩 UGUI 생성
         }
 
-        private void EnsureStyles() // GUI 스타일 최초 1회 생성
+        private void BuildRuntimeUi() // 로딩 화면 UGUI 생성
         {
-            if (labelStyle == null) // 안내 스타일 존재 확인
+            if (canvasObject != null) // 기존 Canvas 확인
             {
-                labelStyle = new GUIStyle(GUI.skin.label); // 기본 라벨 스타일 복제
-                labelStyle.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 적용
-                labelStyle.fontSize = 28; // 안내 글자 크기 적용
-                labelStyle.normal.textColor = Color.white; // 흰색 적용
+                return; // 중복 생성 방지
             }
 
-            if (buttonStyle == null) // 버튼 스타일 존재 확인
-            {
-                buttonStyle = new GUIStyle(GUI.skin.button); // 기본 버튼 스타일 복제
-                buttonStyle.fontSize = 20; // 버튼 글자 크기 적용
-            }
+            RuntimeUiFactory.EnsureEventSystem(); // 공용 EventSystem 준비
+
+            Transform canvasTransform = // 공용 전체 화면 Canvas 생성
+                RuntimeUiFactory.BuildScreenCanvas( // 프로젝트 공용 Canvas 빌더 사용
+                    transform, // 현재 컨트롤러 하위 생성
+                    "LoadingRuntimeCanvas", // Canvas 오브젝트 이름
+                    string.Empty); // 별도 타이틀 미사용
+
+            canvasObject = canvasTransform.gameObject; // Canvas 오브젝트 참조 저장
+
+            Canvas canvas = canvasObject.GetComponent<Canvas>(); // Canvas 참조 조회
+            canvas.sortingOrder = 5000; // 로딩 화면 최상위 표시
+
+            RectTransform labelRect = // 로딩 안내 영역 생성
+                RuntimeUiFactory.CreateUiObject( // 공용 UI 오브젝트 생성
+                    "LoadingLabel", // 안내 오브젝트 이름
+                    canvasTransform); // Canvas 하위 배치
+
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f); // 화면 중앙 앵커 설정
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f); // 화면 중앙 앵커 설정
+            labelRect.pivot = new Vector2(0.5f, 0.5f); // 중앙 피벗 설정
+            labelRect.anchoredPosition = new Vector2(0f, 108f); // 기존 40% 높이 대응
+            labelRect.sizeDelta = new Vector2(400f, 60f); // 기존 라벨 크기 유지
+
+            Text loadingLabel = labelRect.gameObject.AddComponent<Text>(); // 로딩 안내 Text 추가
+            RuntimeUiFactory.ConfigureText(loadingLabel, "로딩 중...", 28, FontStyle.Normal, TextAnchor.MiddleCenter); // 기존 안내 스타일 적용
+            loadingLabel.raycastTarget = false; // 버튼 입력 방해 방지
+
+            Text buttonLabel; // 버튼 라벨 참조 선언
+
+            Button continueButton = // 임시 계속 버튼 생성
+                RuntimeUiFactory.CreateCenteredButton( // 공용 중앙 버튼 생성
+                    canvasTransform, // Canvas 하위 배치
+                    "ContinueButton", // 버튼 오브젝트 이름
+                    new Vector2(0f, -54f), // 기존 55% 높이 대응
+                    new Vector2(220f, 50f), // 기존 버튼 크기 유지
+                    "계속 (임시)", // 기존 버튼 문구 유지
+                    20, // 기존 글자 크기 유지
+                    ProceedFromLoadingScreen, // 기존 씬 전환 흐름 연결
+                    out buttonLabel); // 라벨 참조 반환
+
+            continueButton.interactable = true; // 임시 계속 버튼 활성화
+            buttonLabel.raycastTarget = false; // 라벨 클릭 방해 방지
+        }
+
+        private void ProceedFromLoadingScreen() // 임시 계속 버튼 처리
+        {
+            ApplicationFlow.Current?.ProceedFromLoadingScreen(); // 기존 예정 목적지 씬 이동 유지
         }
     }
 }

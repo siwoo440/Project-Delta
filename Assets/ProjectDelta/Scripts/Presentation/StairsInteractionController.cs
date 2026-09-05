@@ -1,16 +1,11 @@
 using ProjectDelta.Domain; // 도메인 좌표·이동 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 using UnityEngine.InputSystem; // Input System 사용
+using UnityEngine.UI; // UGUI 기능 사용
 
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 {
-    // 문 상호작용(14일차 PlayerDoorInteractionController)과 완전히 같은 패턴을 따른다.
-    // 22일차: 처음에는 계단 칸 위에 "서서" 상호작용하는 방식이었지만, 계단 모형이 실제로
-    // 벽처럼 그 칸을 막고 있어야 해서(RoomDefinition_TestRoom_B의 벽 통로 참고) 문처럼
-    // "정면에서" 상호작용하는 방식으로 바꿨다. 그 칸 자체는 이동 불가능한 벽이라 밟고 올라갈 수 없다.
-    // 123일차: "이전 층 복귀 금지" 확인창 - F를 한 번 누르면 곧바로 내려가지 않고 확인
-    // 문구를 띄운다. 같은 정면 계단에서 F를 한 번 더 누르면 실제로 내려가고, Esc나 계단
-    // 정면을 벗어나면 확인이 취소된다.
+    // 문 상호작용과 같은 탐험 안내 UI 패턴을 유지한다.
     public sealed class StairsInteractionController : MonoBehaviour // 플레이어 계단 상호작용 제어
     {
         [SerializeField] private InputActionAsset inputActions; // 프로젝트 입력 액션 에셋
@@ -21,8 +16,11 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputActionMap explorationMap; // 탐험 입력 맵
         private InputAction interactAction; // 상호작용 액션
         private string promptText; // 현재 화면 안내 문구
-        private GUIStyle promptStyle; // 안내 문구 GUI 스타일
-        private bool awaitingConfirmation; // 123일차: 확인 대기 상태
+        private string lastPromptText = string.Empty; // 마지막 UGUI 안내 문구
+        private bool awaitingConfirmation; // 확인 대기 상태
+        private GameObject promptCanvasObject; // 안내 Canvas 오브젝트
+        private GameObject promptRootObject; // 안내 패널 오브젝트
+        private Text promptLabel; // 안내 Text
 
         private void Awake() // 참조 자동 연결
         {
@@ -41,6 +39,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 floorController = FindFirstObjectByType<DungeonFloorController>(); // 층 전환 컨트롤러 검색
             }
+
+            BuildPromptUi(); // 계단 안내 UGUI 생성
         }
 
         private void OnEnable() // 상호작용 입력 활성화
@@ -52,7 +52,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             }
 
             explorationMap = inputActions.FindActionMap("Exploration", true); // 탐험 입력 맵 검색
-            interactAction = explorationMap.FindAction("Interact", true); // 상호작용 액션 검색 (문과 동일한 F 입력 공유)
+            interactAction = explorationMap.FindAction("Interact", true); // 상호작용 액션 검색
             interactAction.performed += OnInteract; // F 입력 이벤트 연결
             explorationMap.Enable(); // 탐험 입력 맵 활성화
         }
@@ -61,73 +61,70 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         {
             if (interactAction != null) // 상호작용 액션 존재 확인
             {
-                interactAction.performed -= OnInteract; // F 입력 이벤트 해제
+                interactAction.performed -= OnInteract; // 입력 이벤트 해제
             }
 
-            awaitingConfirmation = false; // 123일차: 비활성화되면 확인 대기도 정리한다.
+            awaitingConfirmation = false; // 확인 대기 상태 초기화
+            promptText = string.Empty; // 안내 문구 제거
+            RefreshPromptUi(); // 비활성화 상태 즉시 반영
         }
 
         private void Update() // 정면 계단 안내 갱신
         {
-            bool hasStairsInFront =
-                FindStairsMarkerInFront() != null;
+            bool hasStairsInFront = FindStairsMarkerInFront() != null; // 정면 계단 존재 확인
 
-            if (!hasStairsInFront)
+            if (!hasStairsInFront) // 계단 정면 이탈 확인
             {
-                // 123일차: 정면 계단을 벗어나면 확인 대기를 취소한다.
-                awaitingConfirmation = false;
+                awaitingConfirmation = false; // 확인 대기 상태 취소
             }
 
-            if (awaitingConfirmation)
+            if (awaitingConfirmation) // 확인 대기 상태 확인
             {
-                promptText =
-                    "이전 층으로 돌아갈 수 없습니다. 내려가시겠습니까? [F] 확인 / [Esc] 취소";
+                promptText = "이전 층으로 돌아갈 수 없습니다. 내려가시겠습니까? [F] 확인 / [Esc] 취소"; // 확인 안내 표시
             }
             else
             {
-                promptText =
-                    hasStairsInFront
-                        ? "계단 내려가기 [F]"
-                        : string.Empty;
+                promptText = hasStairsInFront ? "계단 내려가기 [F]" : string.Empty; // 일반 계단 안내 표시
             }
 
-            if (awaitingConfirmation
-                && Keyboard.current != null
-                && Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (awaitingConfirmation && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) // Esc 취소 입력 확인
             {
-                awaitingConfirmation = false;
+                awaitingConfirmation = false; // 확인 대기 취소
+                promptText = hasStairsInFront ? "계단 내려가기 [F]" : string.Empty; // 취소 후 일반 안내 복원
             }
+
+            RefreshPromptUi(); // 현재 안내 UGUI 반영
         }
 
         private void OnInteract(InputAction.CallbackContext context) // F 상호작용 처리
         {
-            if (movementController != null && movementController.IsMoving) // 이동 보간 중 상호작용 차단 (14일차와 동일 규칙)
+            if (movementController != null && movementController.IsMoving) // 이동 보간 중 상호작용 차단
             {
                 return; // 이동 중 상호작용 중단
             }
 
-            if (FindStairsMarkerInFront() == null || floorController == null) // 정면 계단과 층 전환 컨트롤러 확인
+            if (FindStairsMarkerInFront() == null || floorController == null) // 정면 계단과 층 컨트롤러 확인
             {
-                return; // 계단 없음 또는 컨트롤러 없음, 상호작용 중단
+                return; // 상호작용 중단
             }
 
-            // 123일차: 첫 F는 확인 문구만 띄우고, 같은 자리에서 F를 한 번 더 눌러야 실제로 내려간다.
-            if (!awaitingConfirmation)
+            if (!awaitingConfirmation) // 첫 번째 F 입력 확인
             {
-                awaitingConfirmation = true;
-                return;
+                awaitingConfirmation = true; // 확인 대기 상태 진입
+                promptText = "이전 층으로 돌아갈 수 없습니다. 내려가시겠습니까? [F] 확인 / [Esc] 취소"; // 확인 안내 즉시 표시
+                RefreshPromptUi(); // 확인 상태 UGUI 반영
+                return; // 실제 층 이동 보류
             }
 
-            awaitingConfirmation = false;
-
-            floorController.TryDescend(movementController); // 다음 층으로 이동 시도
-
-            promptText = FindStairsMarkerInFront() != null ? "계단 내려가기 [F]" : string.Empty; // 상호작용 후 안내 문구 즉시 갱신
+            awaitingConfirmation = false; // 확인 대기 상태 해제
+            floorController.TryDescend(movementController); // 기존 다음 층 이동 시도 실행
+            promptText = FindStairsMarkerInFront() != null ? "계단 내려가기 [F]" : string.Empty; // 상호작용 후 안내 갱신
+            RefreshPromptUi(); // 이동 후 안내 UGUI 반영
         }
 
-        private RoomContentMarker FindStairsMarkerInFront() // 플레이어 정면 칸의 계단 자리 조회
+        private RoomContentMarker FindStairsMarkerInFront() // 플레이어 정면 칸 계단 조회
         {
-            RoomView roomView = movementController != null ? movementController.CurrentRoomView : null; // 현재 방 표시 진입점 조회
+            RoomView roomView = movementController != null ? movementController.CurrentRoomView : null; // 현재 방 뷰 조회
             PlayerRunState playerState = movementController != null ? movementController.PlayerState : null; // 현재 플레이어 상태 조회
 
             if (roomView == null || playerState == null) // 필요한 참조 확인
@@ -139,13 +136,13 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             GridPosition delta = GridMovement.GetDirectionDelta(facing); // 정면 방향 변화량 계산
             GridPosition frontPosition = new GridPosition(playerState.CurrentGridPosition.X + delta.X, playerState.CurrentGridPosition.Z + delta.Z); // 정면 칸 좌표 계산
 
-            foreach (RoomContentMarker marker in roomView.GetMarkers(RoomContentType.Stairs)) // 현재 방의 계단 자리 전체 확인
+            foreach (RoomContentMarker marker in roomView.GetMarkers(RoomContentType.Stairs)) // 현재 방 계단 전체 확인
             {
-                GridPosition markerPosition = marker.GridPosition; // 계단 자리 그리드 좌표 조회
+                GridPosition markerPosition = marker.GridPosition; // 계단 좌표 조회
 
-                if (markerPosition.X == frontPosition.X && markerPosition.Z == frontPosition.Z) // 정면 칸과 일치 확인
+                if (markerPosition.X == frontPosition.X && markerPosition.Z == frontPosition.Z) // 정면 칸 일치 확인
                 {
-                    return marker; // 정면 계단 자리 반환
+                    return marker; // 정면 계단 반환
                 }
             }
 
@@ -158,23 +155,75 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             return GridMovement.GetFacingFromYaw(yaw); // Yaw를 4방향으로 변환
         }
 
-        private void OnGUI() // 계단 상호작용 안내 표시
+        private void BuildPromptUi() // 계단 안내 UGUI 생성
         {
-            if (string.IsNullOrEmpty(promptText)) // 안내 문구 존재 여부 확인
+            if (promptCanvasObject != null) // 기존 Canvas 확인
             {
-                return; // GUI 표시 생략
+                return; // 중복 생성 방지
             }
 
-            if (promptStyle == null) // GUI 스타일 생성 여부 확인
+            RuntimeUiFactory.EnsureEventSystem(); // 공용 EventSystem 준비
+
+            promptCanvasObject = new GameObject( // 안내 Canvas 생성
+                "StairsPromptCanvas", // Canvas 이름 지정
+                typeof(RectTransform), // RectTransform 추가
+                typeof(Canvas), // Canvas 추가
+                typeof(CanvasScaler), // CanvasScaler 추가
+                typeof(GraphicRaycaster)); // GraphicRaycaster 추가
+
+            promptCanvasObject.transform.SetParent( // 컨트롤러 하위 배치
+                transform, // 현재 Transform 사용
+                false); // 로컬 Transform 유지
+
+            Canvas canvas = promptCanvasObject.GetComponent<Canvas>(); // Canvas 참조 조회
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay; // 화면 오버레이 사용
+            canvas.sortingOrder = 2400; // 일반 탐험 화면 위에 표시
+
+            CanvasScaler scaler = promptCanvasObject.GetComponent<CanvasScaler>(); // CanvasScaler 참조 조회
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; // 기준 해상도 스케일 사용
+            UiScaleSettings.Refresh(); // 현재 UI 배율 갱신
+            UiScaleSettings.ApplyToCanvasScaler(scaler, new Vector2(1920f, 1080f)); // 프로젝트 UI 배율 적용
+
+            GraphicRaycaster raycaster = promptCanvasObject.GetComponent<GraphicRaycaster>(); // 레이캐스터 참조 조회
+            raycaster.enabled = false; // 안내 UI의 탐험 입력 방해 방지
+
+            RectTransform promptRect = RuntimeUiFactory.CreateUiObject("PromptRoot", promptCanvasObject.transform); // 안내 패널 생성
+            promptRect.anchorMin = new Vector2(0.5f, 0.28f); // 기존 OnGUI 72% 지점 대응
+            promptRect.anchorMax = new Vector2(0.5f, 0.28f); // 기존 OnGUI 72% 지점 대응
+            promptRect.pivot = new Vector2(0.5f, 0.5f); // 중앙 피벗 사용
+            promptRect.anchoredPosition = Vector2.zero; // 앵커 기준 중앙 배치
+            promptRect.sizeDelta = new Vector2(1040f, 52f); // 긴 확인 문구 대응
+
+            Image background = promptRect.gameObject.AddComponent<Image>(); // 안내 배경 추가
+            background.color = new Color(0f, 0f, 0f, 0.62f); // 반투명 검정 배경 적용
+            background.raycastTarget = false; // 입력 방해 방지
+
+            RectTransform labelRect = RuntimeUiFactory.CreateStretchedRect("PromptLabel", promptRect); // 안내 Text 영역 생성
+            promptLabel = labelRect.gameObject.AddComponent<Text>(); // 안내 Text 추가
+            RuntimeUiFactory.ConfigureText(promptLabel, string.Empty, 22, FontStyle.Normal, TextAnchor.MiddleCenter); // 기존 안내 스타일 적용
+            promptLabel.raycastTarget = false; // 입력 방해 방지
+
+            promptRootObject = promptRect.gameObject; // 안내 패널 참조 저장
+            promptRootObject.SetActive(false); // 초기 안내 숨김
+        }
+
+        private void RefreshPromptUi() // 계단 안내 UGUI 갱신
+        {
+            if (promptRootObject == null || promptLabel == null) // UI 생성 여부 확인
             {
-                promptStyle = new GUIStyle(GUI.skin.label); // 기본 라벨 스타일 복제
-                promptStyle.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 적용
-                promptStyle.fontSize = 22; // 안내 글자 크기 적용
-                promptStyle.normal.textColor = Color.white; // 안내 글자 흰색 적용
+                BuildPromptUi(); // 누락 시 UI 생성
             }
 
-            Rect promptRect = new Rect(0f, Screen.height * 0.72f, Screen.width, 40f); // 화면 하단 중앙 영역 계산 (문 안내와 동일 위치, 동시에 뜨지 않음)
-            GUI.Label(promptRect, promptText, promptStyle); // 계단 상호작용 안내 표시
+            string currentText = promptText ?? string.Empty; // null 안내 문자열 정리
+
+            if (currentText == lastPromptText && promptRootObject.activeSelf == !string.IsNullOrEmpty(currentText)) // 화면 상태 변경 여부 확인
+            {
+                return; // 변경 없음 종료
+            }
+
+            lastPromptText = currentText; // 마지막 안내 문구 저장
+            promptLabel.text = currentText; // 현재 안내 문구 적용
+            promptRootObject.SetActive(!string.IsNullOrEmpty(currentText)); // 안내 존재 여부에 따라 표시
         }
     }
 }

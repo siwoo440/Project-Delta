@@ -1,6 +1,7 @@
 using ProjectDelta.Domain; // 도메인 문 규칙 사용
 using UnityEngine; // Unity 기본 기능 사용
 using UnityEngine.InputSystem; // Input System 사용
+using UnityEngine.UI; // UGUI 기능 사용
 
 namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 {
@@ -14,7 +15,10 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private InputActionMap explorationMap; // 탐험 입력 맵
         private InputAction interactAction; // 상호작용 액션
         private string promptText; // 현재 화면 안내 문구
-        private GUIStyle promptStyle; // 안내 문구 GUI 스타일
+        private string lastPromptText = string.Empty; // 마지막 UGUI 안내 문구
+        private GameObject promptCanvasObject; // 안내 Canvas 오브젝트
+        private GameObject promptRootObject; // 안내 패널 오브젝트
+        private Text promptLabel; // 안내 Text
 
         private void Awake() // 상호작용 참조 자동 연결
         {
@@ -33,6 +37,8 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             {
                 passageController = FindFirstObjectByType<RoomPassageController>(); // 첫 테스트 방 통로 컨트롤러 검색
             }
+
+            BuildPromptUi(); // 문 안내 UGUI 생성
         }
 
         private void OnEnable() // 상호작용 입력 활성화
@@ -52,19 +58,23 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
         private void Update() // 정면 문 안내 갱신
         {
             promptText = BuildPromptText(); // 현재 문 상태 안내 문구 계산
+            RefreshPromptUi(); // 상태 변경 시 UGUI 갱신
         }
 
         private void OnDisable() // 상호작용 입력 해제
         {
             if (interactAction != null) // 상호작용 액션 존재 확인
             {
-                interactAction.performed -= OnInteract; // F 입력 이벤트 해제
+                interactAction.performed -= OnInteract; // 입력 이벤트 해제
             }
+
+            promptText = string.Empty; // 비활성화 시 안내 제거
+            RefreshPromptUi(); // 비활성화 상태 즉시 반영
         }
 
         private void OnInteract(InputAction.CallbackContext context) // F 상호작용 처리
         {
-            if (movementController != null && movementController.IsMoving) // 이동 보간 중 상호작용 차단 (17일차)
+            if (movementController != null && movementController.IsMoving) // 이동 보간 중 상호작용 차단
             {
                 return; // 이동 중 상호작용 중단
             }
@@ -78,7 +88,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             }
 
             CardinalDirection facing = GetFacingDirection(); // 현재 바라보는 4방향 계산
-            DoorOpenResult result = currentPassageController.TryOpenDoor(playerState.CurrentGridPosition, facing, playerState); // 현재 방 바로 앞 문 열기 시도
+            DoorOpenResult result = currentPassageController.TryOpenDoor(playerState.CurrentGridPosition, facing, playerState); // 기존 문 열기 판정 실행
 
             if (result == DoorOpenResult.Opened) // 문 열기 성공 확인
             {
@@ -90,6 +100,7 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             }
 
             promptText = BuildPromptText(); // 상호작용 후 안내 문구 즉시 갱신
+            RefreshPromptUi(); // 변경된 문 상태 UGUI 반영
         }
 
         private string BuildPromptText() // 정면 문 안내 문구 생성
@@ -97,14 +108,14 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             PlayerRunState playerState = movementController != null ? movementController.PlayerState : null; // 현재 플레이어 상태 조회
             RoomPassageController currentPassageController = GetCurrentPassageController(); // 현재 방 통로 컨트롤러 조회
 
-            if (playerState == null || currentPassageController == null) // 필요한 런타임 상태 확인
+            if (playerState == null || currentPassageController == null) // 필요한 참조 확인
             {
                 return string.Empty; // 안내 없음 반환
             }
 
-            CardinalDirection facing = GetFacingDirection(); // 현재 바라보는 4방향 계산
+            CardinalDirection facing = GetFacingDirection(); // 현재 수평 방향 계산
 
-            if (!currentPassageController.TryGetDoor(playerState.CurrentGridPosition, facing, out GridPassage doorPassage)) // 현재 방 바로 앞 문 존재 확인
+            if (!currentPassageController.TryGetDoor(playerState.CurrentGridPosition, facing, out GridPassage doorPassage)) // 현재 정면 문 조회
             {
                 return string.Empty; // 문 없으면 안내 숨김
             }
@@ -116,20 +127,20 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
 
             if (doorPassage.IsLocked) // 잠긴 문 확인
             {
-                return $"잠김 (열쇠 : {playerState.KeyCount}개)"; // 잠김과 보유 열쇠 수 표시
+                return $"잠김 (열쇠 : {playerState.KeyCount}개)"; // 잠김과 열쇠 수 표시
             }
 
-            return "열기 [F]"; // 일반 닫힌 문 열기 안내
+            return "열기 [F]"; // 일반 닫힌 문 안내 반환
         }
 
-        private RoomPassageController GetCurrentPassageController() // 현재 이동 상태의 방 통로 조회
+        private RoomPassageController GetCurrentPassageController() // 현재 방 통로 조회
         {
-            if (movementController != null && movementController.CurrentPassageController != null) // 이동 컨트롤러 현재 방 존재 확인
+            if (movementController != null && movementController.CurrentPassageController != null) // 이동 컨트롤러 현재 방 확인
             {
-                return movementController.CurrentPassageController; // 현재 방 통로 컨트롤러 반환
+                return movementController.CurrentPassageController; // 현재 방 통로 반환
             }
 
-            return passageController; // 초기 방 통로 컨트롤러 대체 반환
+            return passageController; // 초기 통로 대체 반환
         }
 
         private CardinalDirection GetFacingDirection() // 현재 수평 시선 방향 계산
@@ -138,23 +149,75 @@ namespace ProjectDelta.Presentation // 프레젠테이션 네임스페이스
             return GridMovement.GetFacingFromYaw(yaw); // Yaw를 4방향으로 변환
         }
 
-        private void OnGUI() // 문 상호작용 안내 표시
+        private void BuildPromptUi() // 문 안내 UGUI 생성
         {
-            if (string.IsNullOrEmpty(promptText)) // 안내 문구 존재 여부 확인
+            if (promptCanvasObject != null) // 기존 Canvas 확인
             {
-                return; // GUI 표시 생략
+                return; // 중복 생성 방지
             }
 
-            if (promptStyle == null) // GUI 스타일 생성 여부 확인
+            RuntimeUiFactory.EnsureEventSystem(); // 공용 EventSystem 준비
+
+            promptCanvasObject = new GameObject( // 안내 Canvas 생성
+                "DoorPromptCanvas", // Canvas 이름 지정
+                typeof(RectTransform), // RectTransform 추가
+                typeof(Canvas), // Canvas 추가
+                typeof(CanvasScaler), // CanvasScaler 추가
+                typeof(GraphicRaycaster)); // GraphicRaycaster 추가
+
+            promptCanvasObject.transform.SetParent( // 컨트롤러 하위 배치
+                transform, // 현재 Transform 사용
+                false); // 로컬 Transform 유지
+
+            Canvas canvas = promptCanvasObject.GetComponent<Canvas>(); // Canvas 참조 조회
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay; // 화면 오버레이 사용
+            canvas.sortingOrder = 2400; // 일반 탐험 화면 위에 표시
+
+            CanvasScaler scaler = promptCanvasObject.GetComponent<CanvasScaler>(); // CanvasScaler 참조 조회
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; // 기준 해상도 스케일 사용
+            UiScaleSettings.Refresh(); // 현재 UI 배율 갱신
+            UiScaleSettings.ApplyToCanvasScaler(scaler, new Vector2(1920f, 1080f)); // 프로젝트 UI 배율 적용
+
+            GraphicRaycaster raycaster = promptCanvasObject.GetComponent<GraphicRaycaster>(); // 레이캐스터 참조 조회
+            raycaster.enabled = false; // 안내 UI의 탐험 입력 방해 방지
+
+            RectTransform promptRect = RuntimeUiFactory.CreateUiObject("PromptRoot", promptCanvasObject.transform); // 안내 패널 생성
+            promptRect.anchorMin = new Vector2(0.5f, 0.28f); // 기존 OnGUI 72% 지점 대응
+            promptRect.anchorMax = new Vector2(0.5f, 0.28f); // 기존 OnGUI 72% 지점 대응
+            promptRect.pivot = new Vector2(0.5f, 0.5f); // 중앙 피벗 사용
+            promptRect.anchoredPosition = Vector2.zero; // 앵커 기준 중앙 배치
+            promptRect.sizeDelta = new Vector2(900f, 52f); // 안내 패널 크기 지정
+
+            Image background = promptRect.gameObject.AddComponent<Image>(); // 안내 배경 추가
+            background.color = new Color(0f, 0f, 0f, 0.62f); // 반투명 검정 배경 적용
+            background.raycastTarget = false; // 입력 방해 방지
+
+            RectTransform labelRect = RuntimeUiFactory.CreateStretchedRect("PromptLabel", promptRect); // 안내 Text 영역 생성
+            promptLabel = labelRect.gameObject.AddComponent<Text>(); // 안내 Text 추가
+            RuntimeUiFactory.ConfigureText(promptLabel, string.Empty, 22, FontStyle.Normal, TextAnchor.MiddleCenter); // 기존 안내 스타일 적용
+            promptLabel.raycastTarget = false; // 입력 방해 방지
+
+            promptRootObject = promptRect.gameObject; // 안내 패널 참조 저장
+            promptRootObject.SetActive(false); // 초기 안내 숨김
+        }
+
+        private void RefreshPromptUi() // 문 안내 UGUI 갱신
+        {
+            if (promptRootObject == null || promptLabel == null) // UI 생성 여부 확인
             {
-                promptStyle = new GUIStyle(GUI.skin.label); // 기본 라벨 스타일 복제
-                promptStyle.alignment = TextAnchor.MiddleCenter; // 가운데 정렬 적용
-                promptStyle.fontSize = 22; // 안내 글자 크기 적용
-                promptStyle.normal.textColor = Color.white; // 안내 글자 흰색 적용
+                BuildPromptUi(); // 누락 시 UI 생성
             }
 
-            Rect promptRect = new Rect(0f, Screen.height * 0.72f, Screen.width, 40f); // 화면 하단 중앙 영역 계산
-            GUI.Label(promptRect, promptText, promptStyle); // 문 상호작용 안내 표시
+            string currentText = promptText ?? string.Empty; // null 안내 문자열 정리
+
+            if (currentText == lastPromptText && promptRootObject.activeSelf == !string.IsNullOrEmpty(currentText)) // 화면 상태 변경 여부 확인
+            {
+                return; // 변경 없음 종료
+            }
+
+            lastPromptText = currentText; // 마지막 안내 문구 저장
+            promptLabel.text = currentText; // 현재 안내 문구 적용
+            promptRootObject.SetActive(!string.IsNullOrEmpty(currentText)); // 안내 존재 여부에 따라 표시
         }
     }
 }
