@@ -1,73 +1,72 @@
-# 142일차 : 던전 미니맵·전체 지도 정식 UI 전환
+# 142일차 : 던전 탐험 오버레이 화면 정식 UI 전환
 
 ## 목표
-- 기획서 8.2절 "화면별 정식 UI" 전환 - 141일차 이벤트 전투 화면에 이어,
-  `DungeonMinimapController`의 미니맵과 M 전체 지도를 기존 `OnGUI` 기반 표시에서
+- 기획서 8.2절 "화면별 정식 UI 전환"의 남은 탐험 오버레이 화면을 정리
+- `DungeonLobbyReturnHudController`, `StairsInteractionController`,
+  `PlayerDoorInteractionController`, `LoadingSceneController`의 기존 `OnGUI` 표시를
   런타임 UGUI로 전환
-- 던전 공개 상태, 현재 방 추적, 타일 공개, 지도 스냅샷, M/Esc/마우스 휠 입력 등
-  기존 탐험 로직은 유지하고 화면 표시 계층만 교체
-- 파일 규모가 큰 미니맵을 142일차 단독 범위로 처리하고, 나머지 탐험 HUD 화면은
-  143일차로 분리
+- 문·계단 상호작용 판정, 로비 복귀, 로딩 씬 전환 등 기존 게임 로직은 유지하고
+  화면 표시 계층만 교체
 
 ## 구현 내용
 
-### 1. DungeonMinimapController의 OnGUI 표시부 전환
-- 기존 `OnGUI()`를 `BuildDungeonMinimapRuntimeUi142()`로 전환
-- 기존 `GUI.BeginGroup`, `GUI.EndGroup`, `GUI.DrawTexture`, `GUI.Label`,
-  `GUI.color`, `GUI.matrix`, `GUI.skin`, `GUIUtility.RotateAroundPivot` 호출을
-  `DungeonMinimapRuntimeGuiProxy` 경유 방식으로 변경
-- 플레이어 중심 미니맵, 전체 지도, 방 종류 표시, 탐험률/층 정보, 계단 거리,
-  방 연결선, 벽·타일·콘텐츠 문자, 플레이어 방향 표시 등 기존 지도 표현을 유지
+### 1. 던전 로비 복귀 HUD 전환
+- `DungeonLobbyReturnHudController`의 기존 `OnGUI()` 버튼 제거
+- 우측 상단에 런타임 UGUI `Button`을 생성해 기존 `"로비로"` 기능 유지
+- 버튼 클릭 시 기존 `ApplicationFlow.Current?.ReturnToLobby()` 호출 유지
+- `RuntimeUiFactory.EnsureEventSystem()`과 `UiScaleSettings`를 사용해
+  프로젝트 공용 UI 배율 정책 적용
 
-### 2. 미니맵 전용 IMGUI 호환 프록시
-- `DungeonMinimapRuntimeGuiProxy`를 추가해 기존 좌표 기반 IMGUI 호출을
-  UGUI 렌더링용 노드 데이터로 기록
-- 그룹 클리핑, 텍스처, 라벨, 색상, 글꼴 크기/정렬/스타일, 플레이어 방향 회전 정보를
-  `DungeonMinimapRuntimeFrame`에 저장
-- 미니맵에서 실제로 사용하는 기능만 구현해 141일차 이벤트 전투용 범용 프록시와
-  분리된 전용 구조로 구성
+### 2. 문 상호작용 안내 전환
+- `PlayerDoorInteractionController`의 `OnGUI()`와 `GUIStyle` 제거
+- 기존 `BuildPromptText()`와 `TryOpenDoor()` 흐름은 유지
+- 화면 하단 중앙에 반투명 배경 + UGUI `Text` 기반 Prompt UI 추가
+- `"열기 [F]"`, `"잠김 (열쇠 : N개)"` 안내를 기존 조건 그대로 표시
+- `promptText`가 변경될 때만 `RefreshPromptUi()`로 텍스트와 표시 상태 갱신
 
-### 3. 런타임 UGUI View
-- `DungeonMinimapRuntimeView`가 전용 Canvas와 CanvasScaler를 런타임에 생성
-- `RuntimeUiFactory.EnsureEventSystem()`과 공용 UI 생성 헬퍼를 재사용
-- `UiScaleSettings`를 적용해 프로젝트의 기준 해상도 및 UI 배율 정책과 연결
-- 기존 `GUI.BeginGroup` 영역은 `RectMask2D`가 적용된 RectTransform으로 변환해
-  미니맵/전체 지도 범위 밖 요소를 클리핑
-- `GUI.DrawTexture`는 `RawImage`, `GUI.Label`은 UGUI `Text`로 변환하고
-  플레이어 방향 아이콘의 회전도 RectTransform 회전으로 반영
+### 3. 계단 상호작용 안내 전환
+- `StairsInteractionController`의 `OnGUI()`와 `GUIStyle` 제거
+- 정면 계단 판정, F 입력, Esc 취소, `TryDescend()` 호출 흐름 유지
+- 화면 하단 중앙에 문 상호작용과 동일한 계열의 Prompt UGUI 추가
+- 첫 번째 F 입력 시 확인 상태 진입,
+  두 번째 F 입력 시 기존 층 이동 로직 실행
+- `"계단 내려가기 [F]"`,
+  `"이전 층으로 돌아갈 수 없습니다. 내려가시겠습니까? [F] 확인 / [Esc] 취소"`
+  문구를 현재 상태에 맞춰 갱신
 
-### 4. 상태 변경 시점 화면 갱신
-- `DungeonMinimapRuntimeAdapter`가 장면의 `DungeonMinimapController`를 자동 탐색하고
-  `BuildDungeonMinimapRuntimeUi142()`를 연결
-- 기존 지도 표시 코드를 프레임 데이터 생성 용도로 실행하고, 생성된 노드 구조의
-  상태 지문이 달라진 경우에만 실제 UGUI 오브젝트를 다시 생성
-- 플레이어 이동, 방향 변경, 공개 타일 변화, 전체 지도 열림/닫힘, 줌 변화 등
-  실제 화면 상태가 바뀔 때만 View를 갱신
+### 4. 로딩 화면 전환
+- `LoadingSceneController`의 기존 `OnGUI()`와 `EnsureStyles()` 제거
+- `RuntimeUiFactory.BuildScreenCanvas()`를 사용해 전체 화면 런타임 UGUI 생성
+- 중앙에 `"로딩 중..."` Text 표시
+- 기존 `"계속 (임시)"` 버튼을 UGUI `Button`으로 전환
+- 버튼 클릭 시 기존 `ApplicationFlow.Current?.ProceedFromLoadingScreen()` 호출 유지
+- 실제 로딩 진행률 및 자동 전환 기능은 기존 TODO 범위를 유지하고 이번 일차에서는 추가하지 않음
 
-### 5. 기존 탐험 로직 유지
-- `DungeonMinimapRevealTracker`, `DungeonMinimapSnapshotBuilder`,
-  `RunContext.Current.Dungeon`의 공개 방 복원/병합 로직은 기존 흐름을 유지
-- M키 전체 지도 열기/닫기, Esc 닫기, 마우스 휠 줌 계산도 기존 `Update()` 흐름 유지
-- 상세 타일 지도를 만들 수 없는 경우 기존 방 단위 지도 표시로 복구하는 fallback도 유지
+### 5. 공용 UI 구성 재사용
+- 신규 범용 프록시나 Editor 자동 패처를 추가하지 않고 기존 컨트롤러에 직접 UGUI 적용
+- `RuntimeUiFactory`의 EventSystem, UI 오브젝트, 텍스트, 버튼 생성 기능 재사용
+- `UiScaleSettings`를 통해 기존 해상도 및 UI 배율 대응 구조 유지
 
-### 6. 자동 소스 패처
-- Editor 전용 `Day142DungeonMinimapOnGuiPatcher`와
-  `Day142DungeonMinimapSourcePatcherCore` 추가
-- 프로젝트 로드 시 `DungeonMinimapController.cs`의 기존 `OnGUI()`를 찾아
-  런타임 UI 빌더 이름으로 변경하고 관련 GUI 호출을 전용 프록시 호출로 치환
-- 패치 마커와 변환 메서드 이름을 검사해 같은 파일의 중복 변환을 차단
+## 수정 파일
+- `Assets/ProjectDelta/Scripts/Presentation/DungeonLobbyReturnHudController.cs`
+- `Assets/ProjectDelta/Scripts/Presentation/StairsInteractionController.cs`
+- `Assets/ProjectDelta/Scripts/Presentation/PlayerDoorInteractionController.cs`
+- `Assets/ProjectDelta/Scripts/Presentation/LoadingSceneController.cs`
+
+## 삭제된 요소
+- 각 대상 화면의 `OnGUI()` 기반 표시
+- 문·계단 화면의 `GUIStyle`
+- 로딩 화면의 `EnsureStyles()`
+- `GUI.Label`, `GUI.Button` 기반 직접 렌더링
+
+## 유지된 로직
+- 문 열기 판정 및 열쇠 소비 흐름
+- 계단 정면 판정과 F/Esc 확인 흐름
+- `DungeonFloorController.TryDescend()`
+- `ApplicationFlow.Current?.ReturnToLobby()`
+- `ApplicationFlow.Current?.ProceedFromLoadingScreen()`
 
 ## 정리
-- 약 2,000줄 규모의 `DungeonMinimapController`에서 던전 탐색·공개 상태 계산은
-  유지하면서 지도 렌더링 계층을 UGUI로 분리
-- 미니맵과 M 전체 지도를 하나의 전용 런타임 View/Adapter/Proxy 구조로 연결
-- 141일차 이벤트 전투 화면과 마찬가지로 기존 기능을 다시 작성하지 않고
-  현재 동작을 보존하는 방향으로 정식 UI 전환
-
-## 남은 사항
-- 143일차: 던전 탐험의 나머지 오버레이 화면 정식 UI 전환
-- 대상:
-  `DungeonLobbyReturnHudController.cs`
-  `StairsInteractionController.cs`
-  `PlayerDoorInteractionController.cs`
-  `LoadingSceneController.cs`
+- 던전 탐험 중 남아 있던 작은 OnGUI 오버레이 화면 4개를 런타임 UGUI로 전환
+- 기존 입력, 판정, 층 이동, 씬 전환 로직은 그대로 유지하고 표시 계층만 교체
+- 복잡한 변환 계층 없이 각 컨트롤러에서 직접 UGUI를 구성해 구조를 단순하게 유지
