@@ -22,13 +22,18 @@ namespace ProjectDelta.Domain
         // 랜덤 옵션이 반영된 최종 값이며, Rarity는 UI 표시용으로 별도 보관한다.
         public EquipmentRarity Rarity { get; }
 
+        // 131일차: 주요 엔딩 판정("저주를 품은 귀환"/"저주받은 왕")에 쓸 저주 여부.
+        // ItemDefinition.IsCursed의 장착 시점 스냅샷이다.
+        public bool IsCursed { get; }
+
         public EquipmentItemState(
             string itemId,
             string displayName,
             EquipmentSlotType slotType,
             int maxStackSize,
             StatBlock equipmentBonuses = null,
-            EquipmentRarity rarity = EquipmentRarity.Common)
+            EquipmentRarity rarity = EquipmentRarity.Common,
+            bool isCursed = false)
         {
             ItemId =
                 itemId
@@ -54,6 +59,9 @@ namespace ProjectDelta.Domain
 
             Rarity =
                 rarity;
+
+            IsCursed =
+                isCursed;
         }
     }
 
@@ -122,6 +130,29 @@ namespace ProjectDelta.Domain
                 slotType);
 
             return previous;
+        }
+
+        // 131일차: "빈손의 귀환"(장비 0개) 판정에 쓴다.
+        public int EquippedCount =>
+            slots.Count;
+
+        // 131일차: "저주를 품은 귀환"/"저주받은 왕" 판정에 쓴다.
+        public int CursedEquippedCount()
+        {
+            int count =
+                0;
+
+            foreach (EquipmentItemState item
+                     in slots.Values)
+            {
+                if (item != null
+                    && item.IsCursed)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         // 99일차: 6부위에 장착된 아이템의 스탯 보너스를 모두 합산한다.

@@ -194,6 +194,27 @@ namespace ProjectDelta.Domain
 
         public IReadOnlyCollection<RoomInstance> AllRooms =>
             rooms.Values;
+
+        // 131일차: "완전한 탐험자의 귀환" 판정용 - 층을 떠나기(AdvanceFloor) 직전에만
+        // 의미가 있다. AdvanceFloor가 rooms를 즉시 비우므로 그 전에 호출해야 한다.
+        public bool IsCurrentFloorFullyExplored()
+        {
+            if (rooms.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (RoomInstance room in rooms.Values)
+            {
+                if (room == null
+                    || !room.Visited)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 
     public sealed class InventoryItemStack
@@ -890,7 +911,59 @@ namespace ProjectDelta.Domain
     public sealed class SkillRunState { }
     public sealed class CharacterRunState { }
     // 107일차: EventRunState는 Assets/ProjectDelta/Scripts/Domain/EventRunState.cs로 옮겼다.
-    public sealed class BattleRunState { }
+
+    // 131일차: 5층 마왕전 결과와 최종 선택, 그리고 이번 회차에 확정된 주요 엔딩을 담는다.
+    // ConfirmedMainEnding이 None이 아니면 이미 판정이 끝난 것이므로 다시 판정하지 않는다
+    // (기획서 7.2절 "한 회차에서는 공식 엔딩 하나만 획득").
+    public sealed class BattleRunState
+    {
+        public MainBossOutcome BossOutcome { get; private set; } =
+            MainBossOutcome.None;
+
+        public MainEndingChoice FinalChoice { get; private set; } =
+            MainEndingChoice.None;
+
+        public MainEndingId ConfirmedMainEnding { get; private set; } =
+            MainEndingId.None;
+
+        public void SetBossOutcome(
+            MainBossOutcome outcome)
+        {
+            BossOutcome =
+                outcome;
+        }
+
+        public void SetFinalChoice(
+            MainEndingChoice choice)
+        {
+            FinalChoice =
+                choice;
+        }
+
+        public void ConfirmMainEnding(
+            MainEndingId ending)
+        {
+            ConfirmedMainEnding =
+                ending;
+        }
+    }
+
     public sealed class RewardRunState { }
-    public sealed class RunStatistics { }
+
+    // 131일차: MainEndingConditions를 채우는 데 필요한 누적 값들 - 도감·개별 엔딩처럼
+    // 아직 해당 시스템이 없는 값은 필드만 미리 두고 항상 기본값(0/false)으로 둔다.
+    public sealed class RunStatistics
+    {
+        // "완전한 탐험자의 귀환" - 층을 떠날 때 그 층의 모든 방을 다 봤으면 센다.
+        public int FullyExploredFloorCount { get; set; }
+
+        // "모든 것을 남겨 둔 귀환" - 133~134일차(개별 엔딩) 이전까지는 항상 0이다.
+        public int IndividualEndingConditionsMetCount { get; set; }
+
+        // "기록의 왕" - 몬스터 도감 시스템이 생기기 전까지는 항상 false다.
+        public bool HasFullMonsterDex { get; set; }
+
+        // "몬스터 하렘" - 관계 대상 20종 전체 추적이 갖춰지기 전까지는 항상 false다.
+        public bool HasAllRelationshipsMaxed { get; set; }
+    }
 }

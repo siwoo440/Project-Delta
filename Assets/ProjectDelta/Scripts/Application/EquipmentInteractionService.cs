@@ -72,7 +72,8 @@ namespace ProjectDelta.Application
                 roll.Bonuses,
                 player,
                 roll.Rarity,
-                definition.EquipmentRequirements);
+                definition.EquipmentRequirements,
+                definition.IsCursed);
         }
 
         public static EquipmentActionResult Unequip(

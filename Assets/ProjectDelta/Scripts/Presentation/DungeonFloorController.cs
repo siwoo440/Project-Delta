@@ -243,6 +243,21 @@ namespace ProjectDelta.Presentation
                 this);
         }
 
+        // 131일차: 주요 엔딩("완전한 탐험자의 귀환") 판정용 - 층을 떠나기 직전에만
+        // 이 층의 모든 방을 다 봤는지 알 수 있다(AdvanceFloor가 곧바로 방 목록을 비운다).
+        private void RecordFloorExplorationBeforeAdvancing()
+        {
+            if (RunContext.Current == null)
+            {
+                return;
+            }
+
+            if (GetDungeonState().IsCurrentFloorFullyExplored())
+            {
+                RunContext.Current.Statistics.FullyExploredFloorCount++;
+            }
+        }
+
         private DungeonRunState GetDungeonState()
         {
             if (dungeonState == null)
@@ -279,6 +294,8 @@ namespace ProjectDelta.Presentation
 
             if (useProceduralGeneration)
             {
+                RecordFloorExplorationBeforeAdvancing();
+
                 GetDungeonState().AdvanceFloor();
 
                 RecoverPlayerOnFloorChange();
@@ -293,6 +310,8 @@ namespace ProjectDelta.Presentation
                     this);
                 return false;
             }
+
+            RecordFloorExplorationBeforeAdvancing();
 
             GetDungeonState().AdvanceFloor();
             RecoverPlayerOnFloorChange();

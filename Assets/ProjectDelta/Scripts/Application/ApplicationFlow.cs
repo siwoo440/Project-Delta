@@ -600,6 +600,82 @@ namespace ProjectDelta.Application
         // 아직 5층 마왕(124일차)이 없어서 지금은 던전 안 아무 곳에서나 부를 수 있는
         // 일반적인 "나가기" 버튼이다 - 124일차에서 마왕 처치 시 자동으로 이 메서드를
         // 부르도록 연결하면 된다.
+        // 131일차: 기획서 7.1~7.2절 판정 로직 - 5층 마왕전 결과와 최종 선택이
+        // RunContext.Battle에 이미 기록돼 있다는 전제로 엔딩을 확정한다(그 두 값을
+        // 실제로 채워 넣는 전투/선택 화면 연결은 이후 일차 몫이다). 이미 이번 회차에
+        // 확정된 엔딩이 있으면 다시 판정하지 않고 그 값을 그대로 돌려준다
+        // (기획서 "한 회차에서는 공식 엔딩 하나만 획득").
+        public MainEndingId TryFinalizeMainEnding()
+        {
+            if (RunContext.Current == null)
+            {
+                return MainEndingId.None;
+            }
+
+            BattleRunState battle =
+                RunContext.Current.Battle;
+
+            if (battle.ConfirmedMainEnding != MainEndingId.None)
+            {
+                return battle.ConfirmedMainEnding;
+            }
+
+            MainEndingConditions conditions =
+                MainEndingConditionsBuilder.Build(
+                    RunContext.Current);
+
+            MainEndingId ending =
+                MainEndingRule.Evaluate(
+                    conditions);
+
+            if (ending == MainEndingId.None)
+            {
+                return ending;
+            }
+
+            battle.ConfirmMainEnding(
+                ending);
+
+            RecordMainEnding(
+                ending);
+
+            return ending;
+        }
+
+        // 131일차: 확정된 주요 엔딩을 영구 기록(달성률용)에 남기고 기억의 조각을 지급한다.
+        private void RecordMainEnding(
+            MainEndingId ending)
+        {
+            ProfileData profile =
+                ReadOrCreateProfile();
+
+            string endingKey =
+                ending.ToString();
+
+            if (!profile.PermanentRecord.UnlockedMainEndingIds.Contains(
+                    endingKey))
+            {
+                profile.PermanentRecord.UnlockedMainEndingIds.Add(
+                    endingKey);
+            }
+
+            int reward =
+                MainEndingRules.GetMemoryShardReward(
+                    ending);
+
+            profile.PermanentGrowth.MemoryShards +=
+                reward;
+
+            profile.PermanentGrowth.TotalMemoryShardsEarned +=
+                reward;
+
+            profile.LifetimeStats.TotalMemoryShardsCollected +=
+                reward;
+
+            WriteProfile(
+                profile);
+        }
+
         public void ReturnToLobby()
         {
             if (RunContext.Current != null)

@@ -69,7 +69,8 @@ namespace ProjectDelta.Domain
             StatBlock equipmentBonuses = null,
             PlayerRunState player = null,
             EquipmentRarity rarity = EquipmentRarity.Common,
-            StatBlock requirements = null)
+            StatBlock requirements = null,
+            bool isCursed = false)
         {
             if (inventory == null
                 || equipment == null)
@@ -131,7 +132,8 @@ namespace ProjectDelta.Domain
                     definedSlotType,
                     inventorySlot.MaxStackSize,
                     equipmentBonuses,
-                    rarity);
+                    rarity,
+                    isCursed);
 
             if (!inventory.TryRemoveQuantityAt(
                     inventorySlotIndex,
