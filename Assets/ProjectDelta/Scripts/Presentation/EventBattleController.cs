@@ -761,7 +761,8 @@ namespace ProjectDelta.Presentation
         private const float ColumnGap = 12f;
         private const float LogHeight = 96f;
 
-        private void OnGUI()
+        // DAY141_EVENT_BATTLE_UGUI_PATCH
+        private void BuildEventBattleRuntimeUi141()
         {
             if (!IsActive
                 || session.Context == null)
@@ -799,11 +800,11 @@ namespace ProjectDelta.Presentation
                     PanelWidth,
                     height);
 
-            GUI.Box(
+            EventBattleRuntimeGuiProxy.Box(
                 panelRect,
                 string.Empty);
 
-            GUILayout.BeginArea(
+            EventBattleRuntimeGuiProxy.BeginArea(
                 new Rect(
                     panelRect.x + 16f,
                     panelRect.y + 12f,
@@ -811,7 +812,7 @@ namespace ProjectDelta.Presentation
                     panelRect.height - 24f));
 
             GUIStyle headerStyle =
-                new GUIStyle(GUI.skin.label)
+                new GUIStyle(EventBattleRuntimeGuiProxy.skin.label)
                 {
                     fontSize = 16,
                     fontStyle = FontStyle.Bold
@@ -820,17 +821,17 @@ namespace ProjectDelta.Presentation
             headerStyle.normal.textColor =
                 Color.white;
 
-            GUILayout.Label(
+            EventBattleRuntimeGuiProxy.Label(
                 "이벤트 전투",
                 headerStyle);
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 4f);
 
-            GUILayout.BeginHorizontal();
+            EventBattleRuntimeGuiProxy.BeginHorizontal();
 
-            GUILayout.BeginVertical(
-                GUILayout.Width(LeftColumnWidth));
+            EventBattleRuntimeGuiProxy.BeginVertical(
+                EventBattleRuntimeGuiProxy.Width(LeftColumnWidth));
 
             DrawTargetRoster(
                 context);
@@ -841,13 +842,13 @@ namespace ProjectDelta.Presentation
             DrawInitiativeBadge(
                 context);
 
-            GUILayout.EndVertical();
+            EventBattleRuntimeGuiProxy.EndVertical();
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 ColumnGap);
 
-            GUILayout.BeginVertical(
-                GUILayout.Width(RightColumnWidth));
+            EventBattleRuntimeGuiProxy.BeginVertical(
+                EventBattleRuntimeGuiProxy.Width(RightColumnWidth));
 
             DrawServiceTabs();
 
@@ -864,25 +865,25 @@ namespace ProjectDelta.Presentation
                     rowCount);
             }
 
-            GUILayout.FlexibleSpace();
+            EventBattleRuntimeGuiProxy.FlexibleSpace();
 
             DrawLog();
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 4f);
 
-            if (GUILayout.Button(
+            if (EventBattleRuntimeGuiProxy.Button(
                     "포기",
-                    GUILayout.Height(ButtonHeight)))
+                    EventBattleRuntimeGuiProxy.Height(ButtonHeight)))
             {
                 ConfirmAbort();
             }
 
-            GUILayout.EndVertical();
+            EventBattleRuntimeGuiProxy.EndVertical();
 
-            GUILayout.EndHorizontal();
+            EventBattleRuntimeGuiProxy.EndHorizontal();
 
-            GUILayout.EndArea();
+            EventBattleRuntimeGuiProxy.EndArea();
         }
 
         // 119일차에 만든 가로 탭 대신, 대상마다 상자 하나씩 세로로 쌓아 이름·게이지·상태를
@@ -899,13 +900,13 @@ namespace ProjectDelta.Presentation
                     index == context.SelectedTargetIndex;
 
                 Rect boxRect =
-                    GUILayoutUtility.GetRect(
+                    EventBattleRuntimeGuiProxy.GetRect(
                         LeftColumnWidth,
                         isSelected
                             ? 46f
                             : 34f);
 
-                GUI.Box(
+                EventBattleRuntimeGuiProxy.Box(
                     boxRect,
                     string.Empty);
 
@@ -925,10 +926,10 @@ namespace ProjectDelta.Presentation
                                 ? $" ({state.CurrentStage}/{state.StageCount}단계)"
                                 : string.Empty;
 
-                GUI.enabled =
+                EventBattleRuntimeGuiProxy.enabled =
                     state.IsActive;
 
-                if (GUI.Button(
+                if (EventBattleRuntimeGuiProxy.Button(
                         boxRect,
                         string.Empty,
                         GUIStyle.none))
@@ -937,11 +938,11 @@ namespace ProjectDelta.Presentation
                         index);
                 }
 
-                GUI.enabled =
+                EventBattleRuntimeGuiProxy.enabled =
                     true;
 
                 GUIStyle nameStyle =
-                    new GUIStyle(GUI.skin.label)
+                    new GUIStyle(EventBattleRuntimeGuiProxy.skin.label)
                     {
                         fontStyle = FontStyle.Bold
                     };
@@ -951,7 +952,7 @@ namespace ProjectDelta.Presentation
                         ? Color.white
                         : new Color(0.6f, 0.6f, 0.6f, 1f);
 
-                GUI.Label(
+                EventBattleRuntimeGuiProxy.Label(
                     new Rect(
                         boxRect.x + 6f,
                         boxRect.y + 2f,
@@ -967,7 +968,7 @@ namespace ProjectDelta.Presentation
                         boxRect.width - 12f,
                         10f);
 
-                GUI.Box(
+                EventBattleRuntimeGuiProxy.Box(
                     miniBarBg,
                     string.Empty);
 
@@ -979,7 +980,7 @@ namespace ProjectDelta.Presentation
 
                 if (isSelected)
                 {
-                    GUI.Label(
+                    EventBattleRuntimeGuiProxy.Label(
                         new Rect(
                             boxRect.x + 6f,
                             boxRect.y + 30f,
@@ -989,16 +990,16 @@ namespace ProjectDelta.Presentation
                 }
             }
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 6f);
         }
 
         private void DrawResourceBars(
             EventBattleContext context)
         {
-            GUILayout.Label(
+            EventBattleRuntimeGuiProxy.Label(
                 "플레이어 자원",
-                new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+                new GUIStyle(EventBattleRuntimeGuiProxy.skin.label) { fontStyle = FontStyle.Bold });
 
             DrawLabeledBar(
                 $"MP {context.Player.CurrentMana}/{context.Player.MaxMana}",
@@ -1014,7 +1015,7 @@ namespace ProjectDelta.Presentation
                     : 0f,
                 new Color(0.9f, 0.75f, 0.25f, 1f));
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 6f);
         }
 
@@ -1023,15 +1024,15 @@ namespace ProjectDelta.Presentation
             float ratio,
             Color color)
         {
-            GUILayout.Label(
+            EventBattleRuntimeGuiProxy.Label(
                 label);
 
             Rect barRect =
-                GUILayoutUtility.GetRect(
+                EventBattleRuntimeGuiProxy.GetRect(
                     LeftColumnWidth,
                     14f);
 
-            GUI.Box(
+            EventBattleRuntimeGuiProxy.Box(
                 barRect,
                 string.Empty);
 
@@ -1040,7 +1041,7 @@ namespace ProjectDelta.Presentation
                 ratio,
                 color);
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 4f);
         }
 
@@ -1062,16 +1063,16 @@ namespace ProjectDelta.Presentation
                     background.height);
 
             Color previousColor =
-                GUI.color;
+                EventBattleRuntimeGuiProxy.color;
 
-            GUI.color =
+            EventBattleRuntimeGuiProxy.color =
                 color;
 
-            GUI.DrawTexture(
+            EventBattleRuntimeGuiProxy.DrawTexture(
                 fillRect,
                 Texture2D.whiteTexture);
 
-            GUI.color =
+            EventBattleRuntimeGuiProxy.color =
                 previousColor;
         }
 
@@ -1080,28 +1081,28 @@ namespace ProjectDelta.Presentation
             Color color)
         {
             Color previousColor =
-                GUI.color;
+                EventBattleRuntimeGuiProxy.color;
 
-            GUI.color =
+            EventBattleRuntimeGuiProxy.color =
                 color;
 
-            GUI.DrawTexture(
+            EventBattleRuntimeGuiProxy.DrawTexture(
                 new Rect(rect.x, rect.y, rect.width, 2f),
                 Texture2D.whiteTexture);
 
-            GUI.DrawTexture(
+            EventBattleRuntimeGuiProxy.DrawTexture(
                 new Rect(rect.x, rect.yMax - 2f, rect.width, 2f),
                 Texture2D.whiteTexture);
 
-            GUI.DrawTexture(
+            EventBattleRuntimeGuiProxy.DrawTexture(
                 new Rect(rect.x, rect.y, 2f, rect.height),
                 Texture2D.whiteTexture);
 
-            GUI.DrawTexture(
+            EventBattleRuntimeGuiProxy.DrawTexture(
                 new Rect(rect.xMax - 2f, rect.y, 2f, rect.height),
                 Texture2D.whiteTexture);
 
-            GUI.color =
+            EventBattleRuntimeGuiProxy.color =
                 previousColor;
         }
 
@@ -1114,7 +1115,7 @@ namespace ProjectDelta.Presentation
                 == EventBattleInitiativeHolder.Player;
 
             GUIStyle statusStyle =
-                new GUIStyle(GUI.skin.label)
+                new GUIStyle(EventBattleRuntimeGuiProxy.skin.label)
                 {
                     fontStyle = FontStyle.Bold,
                     wordWrap = true
@@ -1125,7 +1126,7 @@ namespace ProjectDelta.Presentation
                     ? new Color(0.7f, 0.9f, 1f, 1f)
                     : new Color(1f, 0.7f, 0.7f, 1f);
 
-            GUILayout.Label(
+            EventBattleRuntimeGuiProxy.Label(
                 isPlayerTurn
                     ? "지금 차례: 플레이어"
                     : "지금 차례: 상대",
@@ -1134,36 +1135,36 @@ namespace ProjectDelta.Presentation
 
         private void DrawServiceTabs()
         {
-            GUILayout.BeginHorizontal();
+            EventBattleRuntimeGuiProxy.BeginHorizontal();
 
-            GUI.enabled =
+            EventBattleRuntimeGuiProxy.enabled =
                 serviceScreen != ServiceScreen.Actions;
 
-            if (GUILayout.Button(
+            if (EventBattleRuntimeGuiProxy.Button(
                     "행동",
-                    GUILayout.Height(24f)))
+                    EventBattleRuntimeGuiProxy.Height(24f)))
             {
                 serviceScreen =
                     ServiceScreen.Actions;
             }
 
-            GUI.enabled =
+            EventBattleRuntimeGuiProxy.enabled =
                 serviceScreen != ServiceScreen.Items;
 
-            if (GUILayout.Button(
+            if (EventBattleRuntimeGuiProxy.Button(
                     "아이템",
-                    GUILayout.Height(24f)))
+                    EventBattleRuntimeGuiProxy.Height(24f)))
             {
                 serviceScreen =
                     ServiceScreen.Items;
             }
 
-            GUI.enabled =
+            EventBattleRuntimeGuiProxy.enabled =
                 true;
 
-            GUILayout.EndHorizontal();
+            EventBattleRuntimeGuiProxy.EndHorizontal();
 
-            GUILayout.Space(
+            EventBattleRuntimeGuiProxy.Space(
                 4f);
         }
 
@@ -1185,7 +1186,7 @@ namespace ProjectDelta.Presentation
 
             for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
             {
-                GUILayout.BeginHorizontal();
+                EventBattleRuntimeGuiProxy.BeginHorizontal();
 
                 for (int column = 0; column < ButtonsPerRow; column++)
                 {
@@ -1208,7 +1209,7 @@ namespace ProjectDelta.Presentation
                         && context.Player.CurrentStamina
                         >= action.StaminaCost;
 
-                    GUI.enabled =
+                    EventBattleRuntimeGuiProxy.enabled =
                         isPlayerTurn
                         && affordable;
 
@@ -1222,20 +1223,20 @@ namespace ProjectDelta.Presentation
                             selectedDefinition,
                             action.Id);
 
-                    if (GUILayout.Button(
+                    if (EventBattleRuntimeGuiProxy.Button(
                             $"{action.DisplayName}{affinityTag} ({costLabel})",
-                            GUILayout.Width(ButtonWidth),
-                            GUILayout.Height(ButtonHeight)))
+                            EventBattleRuntimeGuiProxy.Width(ButtonWidth),
+                            EventBattleRuntimeGuiProxy.Height(ButtonHeight)))
                     {
                         ConfirmAction(
                             action);
                     }
                 }
 
-                GUILayout.EndHorizontal();
+                EventBattleRuntimeGuiProxy.EndHorizontal();
             }
 
-            GUI.enabled =
+            EventBattleRuntimeGuiProxy.enabled =
                 true;
         }
 
@@ -1308,49 +1309,49 @@ namespace ProjectDelta.Presentation
                     hasUsableSlot =
                         true;
 
-                    GUI.enabled =
+                    EventBattleRuntimeGuiProxy.enabled =
                         isPlayerTurn;
 
-                    if (GUILayout.Button(
+                    if (EventBattleRuntimeGuiProxy.Button(
                             $"{slot.DisplayName} ×{slot.Quantity}  [사용]",
-                            GUILayout.Height(28f)))
+                            EventBattleRuntimeGuiProxy.Height(28f)))
                     {
                         ConfirmUseItem(
                             slotIndex,
                             definition);
                     }
 
-                    GUI.enabled =
+                    EventBattleRuntimeGuiProxy.enabled =
                         true;
                 }
             }
 
             if (!hasUsableSlot)
             {
-                GUILayout.Label(
+                EventBattleRuntimeGuiProxy.Label(
                     "쓸 수 있는 아이템이 없습니다.");
             }
         }
 
         private void DrawLog()
         {
-            GUILayout.Label(
+            EventBattleRuntimeGuiProxy.Label(
                 "전투 로그",
-                new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+                new GUIStyle(EventBattleRuntimeGuiProxy.skin.label) { fontStyle = FontStyle.Bold });
 
             logScrollPosition =
-                GUILayout.BeginScrollView(
+                EventBattleRuntimeGuiProxy.BeginScrollView(
                     logScrollPosition,
-                    GUI.skin.box,
-                    GUILayout.Height(LogHeight));
+                    EventBattleRuntimeGuiProxy.skin.box,
+                    EventBattleRuntimeGuiProxy.Height(LogHeight));
 
             for (int index = 0; index < battleLog.Count; index++)
             {
-                GUILayout.Label(
+                EventBattleRuntimeGuiProxy.Label(
                     battleLog[index]);
             }
 
-            GUILayout.EndScrollView();
+            EventBattleRuntimeGuiProxy.EndScrollView();
         }
 
         private string ResolveTargetDisplayName(
