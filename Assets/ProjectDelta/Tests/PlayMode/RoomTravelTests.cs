@@ -8,6 +8,7 @@ using UnityEngine.InputSystem.LowLevel; // 입력 장치 상태
 using UnityEngine.SceneManagement; // 실제 씬 전환
 using UnityEngine.TestTools; // 프레임 기반 검증
 using UnityEngine.Tilemaps; // 도착 바닥 검증
+using UnityEngine.UI; // 실제 지도 색상 검증
 namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
     public sealed class RoomActivationBlocker : MonoBehaviour // 방 활성화 시 도착 칸 차단 모사
@@ -37,6 +38,25 @@ namespace ProjectDelta.Tests // 검증 이름 공간
 #endif // 편집기 설정 끝
         } // 준비 끝
 #if !UNITY_EDITOR // Windows 실행 화면 전용 검증
+        [UnityTest] // 실제 지도 표시 검증
+        public IEnumerator WindowsPlayer_DisplaysCurrentRoomOnMiniMap() // 실행 파일의 미니맵 표시 확인
+        { // 검증 시작
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) // 그래픽 장치 검사
+            { // 화면 출력 불가 조건 시작
+                Assert.Ignore("A graphics device is required for the rendered-screen check."); // 그래픽 없는 환경 구분
+            } // 화면 출력 불가 조건 끝
+            yield return EnterDungeon(); // 실제 던전 진입
+            var current = GameObject.Find("DungeonMiniMap/MapContent/Room_0_0"); // 현재 방의 지도 칸 조회
+            Assert.That(current, Is.Not.Null); // 현재 방 지도 객체 확인
+            yield return new WaitForEndOfFrame(); // 실제 화면 그리기 대기
+            var screenshot = ScreenCapture.CaptureScreenshotAsTexture(); // 게임 자체 화면 캡처
+            Assert.That(screenshot, Is.Not.Null); // 화면 캡처 확인
+            var point = RectTransformUtility.WorldToScreenPoint(null, current.transform.TransformPoint(new Vector3(13f, 0f, 0f))); // 방향 표시를 피한 현재 방 픽셀 위치
+            var color = screenshot.GetPixel(Mathf.RoundToInt(point.x), Mathf.RoundToInt(point.y)); // 현재 방 픽셀 조회
+            Object.Destroy(screenshot); // 캡처 이미지 메모리 정리
+            Assert.That(color.g, Is.GreaterThan(0.3f), "Current minimap room must be visible."); // 실제 화면의 현재 방 표시 확인
+            Assert.That(color.g, Is.GreaterThan(color.r * 1.15f), "Current room must use the green highlight."); // 현재 위치 강조색 확인
+        } // 검증 끝
         [UnityTest] // 실제 표시 검증
         public IEnumerator WindowsPlayer_DisplaysDoorMarker() // 노란 문 표시 확인
         { // 검증 시작
@@ -168,6 +188,71 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(GameObject.Find("SecondDungeonGrid"), Is.Null); // 실패한 목적 방 비활성 확인
             Assert.That(player.X, Is.EqualTo(5)); // 플레이어의 원래 칸 유지
             Assert.That(GameObject.Find("RoomTravel").GetComponent<RoomTravelController>().RoomX, Is.EqualTo(0)); // 논리 방 좌표 복구 확인
+        } // 검증 끝
+        [UnityTest] // 실제 실행 검증 표시
+        public IEnumerator MiniMap_RevealsVisitsAndResetsOnNewGame() // 방문·연결 표시와 새 게임 초기화
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어 조회
+            var start = GameObject.Find("DungeonMiniMap/MapContent/Room_0_0"); // 시작 방 지도 칸
+            var neighbor = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0"); // 연결된 두 번째 방 지도 칸
+            Assert.That(start, Is.Not.Null, "Starting room must appear on the minimap."); // 시작 방 표시 확인
+            Assert.That(start.transform.Find("CurrentDirection"), Is.Not.Null); // 현재 위치의 방향 표시 확인
+            Assert.That(neighbor, Is.Not.Null, "The connected room must appear as an outline."); // 연결 방 표시 확인
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Null); // 아직 확인하지 않은 세 번째 방 가림
+            var connectedColor = neighbor.GetComponent<Image>().color; // 미방문 방 색상 보관
+            yield return ApproachEastDoor(player); // 첫 방의 오른쪽 문 접근
+            Assert.That(start.transform.Find("CurrentDirection").GetComponent<Text>().text, Is.EqualTo("▶")); // 실제 이동 방향과 지도 방향 일치
+            yield return TapKey(Key.E); // 두 번째 방 진입
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Not.Null); // 새로 확인한 위쪽 방 표시
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.Not.EqualTo(connectedColor)); // 방문 방의 표시 변경
+            yield return Move(player, Key.W); // 두 번째 방의 위쪽 이동
+            yield return Move(player, Key.W); // 장애물 위쪽 경로 진입
+            for (var index = 0; index < 7; index++) // 위쪽 문 아래 가로 이동
+            { // 반복 시작
+                yield return Move(player, Key.D); // 오른쪽 한 칸 이동
+            } // 반복 끝
+            yield return Move(player, Key.W); // 위쪽 문 앞 접근
+            Assert.That(player.X, Is.EqualTo(2)); // 문 앞 가로 좌표 확인
+            Assert.That(player.Y, Is.EqualTo(3)); // 문 앞 세로 좌표 확인
+            yield return TapKey(Key.E); // 세 번째 방 진입
+            Assert.That(GameObject.Find("ThirdDungeonGrid"), Is.Not.Null); // 세 번째 방 표시 확인
+            Assert.That(GameObject.Find("RoomTravel").GetComponent<RoomTravelController>().RoomY, Is.EqualTo(1)); // 현재 방 세로 좌표 확인
+            yield return Move(player, Key.W); // 세 번째 방 안쪽 이동
+            yield return Move(player, Key.S); // 아래쪽 문을 바라보며 복귀
+            yield return TapKey(Key.E); // 두 번째 방 복귀
+            Assert.That(GameObject.Find("SecondDungeonGrid"), Is.Not.Null); // 위쪽 방에서 역방향 복귀 확인
+            AppRoot.Instance.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            AppRoot.Instance.StartNewGame(); // 새 게임 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 새 던전 진입 대기
+            yield return null; // 새 지도 화면 준비 대기
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Null); // 새 게임의 세 번째 방 가림
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.EqualTo(connectedColor)); // 이전 방문 기록 초기화
+        } // 검증 끝
+        [UnityTest] // 실제 실행 검증 표시
+        public IEnumerator FailedRoomArrival_DoesNotRevealNextRoom() // 실패한 방 전환의 지도 보존
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어 조회
+            yield return ApproachEastDoor(player); // 첫 방의 오른쪽 문 접근
+            GameObject second = null; // 비활성 목적 방 보관
+            foreach (var root in SceneManager.GetActiveScene().GetRootGameObjects()) // 씬 루트 순회
+            { // 루트 순회 시작
+                if (root.name == "SecondDungeonGrid") // 두 번째 방 검사
+                { // 방 일치 조건 시작
+                    second = root; // 목적 방 보관
+                } // 방 일치 조건 끝
+            } // 루트 순회 끝
+            Assert.That(second, Is.Not.Null); // 목적 방 존재 확인
+            var obstacles = second.transform.Find("Obstacles").GetComponent<Tilemap>(); // 목적 방 장애물 조회
+            var blocker = second.AddComponent<RoomActivationBlocker>(); // 방 활성화 중 도착 칸 변경
+            blocker.Tile = obstacles.GetTile(new Vector3Int(3, 0, 0)); // 기존 장애물 타일 전달
+            var connected = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color; // 이동 전 표시 색상
+            yield return TapKey(Key.E); // 실패할 방 이동 시도
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Null); // 도착하지 않은 방의 연결 가림
+            Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.EqualTo(connected)); // 방문 상태 미변경
+            Assert.That(GameObject.Find("RoomTravel").GetComponent<RoomTravelController>().RoomX, Is.EqualTo(0)); // 현재 방 좌표 유지
         } // 검증 끝
         [UnityTearDown] // 검증 정리 표시
         public IEnumerator Cleanup() // 가상 장치와 설정 복구

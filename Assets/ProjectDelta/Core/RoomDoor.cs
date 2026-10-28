@@ -11,7 +11,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public readonly int TargetRoomY; // 도착 방 세로 좌표
         public readonly int TargetX; // 도착 가로 칸
         public readonly int TargetY; // 도착 세로 칸
-        public RoomDoor(int roomX, int roomY, int approachX, int approachY, MoveDirection direction, int targetRoomX, int targetRoomY, int targetX, int targetY) // 문 연결 정보 생성
+        public readonly bool IsSecret; // 비밀 연결 여부
+        public RoomDoor(int roomX, int roomY, int approachX, int approachY, MoveDirection direction, int targetRoomX, int targetRoomY, int targetX, int targetY, bool isSecret = false) // 문 연결 정보 생성
         { // 생성 시작
             RoomX = roomX; // 출발 방 가로 좌표 보관
             RoomY = roomY; // 출발 방 세로 좌표 보관
@@ -22,6 +23,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             TargetRoomY = targetRoomY; // 도착 방 세로 좌표 보관
             TargetX = targetX; // 도착 가로 칸 보관
             TargetY = targetY; // 도착 세로 칸 보관
+            IsSecret = isSecret; // 비밀 연결 여부 보관
         } // 생성 끝
     } // 클래스 끝
 } // 이름 공간 끝

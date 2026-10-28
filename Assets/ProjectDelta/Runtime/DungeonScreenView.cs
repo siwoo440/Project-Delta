@@ -12,6 +12,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             UiFactory.CreateText(canvas.transform, "Status", "한 번 입력하면 한 칸 이동합니다", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 기본 이동 방식 안내
             UiFactory.CreateText(canvas.transform, "Scope", "흰 화살표: 방향  ·  노란 화살표: 문  ·  붉은 칸: 장애물", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
             UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문  ·  Esc: 타이틀", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
+            var roomObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체 조회
+            DungeonMiniMap.Create(canvas.transform, roomObject == null ? null : roomObject.GetComponent<RoomTravelController>()); // 발견한 방의 미니맵 생성
         } // 구성 끝
     } // 클래스 끝
 } // 이름 공간 끝
