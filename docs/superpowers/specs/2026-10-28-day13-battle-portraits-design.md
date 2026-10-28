@@ -13,4 +13,4 @@
 ---
 ## 기준
 
-[프로젝트 δ 기획서](https://docs.google.com/document/d/1xxD2-DW_T5evDsnooiseBg1wJHMi0UdMgrcQ53TsNl4/edit): UI와 시청각 연출, 2D 캐릭터, 슬라임 퀸.
+사용자가 제공한 기획서: UI와 시청각 연출, 2D 캐릭터, 슬라임 퀸.

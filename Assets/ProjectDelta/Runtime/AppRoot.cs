@@ -135,6 +135,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 조우 진입 거절
             } // 실패 복구 끝
         } // 진입 끝
+        public bool EndEncounterAfterEscape() // 성공한 조우 도망 후 탐험 복귀
+        { // 복귀 시작
+            if (!Flow.TryCancelEncounter()) // 현재 조우 상태 검사
+            { // 복귀 거절 조건 시작
+                return false; // 잘못된 조우 종료 차단
+            } // 복귀 거절 조건 끝
+            if (encounterScreen != null) // 조우 화면 존재 검사
+            { // 화면 정리 시작
+                encounterScreen.gameObject.SetActive(false); // 조우 화면 즉시 숨김
+                Destroy(encounterScreen.gameObject); // 종료한 조우 화면 제거
+                encounterScreen = null; // 조우 화면 참조 해제
+            } // 화면 정리 끝
+            Input.SetPhase(GamePhase.Exploration); // 기존 탐험 입력 복구
+            return true; // 조우 도망 복귀 성공
+        } // 복귀 끝
         public bool StartCombat() // 조우 선택 또는 시험 전투 화면 진입
         { // 진입 시작
             var fromEncounter = Flow.Phase == GamePhase.Encounter; // 조우 화면에서의 전투 선택 검사

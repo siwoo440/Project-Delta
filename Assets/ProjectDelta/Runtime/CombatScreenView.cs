@@ -6,6 +6,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
 { // 이름 공간 시작
     public sealed class CombatScreenView : MonoBehaviour // 시험 전투 화면
     { // 클래스 시작
+        internal const int TrialPlayerSpeed = 10; // 시험 플레이어 속도
+        internal const int TrialEnemySpeed = 5; // 시험 상대 속도
         private readonly System.Random random = new System.Random(); // 전투 판정 난수
         private AppRoot owner; // 탐험 상태와 체력 관리자
         private BattleRound round; // 시험 전투 라운드 상태
@@ -99,8 +101,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 준비 시작
             participants = new[] // 시험 참가자 목록
             { // 목록 시작
-                new BattleActor("플레이어", 10, true, 0), // 시험 플레이어 속도
-                new BattleActor("상위 개체", 5, false, 1) // 시험 상대 속도
+                new BattleActor("플레이어", TrialPlayerSpeed, true, 0), // 시험 플레이어 속도
+                new BattleActor("상위 개체", TrialEnemySpeed, false, 1) // 시험 상대 속도
             }; // 목록 끝
             player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
             enemy = new CombatFighter(participants[1], 70, 11, 7, 85, 8); // 시험 상위 개체 능력치

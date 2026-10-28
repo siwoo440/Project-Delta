@@ -883,6 +883,201 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 성공한 조우 도망의 이동 실패 복구 검증
+        public IEnumerator EncounterEscape_Success_RetriesBlockedArrivalAndKeepsMonster() // 이전 방 복구와 재조우 확인
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 도망 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 상대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("EscapeRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 조우 도망 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 성공 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var target = travel.Layout.GetRoom(travel.RoomX, travel.RoomY); // 현재 상위 개체 방
+            var route = FindTestRoute(travel.Layout, travel.Layout.GetRoom(0, 0), target); // 시작 방부터 실제 경로
+            var entry = route[route.Count - 1]; // 조우 방에 들어온 문
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 조회
+            var arguments = new object[] // 이전 방 좌표 인수
+            { // 인수 목록 시작
+                entry.RoomX, entry.RoomY // 이전 방 좌표
+            }; // 인수 목록 끝
+            var previous = (GameObject)finder.Invoke(travel, arguments); // 실제 이전 방
+            var targetArguments = new object[] // 조우 방 좌표 인수
+            { // 인수 목록 시작
+                target.X, target.Y // 현재 조우 방 좌표
+            }; // 인수 목록 끝
+            var targetRoot = (GameObject)finder.Invoke(travel, targetArguments); // 실제 조우 방
+            var floor = targetRoot.transform.Find("Floor").GetComponent<Tilemap>(); // 시험 장애물용 바닥
+            var blocker = previous.AddComponent<DoorArrivalBlocker>(); // 이전 방 활성화 시 차단 장치
+            blocker.Cell = new Vector3Int(entry.ApproachX, entry.ApproachY, 0); // 이전 방의 도착 칸
+            blocker.Tile = floor.GetTile(Vector3Int.zero); // 차단용 시험 타일
+            var escape = GameObject.Find("EncounterEscapeButton"); // 조우 도망 버튼
+            Assert.That(escape, Is.Not.Null); // 도망 선택 제공 확인
+            Assert.That(escape.GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 이전 방 도망 선택 가능 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                yield return null; // 초상화 표시 갱신 대기
+                var image = CaptureScreen("EncounterCanvas"); // 실제 도망 선택 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 도망 버튼 방향 입력
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            yield return null; // 선택 변경 반영 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(escape)); // 키보드 도망 선택 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 도망 선택 입력
+            yield return null; // 도망 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 실패한 이동 결과 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 이동 실패 시 조우 유지
+            Assert.That(travel.RoomX, Is.EqualTo(target.X)); // 이동 실패 시 조우 방 가로 유지
+            Assert.That(travel.RoomY, Is.EqualTo(target.Y)); // 이동 실패 시 조우 방 세로 유지
+            Assert.That(rolls.Count, Is.Zero); // 성공한 주사위 한 번만 사용
+            Assert.That(GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("이동 실패")); // 이동 실패 안내
+            Object.Destroy(blocker); // 시험 차단 장치 제거
+            previous.transform.Find("Obstacles").GetComponent<Tilemap>().SetTile(blocker.Cell, null); // 시험 장애물 제거
+            yield return null; // 장치 제거 완료 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 성공한 도망의 이동 재시도
+            yield return null; // 재시도 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 성공한 도망의 탐험 복귀
+            Assert.That(travel.RoomX, Is.EqualTo(entry.RoomX)); // 이전 방 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(entry.RoomY)); // 이전 방 세로 좌표
+            Assert.That(player.X, Is.EqualTo(entry.ApproachX)); // 이전 방의 안전한 가로 도착 칸
+            Assert.That(player.Y, Is.EqualTo(entry.ApproachY)); // 이전 방의 안전한 세로 도착 칸
+            Assert.That(travel.Discovery.CurrentX, Is.EqualTo(entry.RoomX)); // 지도 현재 방 가로 갱신
+            Assert.That(travel.Discovery.CurrentY, Is.EqualTo(entry.RoomY)); // 지도 현재 방 세로 갱신
+            Assert.That(targetRoot.transform.Find("EncounterMarker"), Is.Not.Null); // 도망 후 대상 보존
+            yield return UseDoor(travel, player, entry); // 보존된 조우 방 재진입
+            var targetObstacles = targetRoot.transform.Find("Obstacles").GetComponent<Tilemap>(); // 조우 방 장애물
+            Assert.That(player.ChangeRoom(floor, targetObstacles, 0, 2), Is.True); // 조우 범위 밖 재배치
+            yield return null; // 위치 변경 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.S)); // 대상 방향 재접근
+            InputSystem.Update(); // 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            var deadline = Time.realtimeSinceStartup + 10f; // 재조우 대기 제한
+            while (player.IsMoving && Time.realtimeSinceStartup < deadline) // 재접근 이동 완료 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            yield return null; // 조우 화면 갱신 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 보존된 대상 재조우 확인
+        } // 검증 끝
+        [UnityTest] // 조우 도망 실패와 전투 진입 검증
+        public IEnumerator EncounterEscape_GamepadFailure_EntersCombat() // 게임패드 도망 실패의 전투 전환
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 도망 주사위
+            rolls.Enqueue(1); // 플레이어 최소 주사위
+            rolls.Enqueue(20); // 상대 최대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("EscapeRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 조우 도망 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 게임패드 준비 대기
+            var escape = GameObject.Find("EncounterEscapeButton"); // 실제 조우 도망 버튼
+            Assert.That(escape, Is.Not.Null); // 도망 버튼 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 도망 버튼 방향 입력
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 선택 변경 반영 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(escape)); // 게임패드 도망 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 실제 도망 선택
+            yield return null; // 도망 실패 처리 대기
+            yield return null; // 선택 버튼 유지 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 후 일반 전투 진입
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 누른 버튼의 중복 공격 방지
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 전투 입력 준비 대기
+        } // 검증 끝
+        [UnityTest] // 도망 실패 후 전투 화면 오류 복구 검증
+        public IEnumerator EncounterEscape_FailedCombatCreation_DoesNotReroll() // 실패 판정 보존과 전투 재시도
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 도망 주사위
+            rolls.Enqueue(1); // 플레이어 최소 주사위
+            rolls.Enqueue(20); // 상대 최대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("EscapeRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 도망 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var escape = GameObject.Find("EncounterEscapeButton").GetComponent<UnityEngine.UI.Button>(); // 실제 도망 버튼
+            var fight = GameObject.Find("EncounterFightButton"); // 실제 전투 선택 버튼
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current; // 실제 화면 입력 관리자
+            eventSystem.SetSelectedGameObject(escape.gameObject); // 도망 버튼을 실제 선택 상태로 지정
+            eventSystem.gameObject.SetActive(false); // 전투 화면 생성 실패 모사
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^Combat screen failed:")); // 예상한 전투 화면 오류
+            escape.onClick.Invoke(); // 실패한 도망과 전투 생성 요청
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 오류 후 조우 화면 복구
+            Assert.That(escape.interactable, Is.False); // 도망 재시도 비활성화
+            Assert.That(rolls.Count, Is.Zero); // 실패한 판정의 주사위 소비 확인
+            escape.onClick.Invoke(); // 잘못된 중복 도망 요청
+            Assert.That(rolls.Count, Is.Zero); // 추가 주사위 소비 방지
+            eventSystem.gameObject.SetActive(true); // 화면 입력 관리자 복구
+            yield return null; // 복구한 입력 관리자 반영 대기
+            yield return null; // 전투 버튼 기본 선택 복구 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(fight)); // 전투 재시도 선택 복구
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 전투 재시도 입력
+            yield return null; // 전투 선택 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 전투 화면 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 판정의 전투 재시도 성공
+        } // 검증 끝
+        [UnityTest] // 이전 방이 없는 조우 도망 차단 검증
+        public IEnumerator EncounterEscape_WithoutPreviousRoom_IsDisabled() // 이전 방이 없는 시험 조우 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            Assert.That(AppRoot.Instance.StartEncounter(), Is.True); // 시작 방에서 시험 조우 진입
+            yield return null; // 조우 화면 준비 대기
+            var escape = GameObject.Find("EncounterEscapeButton"); // 조우 도망 버튼
+            Assert.That(escape, Is.Not.Null); // 도망 버튼 존재 확인
+            Assert.That(escape.GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 이전 방이 없을 때 도망 차단
+            Assert.That(GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("이전 방")); // 도망 불가 이유 표시
+        } // 검증 끝
+        private IEnumerator EnterEliteEncounter() // 실제 입력으로 시험 상위 개체 조우
+        { // 조우 준비 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var layout = travel.Layout; // 현재 층 구조
+            var target = layout.Rooms.First(room => room.Kind == RoomKind.Elite); // 상위 개체 방
+            foreach (var door in FindTestRoute(layout, layout.GetRoom(travel.RoomX, travel.RoomY), target)) // 실제 연결 경로
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 입력으로 방 통과
+            } // 경로 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 조회
+            var arguments = new object[] // 현재 방 좌표 인수
+            { // 인수 목록 시작
+                target.X, target.Y // 상위 개체 방 좌표
+            }; // 인수 목록 끝
+            var root = (GameObject)finder.Invoke(travel, arguments); // 실제 조우 방
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 조우 방 바닥
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 조우 방 장애물
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 2), Is.True); // 조우 범위 밖 배치
+            yield return null; // 위치 변경 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.S)); // 대상 방향 이동 입력
+            InputSystem.Update(); // 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            var deadline = Time.realtimeSinceStartup + 10f; // 이동 대기 제한
+            while (player.IsMoving && Time.realtimeSinceStartup < deadline) // 조우 범위 도착 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            yield return null; // 조우 화면 생성 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 실제 조우 진입 확인
+        } // 조우 준비 끝
         [UnityTest] // 조우 화면 생성 실패 복구 검증
         public IEnumerator Encounter_ScreenFailure_RestoresExploration() // 입력 관리자 누락과 탐험 복구
         { // 검증 시작
@@ -1447,6 +1642,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
+            typeof(EncounterScreenView).GetProperty("EscapeRollOverride")?.SetValue(null, null); // 검증용 도망 주사위 해제
             if (testController != null) // 검증용 제어 객체 존재 검사
             { // 제어 객체 정리 시작
                 Object.Destroy(testController); // 검증용 제어 객체 제거

@@ -15,6 +15,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private GameInputRouter input; // 탐험 상호작용 입력
         private RoomTransitionState state; // 층 지도상의 현재 방
         private DoorLockState doorLocks; // 현재 층의 시험 문 잠금
+        private RoomDoor entryDoor; // 현재 방으로 진입한 양방향 연결
         private readonly System.Random forceRandom = new System.Random(); // 시험 강제 개방 주사위
         private const int TrialForceAttack = 50; // 기존 기본 공격력의 시험 적용
         private const int TrialForceDifficulty = 50; // 아직 미정인 문의 시험 난이도
@@ -84,6 +85,59 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             doors = doorList; // 문 위치와 방 연결 보관
             player = controller; // 플레이어 연결
         } // 연결 끝
+        public bool HasPreviousRoom // 현재 방에 들어오기 전 방 존재 여부
+        { // 속성 시작
+            get // 이전 연결 조회
+            { // 조회 시작
+                return state != null && entryDoor != null && entryDoor.TargetRoomX == state.RoomX && entryDoor.TargetRoomY == state.RoomY && FindRoom(entryDoor.RoomX, entryDoor.RoomY) != null; // 현재 방의 유효한 이전 연결
+            } // 조회 끝
+        } // 속성 끝
+        public bool CanReturnToPreviousRoom() // 이전 방과 도착 칸의 현재 안전성 검사
+        { // 검사 시작
+            if (!IsReady || player.IsMoving || !HasPreviousRoom || Layout.GetConnection(state.RoomX, state.RoomY, entryDoor.RoomX, entryDoor.RoomY) == null) // 현재 위치와 역방향 연결 검사
+            { // 복귀 불가 조건 시작
+                return false; // 없는 이전 방으로 이동 차단
+            } // 복귀 불가 조건 끝
+            var destination = FindRoom(entryDoor.RoomX, entryDoor.RoomY); // 이전 방 씬 객체
+            var floorObject = destination.transform.Find("Floor"); // 이전 방 바닥 조회
+            var obstacleObject = destination.transform.Find("Obstacles"); // 이전 방 장애물 조회
+            if (floorObject == null || obstacleObject == null) // 필수 타일맵 검사
+            { // 누락 조건 시작
+                return false; // 도착 칸 검사 불가
+            } // 누락 조건 끝
+            return player.CanArrive(floorObject.GetComponent<Tilemap>(), obstacleObject.GetComponent<Tilemap>(), entryDoor.ApproachX, entryDoor.ApproachY); // 이전 출구 앞 칸의 안전성
+        } // 검사 끝
+        public bool TryReturnToPreviousRoom() // 성공한 조우 도망의 안전한 방 복귀
+        { // 복귀 시작
+            if (AppRoot.Instance == null || AppRoot.Instance.Flow.Phase != GamePhase.Encounter || !CanReturnToPreviousRoom()) // 조우 상태와 안전한 이전 방 검사
+            { // 복귀 거절 조건 시작
+                return false; // 잘못된 방 이동 차단
+            } // 복귀 거절 조건 끝
+            var previous = FindRoom(entryDoor.RoomX, entryDoor.RoomY); // 실제 이전 방
+            var current = FindRoom(state.RoomX, state.RoomY); // 현재 조우 방
+            if (current == null) // 현재 방 존재 검사
+            { // 방 누락 조건 시작
+                return false; // 잘못된 현재 방 이동 차단
+            } // 방 누락 조건 끝
+            var reverse = Layout.GetConnection(state.RoomX, state.RoomY, entryDoor.RoomX, entryDoor.RoomY); // 돌아갈 역방향 출구
+            var floor = previous.transform.Find("Floor").GetComponent<Tilemap>(); // 이전 방 바닥
+            var obstacles = previous.transform.Find("Obstacles").GetComponent<Tilemap>(); // 이전 방 장애물
+            var wasActive = previous.activeSelf; // 이전 방의 기존 활성 상태
+            previous.SetActive(true); // 도착 방 활성화
+            if (!player.ChangeRoom(floor, obstacles, entryDoor.ApproachX, entryDoor.ApproachY)) // 활성화 후 도착 칸 재검사
+            { // 도착 실패 조건 시작
+                previous.SetActive(wasActive); // 이전 방의 활성 상태 복구
+                return false; // 현재 방과 플레이어 상태 보존
+            } // 도착 실패 조건 끝
+            current.SetActive(false); // 출발한 조우 방 숨김
+            state = new RoomTransitionState(entryDoor.RoomX, entryDoor.RoomY); // 이전 방 좌표 확정
+            Discovery.TryVisit(state.RoomX, state.RoomY); // 실제 복귀한 방의 지도 갱신
+            entryDoor = reverse; // 복귀한 방의 이전 연결 보관
+            lastTransitionFrame = Time.frameCount; // 같은 프레임의 중복 이동 차단
+            DoorNoticeChanged?.Invoke(string.Empty); // 이전 문의 안내 제거
+            RoomChanged?.Invoke(); // 실제 방 복귀의 화면 갱신
+            return true; // 안전한 이전 방 복귀 성공
+        } // 복귀 끝
         public bool HasConfiguredRoom(int x, int y, GameObject root) // 저장된 방 연결 확인
         { // 확인 시작
             if (rooms == null) // 방 연결 존재 검사
@@ -363,6 +417,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 DoorNoticeChanged?.Invoke(string.Empty); // 이전 문 안내 제거
             } // 일반 이동 안내 끝
             previous.SetActive(false); // 이전 방 표시 종료
+            entryDoor = door; // 실제로 들어온 방 연결 기록
             Discovery.TryVisit(door.TargetRoomX, door.TargetRoomY); // 실제 도착한 방만 방문 기록
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
@@ -651,6 +706,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 doorLocks = nextLocks; // 새 층의 문 잠금 확정
                 Discovery = nextDiscovery; // 새 층의 방문 기록 확정
                 state = new RoomTransitionState(0, 0); // 새 층 시작 방 좌표
+                entryDoor = null; // 이전 층의 방 연결 해제
                 floorProgress.Complete(true); // 다음 층 번호 확정
                 AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
