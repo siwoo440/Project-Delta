@@ -15,6 +15,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private GameInputRouter input; // 탐험 상호작용 입력
         private RoomTransitionState state; // 층 지도상의 현재 방
         private DoorLockState doorLocks; // 현재 층의 시험 문 잠금
+        private readonly System.Random forceRandom = new System.Random(); // 시험 강제 개방 주사위
+        private const int TrialForceAttack = 50; // 기존 기본 공격력의 시험 적용
+        private const int TrialForceDifficulty = 50; // 아직 미정인 문의 시험 난이도
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
         private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
@@ -27,6 +30,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 속성 시작
             get; // 지정 시드 조회
             set; // 검증 시드 설정
+        } // 속성 끝
+        public static Func<int, int, int> ForceRollOverride // 자동 검증용 이벤트 주사위 지정
+        { // 속성 시작
+            get; // 지정 주사위 조회
+            set; // 검증 주사위 설정
         } // 속성 끝
         public event Action RoomChanged; // 성공한 방 이동 알림
         public event Action<string> DoorNoticeChanged; // 문 상태 안내 변경 알림
@@ -203,6 +211,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (input != null) // 입력 준비 검사
             { // 연결 조건 시작
                 input.InteractionRequested += OnInteraction; // 문 상호작용 구독
+                input.ForceDoorRequested += OnForceDoor; // 강제 개방 입력 구독
                 player.StepArrived += OnStepArrived; // 한 칸 도착 시 조우 검사
             } // 연결 조건 끝
         } // 연결 끝
@@ -211,6 +220,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (input != null) // 입력 존재 검사
             { // 해제 조건 시작
                 input.InteractionRequested -= OnInteraction; // 문 상호작용 구독 해제
+                input.ForceDoorRequested -= OnForceDoor; // 강제 개방 입력 해제
                 player.StepArrived -= OnStepArrived; // 한 칸 도착 연결 해제
             } // 해제 조건 끝
         } // 해제 끝
@@ -250,6 +260,36 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 식별 시작
             return Floor + ":" + state.RoomX + ":" + state.RoomY; // 현재 층의 고유 방 식별자
         } // 식별 끝
+        private void OnForceDoor() // 정면 잠긴 문의 공격력 판정
+        { // 강제 개방 시작
+            if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 탐험 상태와 중복 입력 검사
+            { // 입력 차단 조건 시작
+                return; // 이동 중과 중복 요청 무시
+            } // 입력 차단 조건 끝
+            var door = Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing); // 정면의 문 조회
+            if (door == null || !doorLocks.IsLocked(door)) // 정면 잠긴 문 검사
+            { // 잠긴 문 없음 조건 시작
+                return; // 다른 위치와 열린 문 제외
+            } // 잠긴 문 없음 조건 끝
+            if (!doorLocks.CanForce(door)) // 이전 강제 개방 시도 검사
+            { // 재시도 차단 조건 시작
+                DoorNoticeChanged?.Invoke("이미 시도한 문 · 열쇠 사용 가능"); // 실패 후 열쇠 사용 안내
+                return; // 두 번째 주사위 판정 차단
+            } // 재시도 차단 조건 끝
+            var playerRoll = ForceRollOverride == null ? forceRandom.Next(1, 21) : ForceRollOverride(1, 21); // 플레이어 이벤트 주사위
+            var eventRoll = ForceRollOverride == null ? forceRandom.Next(1, 21) : ForceRollOverride(1, 21); // 잠긴 문의 이벤트 주사위
+            if (!doorLocks.TryForce(door, TrialForceAttack, 0, TrialForceDifficulty, playerRoll, eventRoll, out var success)) // 강제 개방 판정 검사
+            { // 판정 거절 조건 시작
+                return; // 잘못된 주사위의 문 상태 보존
+            } // 판정 거절 조건 끝
+            lastTransitionFrame = Time.frameCount; // 같은 프레임의 중복 행동 차단
+            if (success) // 강제 개방 성공 검사
+            { // 성공 조건 시작
+                UpdateLockMarkers(Layout, rooms, doorLocks); // 양방향 문 표시 갱신
+            } // 성공 조건 끝
+            var result = success ? "성공" : "실패"; // 실제 판정 결과 문구
+            DoorNoticeChanged?.Invoke("강제 개방 " + result + " · 공격 50 / 난이도 50 (시험값)"); // 시험 수치와 결과 안내
+        } // 강제 개방 끝
         private void OnInteraction() // 실제 문 앞 상호작용 처리
         { // 처리 시작
             if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 입력 상태와 이동 완료 검사
@@ -270,7 +310,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var requiresKey = doorLocks.IsLocked(door); // 현재 문의 잠금 검사
             if (requiresKey && AppRoot.Instance.Keys.Count <= 0) // 열쇠 부족 검사
             { // 열쇠 부족 조건 시작
-                DoorNoticeChanged?.Invoke("잠긴 문 · 열쇠: " + AppRoot.Instance.Keys.Count); // 현재 열쇠 안내
+                var hint = doorLocks.CanForce(door) ? " · F / 패드 X: 강제 개방" : " · 강제 개방 이미 시도"; // 강제 개방 가능 상태 안내
+                DoorNoticeChanged?.Invoke("잠긴 문 · 열쇠: " + AppRoot.Instance.Keys.Count + hint); // 현재 열쇠와 가능 행동 안내
                 return; // 잠긴 문 이동 차단
             } // 열쇠 부족 조건 끝
             var previous = FindRoom(state.RoomX, state.RoomY); // 현재 방의 씬 객체 조회

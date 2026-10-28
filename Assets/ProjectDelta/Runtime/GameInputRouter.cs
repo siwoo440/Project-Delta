@@ -25,6 +25,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action BackRequested; // 타이틀 복귀 요청 알림
         public event Action<Vector2Int> MoveRequested; // 한 칸 이동 요청 알림
         public event Action InteractionRequested; // 정면 상호작용 요청 알림
+        public event Action ForceDoorRequested; // 잠긴 문 강제 개방 요청 알림
         public event Action InventoryRequested; // 인벤토리 열기 요청 알림
         public event Action ExplorationLocked; // 탐험 입력 잠금 알림
         public bool IsUiEnabled => uiMap != null && uiMap.enabled; // 실제 화면 입력 상태
@@ -63,6 +64,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var interact = explorationMap.AddAction("Interact", InputActionType.Button, "<Keyboard>/e"); // 탐험 상호작용 입력
             interact.AddBinding("<Gamepad>/buttonSouth"); // 게임패드 상호작용 연결
             interact.performed += OnInteract; // 상호작용 요청 감지
+            var forceDoor = explorationMap.AddAction("ForceDoor", InputActionType.Button, "<Keyboard>/f"); // 강제 개방 입력 생성
+            forceDoor.AddBinding("<Gamepad>/buttonWest"); // 게임패드 강제 개방 연결
+            forceDoor.performed += OnForceDoor; // 강제 개방 요청 감지
             var inventory = explorationMap.AddAction("Inventory", InputActionType.Button, "<Keyboard>/i"); // 인벤토리 열기 입력
             inventory.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 열기 연결
             inventory.performed += OnInventory; // 인벤토리 열기 감지
@@ -146,6 +150,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
             { // 탐험 조건 시작
                 InteractionRequested?.Invoke(); // 정면 상호작용 요청
+            } // 탐험 조건 끝
+        } // 전달 끝
+        private void OnForceDoor(InputAction.CallbackContext context) // 탐험 강제 개방 입력 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                ForceDoorRequested?.Invoke(); // 잠긴 문 강제 개방 요청
             } // 탐험 조건 끝
         } // 전달 끝
         private InputAction AddMoveButton(string name, string letter, string arrow, string pad) // 개별 방향 버튼 생성
@@ -250,6 +261,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             moveStick.canceled -= OnMoveStickCanceled; // 스틱 중립 연결 해제
             explorationMap.FindAction("Back").performed -= OnBack; // 복귀 감지 연결 해제
             explorationMap.FindAction("Interact").performed -= OnInteract; // 상호작용 감지 연결 해제
+            explorationMap.FindAction("ForceDoor").performed -= OnForceDoor; // 강제 개방 감지 연결 해제
             explorationMap.FindAction("Inventory").performed -= OnInventory; // 인벤토리 열기 연결 해제
             foreach (var reference in references) // 생성한 참조 순회
             { // 참조 정리 시작

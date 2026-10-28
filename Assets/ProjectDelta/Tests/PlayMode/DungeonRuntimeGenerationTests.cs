@@ -862,6 +862,141 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 강제 개방 실패와 열쇠 사용 검증
+        public IEnumerator ForceDoor_KeyboardFailure_AllowsKeyAndBlocksRetry() // 실제 키보드 실패와 게임패드 재시도
+        { // 검증 시작
+            var seed = Enumerable.Range(0, 100).First(value => new DoorLockState(DungeonGenerator.Generate(value)).TrialDoor != null); // 시험 잠긴 문 시드
+            RoomTravelController.GenerationSeedOverride = seed; // 재현 가능한 던전
+            var rolls = new Queue<int>(); // 결정 가능한 이벤트 주사위
+            rolls.Enqueue(1); // 플레이어 최소 주사위
+            rolls.Enqueue(20); // 이벤트 최대 주사위
+            var property = typeof(RoomTravelController).GetProperty("ForceRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 강제 개방 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 주사위 지정
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var door = travel.TrialLockedDoor; // 현재 층의 시험 잠긴 문
+            yield return ApproachLockedDoor(travel, player, door); // 실제 문 앞 접근
+            AppRoot.Instance.OpenInventory(); // 탐험 입력이 잠긴 인벤토리 열기
+            yield return null; // 인벤토리 화면 준비 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.F)); // 인벤토리 중 강제 개방 입력
+            InputSystem.Update(); // 잠긴 탐험 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 강제 개방 키 해제
+            InputSystem.Update(); // 해제 반영
+            Assert.That(rolls.Count, Is.EqualTo(2)); // 잠긴 입력의 주사위 소비 방지
+            Assert.That(travel.IsDoorLocked(door), Is.True); // 잠긴 화면의 문 상태 보존
+            AppRoot.Instance.CloseInventory(); // 탐험 화면 복귀
+            yield return null; // 탐험 입력 복구 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.F)); // 키보드 강제 개방 입력
+            InputSystem.Update(); // 강제 개방 입력 처리
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키보드 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 결과 표시 대기
+            Assert.That(travel.IsDoorLocked(door), Is.True); // 실패 후 잠금 유지
+            var notice = GameObject.Find("DoorNotice").GetComponent<UnityEngine.UI.Text>(); // 실제 문 결과 안내
+            Assert.That(notice.text, Does.Contain("실패")); // 강제 개방 실패 안내
+            Assert.That(notice.text, Does.Contain("50")); // 시험 공격력과 난이도 안내
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 실제 강제 개방 결과 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 실패 후 열쇠 없는 문 입력
+            InputSystem.Update(); // 열쇠 부족 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 문 입력 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 문 안내 갱신 대기
+            Assert.That(notice.text, Does.Contain("이미 시도")); // 실패 후 재시도 불가 안내
+            Assert.That(notice.text, Does.Not.Contain("F / 패드 X")); // 사용할 수 없는 강제 개방 안내 방지
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.West)); // 게임패드 재시도 입력
+            InputSystem.Update(); // 게임패드 입력 처리
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 게임패드 버튼 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 재시도 안내 대기
+            Assert.That(notice.text, Does.Contain("이미")); // 같은 문의 재시도 차단 안내
+            Assert.That(rolls.Count, Is.Zero); // 재시도 시 추가 주사위 없음
+            Assert.That(AppRoot.Instance.Keys.Add(1), Is.True); // 실패 이후 시험 열쇠 획득
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열쇠로 실제 문 이동
+            InputSystem.Update(); // 문 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 실제 방 이동 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 실패 후 열쇠 이동 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(door.TargetRoomY)); // 실패 후 열쇠 이동 세로 좌표
+            Assert.That(AppRoot.Instance.Keys.Count, Is.Zero); // 기존 열쇠 한 개 소모
+        } // 검증 끝
+        [UnityTest] // 게임패드 강제 개방 성공 검증
+        public IEnumerator ForceDoor_GamepadSuccess_UnlocksWithoutKey() // 실제 게임패드 성공과 양방향 개방
+        { // 검증 시작
+            var seed = Enumerable.Range(0, 100).First(value => new DoorLockState(DungeonGenerator.Generate(value)).TrialDoor != null); // 시험 잠긴 문 시드
+            RoomTravelController.GenerationSeedOverride = seed; // 재현 가능한 던전
+            var property = typeof(RoomTravelController).GetProperty("ForceRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 강제 개방 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => 10)); // 동점 성공 주사위 지정
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 접근용 시험 키보드
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 강제 개방 시험 게임패드
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var door = travel.TrialLockedDoor; // 현재 층의 시험 잠긴 문
+            yield return ApproachLockedDoor(travel, player, door); // 실제 문 앞 접근
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.West)); // 게임패드 강제 개방 입력
+            InputSystem.Update(); // 강제 개방 반영
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 게임패드 버튼 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 결과 표시 대기
+            var reverse = travel.Layout.GetConnection(door.TargetRoomX, door.TargetRoomY, door.RoomX, door.RoomY); // 역방향 문
+            Assert.That(travel.IsDoorLocked(door) || travel.IsDoorLocked(reverse), Is.False); // 양방향 잠금 해제
+            Assert.That(GameObject.Find("DoorNotice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("성공")); // 성공 결과 안내
+            Assert.That(AppRoot.Instance.Keys.Count, Is.Zero); // 열쇠 없는 성공 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열린 문을 통한 실제 이동
+            InputSystem.Update(); // 이동 입력 처리
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키보드 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 방 이동 결과 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 개방 후 도착 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(door.TargetRoomY)); // 개방 후 도착 세로 좌표
+        } // 검증 끝
+        private IEnumerator ApproachLockedDoor(RoomTravelController travel, GridMoveController player, RoomDoor door) // 실제 잠긴 문의 접근 위치 이동
+        { // 접근 시작
+            var layout = travel.Layout; // 현재 층 구조
+            var start = layout.GetRoom(travel.RoomX, travel.RoomY); // 시작 방
+            var source = layout.GetRoom(door.RoomX, door.RoomY); // 잠긴 문의 출발 방
+            foreach (var routeDoor in FindTestRoute(layout, start, source)) // 실제 연결 경로 순회
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, routeDoor); // 실제 입력으로 방 통과
+            } // 경로 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 객체 조회
+            var arguments = new object[] // 출발 방 좌표 인수
+            { // 인수 목록 시작
+                door.RoomX, door.RoomY // 잠긴 문의 출발 좌표
+            }; // 인수 목록 끝
+            var root = (GameObject)finder.Invoke(travel, arguments); // 실제 출발 방
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 출발 방 바닥
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 출발 방 장애물
+            var before = new Vector3Int(door.ApproachX, door.ApproachY, 0) - Offset(door.Direction); // 문 앞 한 칸 전 위치
+            Assert.That(player.ChangeRoom(floor, obstacles, before.x, before.y), Is.True); // 접근 시작 위치 배치
+            yield return null; // 위치 변경 프레임 종료
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(DirectionKey(door.Direction))); // 문 방향 이동 입력
+            InputSystem.Update(); // 방향 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            var deadline = Time.realtimeSinceStartup + 10f; // 이동 대기 제한
+            while (player.IsMoving && Time.realtimeSinceStartup < deadline) // 문 앞 이동 완료 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            Assert.That(player.IsMoving, Is.False); // 문 앞 도착 확인
+        } // 접근 끝
         [UnityTest] // 전투 초상화와 입력 검증
         public IEnumerator Combat_Portraits_AreLoadedWithoutBlockingInput() // 실제 화면의 이미지와 버튼 확인
         { // 검증 시작
@@ -1160,6 +1295,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         { // 정리 시작
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
+            typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
             if (testController != null) // 검증용 제어 객체 존재 검사
             { // 제어 객체 정리 시작
                 Object.Destroy(testController); // 검증용 제어 객체 제거

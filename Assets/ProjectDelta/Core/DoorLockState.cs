@@ -4,6 +4,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     public sealed class DoorLockState // 시험 문의 양방향 잠금 상태
     { // 클래스 시작
         private bool locked; // 선택된 문의 현재 잠금 여부
+        private bool forceAttempted; // 강제 개방 시도 여부
         private DoorKeyRing reservedKeys; // 해제 시 열쇠를 예약한 보관소
         public RoomDoor TrialDoor // 필수 경로를 막지 않는 시험 문
         { // 속성 시작
@@ -44,6 +45,24 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         { // 조회 시작
             return locked && Matches(door); // 선택된 연결의 현재 잠금 여부
         } // 조회 끝
+        public bool CanForce(RoomDoor door) // 현재 문의 강제 개방 가능 여부
+        { // 조회 시작
+            return IsLocked(door) && !forceAttempted; // 잠금과 첫 시도 확인
+        } // 조회 끝
+        public bool TryForce(RoomDoor door, int attack, int modifier, int difficulty, int playerRoll, int eventRoll, out bool success) // 한 번의 공격력 판정으로 잠금 해제
+        { // 판정 시작
+            success = false; // 기본 실패 상태
+            if (!CanForce(door) || !EventCheck.TryResolve(attack, modifier, difficulty, playerRoll, eventRoll, out success)) // 잠금과 주사위 유효성 검사
+            { // 판정 거절 조건 시작
+                return false; // 잘못된 재시도와 난수 차단
+            } // 판정 거절 조건 끝
+            forceAttempted = true; // 양방향 연결의 시도 기록
+            if (success) // 성공한 강제 개방 검사
+            { // 개방 조건 시작
+                locked = false; // 열쇠 소모 없이 양방향 잠금 해제
+            } // 개방 조건 끝
+            return true; // 유효한 강제 개방 판정 완료
+        } // 판정 끝
         public bool TryUnlock(RoomDoor door, DoorKeyRing keys) // 열쇠 소모와 잠금 해제
         { // 해제 시작
             if (!IsLocked(door) || keys == null || !keys.TryReserve()) // 잠긴 시험 문과 열쇠 검사
