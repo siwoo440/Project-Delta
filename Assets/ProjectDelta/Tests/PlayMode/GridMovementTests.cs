@@ -21,6 +21,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 전 준비 표시
         public void RouteTestInputToGame() // 자동 검증 입력 준비
         { // 준비 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 기존 이동 시험의 재현 가능한 방 구조
             originalBackgroundBehavior = InputSystem.settings.backgroundBehavior; // 기존 백그라운드 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 실행 포커스 영향 제외
 #if UNITY_EDITOR // 편집기 입력 전달 설정
@@ -320,6 +321,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 장치와 공통 객체 정리
         { // 정리 시작
+            RoomTravelController.GenerationSeedOverride = null; // 검증용 생성 시드 해제
             if (keyboard != null && keyboard.added) // 검증 키보드 존재 확인
             { // 키보드 정리 시작
                 InputSystem.RemoveDevice(keyboard); // 검증 키보드 제거

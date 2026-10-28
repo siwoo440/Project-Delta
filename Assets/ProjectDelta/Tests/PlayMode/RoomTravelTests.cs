@@ -30,6 +30,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 준비 표시
         public void PrepareInput() // 입력 포커스 설정
         { // 준비 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 기존 방 이동 시험의 재현 가능한 방 구조
             originalBackground = InputSystem.settings.backgroundBehavior; // 기존 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 검증 입력 허용
 #if UNITY_EDITOR // 편집기 설정 시작
@@ -218,6 +219,23 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return TapKey(Key.E); // 세 번째 방 진입
             Assert.That(GameObject.Find("ThirdDungeonGrid"), Is.Not.Null); // 세 번째 방 표시 확인
             Assert.That(GameObject.Find("RoomTravel").GetComponent<RoomTravelController>().RoomY, Is.EqualTo(1)); // 현재 방 세로 좌표 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 검증 도구에서 전달한 캡처 경로
+            if (!string.IsNullOrEmpty(capturePath)) // 스크린샷 저장 요청 검사
+            { // 화면 저장 조건 시작
+                Texture2D screenshot; // 실제 플레이 화면 이미지
+                if (Application.isBatchMode) // 화면 조작 없는 자동 실행 검사
+                { // 백그라운드 캡처 시작
+                    screenshot = CaptureOffscreen(); // 카메라와 게임 UI의 별도 렌더링
+                } // 백그라운드 캡처 끝
+                else // 일반 실행 화면 캡처 분기
+                { // 일반 화면 조건 시작
+                    yield return new WaitForEndOfFrame(); // 실제 화면 그리기 완료 대기
+                    screenshot = ScreenCapture.CaptureScreenshotAsTexture(); // 게임 자체 플레이 화면 캡처
+                } // 일반 화면 조건 끝
+                Assert.That(screenshot, Is.Not.Null); // 화면 캡처 성공 확인
+                System.IO.File.WriteAllBytes(capturePath, screenshot.EncodeToPNG()); // 최신 플레이 화면 파일 저장
+                Object.Destroy(screenshot); // 캡처 이미지 메모리 정리
+            } // 화면 저장 조건 끝
             yield return Move(player, Key.W); // 세 번째 방 안쪽 이동
             yield return Move(player, Key.S); // 아래쪽 문을 바라보며 복귀
             yield return TapKey(Key.E); // 두 번째 방 복귀
@@ -257,6 +275,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 검증 정리 표시
         public IEnumerator Cleanup() // 가상 장치와 설정 복구
         { // 정리 시작
+            RoomTravelController.GenerationSeedOverride = null; // 검증용 생성 시드 해제
             if (keyboard != null && keyboard.added) // 가상 키보드 검사
             { // 키보드 정리 시작
                 InputSystem.RemoveDevice(keyboard); // 가상 키보드 제거
@@ -337,5 +356,41 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 반복 끝
             Assert.That(player.IsMoving, Is.False); // 이동 종료 확인
         } // 대기 끝
+        private static Texture2D CaptureOffscreen() // 사용자 화면을 건드리지 않는 플레이 화면 캡처
+        { // 캡처 시작
+            var camera = Camera.main; // 실제 던전 카메라 조회
+            var canvas = GameObject.Find("DungeonCanvas").GetComponent<Canvas>(); // 실제 던전 안내와 미니맵 조회
+            var target = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32); // 별도 화면 렌더링 영역
+            var previousActive = RenderTexture.active; // 기존 렌더링 대상 보관
+            var previousTarget = camera.targetTexture; // 기존 카메라 대상 보관
+            var previousMode = canvas.renderMode; // 기존 UI 렌더링 방식 보관
+            var previousCamera = canvas.worldCamera; // 기존 UI 카메라 보관
+            var previousDistance = canvas.planeDistance; // 기존 UI 거리 보관
+            try // 실제 화면의 카메라와 UI 렌더링
+            { // 렌더링 시작
+                target.Create(); // 별도 렌더링 영역 생성
+                camera.targetTexture = target; // 실제 카메라를 별도 영역에 연결
+                canvas.renderMode = RenderMode.ScreenSpaceCamera; // 화면 UI의 카메라 렌더링
+                canvas.worldCamera = camera; // 실제 던전 카메라 연결
+                canvas.planeDistance = 1f; // 게임 화면 앞쪽 UI 배치
+                Canvas.ForceUpdateCanvases(); // 실제 화면 배치 반영
+                camera.Render(); // 게임 화면을 별도 영역에 렌더링
+                RenderTexture.active = target; // 읽을 렌더링 영역 선택
+                var image = new Texture2D(1280, 720, TextureFormat.RGB24, false); // 캡처 이미지 생성
+                image.ReadPixels(new Rect(0f, 0f, 1280f, 720f), 0, 0); // 렌더링된 화면 픽셀 읽기
+                image.Apply(); // 캡처 픽셀 반영
+                return image; // 실제 플레이 이미지 전달
+            } // 렌더링 끝
+            finally // 기존 화면과 리소스 복구
+            { // 복구 시작
+                canvas.renderMode = previousMode; // 기존 UI 렌더링 방식 복구
+                canvas.worldCamera = previousCamera; // 기존 UI 카메라 복구
+                canvas.planeDistance = previousDistance; // 기존 UI 거리 복구
+                camera.targetTexture = previousTarget; // 기존 카메라 대상 복구
+                RenderTexture.active = previousActive; // 기존 활성 렌더링 대상 복구
+                target.Release(); // 임시 렌더링 메모리 해제
+                Object.Destroy(target); // 임시 렌더링 객체 제거
+            } // 복구 끝
+        } // 캡처 끝
     } // 클래스 끝
 } // 이름 공간 끝

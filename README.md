@@ -3,7 +3,12 @@
 
 2D 탑뷰 격자 탐험과 별도 턴제 전투, 선택·관계 중심 로그라이트 프로젝트.
 
-기존 기획의 기능과 규칙을 기준으로 코드를 새로 작성한다. 현재는 기본 실행 흐름, 2D 격자 이동과 세 시험 방 사이의 이동·미니맵을 제공한다.
+기존 기획의 기능과 규칙을 기준으로 코드를 새로 작성한다. 현재는 기본 실행 흐름, 2D 격자 이동, 무작위 1층 던전과 미니맵을 제공한다.
+
+---
+## 현재 플레이 화면
+
+![최신 플레이 화면](docs/images/gameplay.png)
 
 ---
 ## 개발 환경
@@ -21,6 +26,8 @@ Unity Hub에서 저장소 폴더를 프로젝트로 추가하고 `Assets/Project
 
 오른쪽 위 미니맵은 현재 방과 방향을 초록색으로, 방문한 방을 밝은색으로 표시한다. 연결만 확인한 미방문 방은 어두운 윤곽으로 나타나며, 아직 확인하지 못한 방과 비밀 통로는 숨긴다. 새 게임을 시작하면 방문 기록이 초기화된다.
 
+새 게임마다 일반 방 8~10개와 시작 방·계단 방·상위 개체 방이 연결된 1층 구조를 생성한다. 계단 방과 상위 개체 방은 위치와 이름만 표시하며, 계단 이동과 조우는 후속 작업이다.
+
 ---
 ## 코드 구성
 
@@ -35,7 +42,7 @@ Unity Hub에서 저장소 폴더를 프로젝트로 추가하고 `Assets/Project
 ---
 ## 검증과 빌드
 
-PowerShell에서 `Tools/Run-DayFourChecks.ps1 -Check EditMode`, `-Check PlayMode`, `-Check Build`로 실행한다. 편집기 경로가 다르면 `-UnityPath`로 지정한다. 실제 Windows 테스트 실행 파일 검증은 `-Check PlayerTests`를 사용한다.
+PowerShell에서 `Tools/Run-DayFiveChecks.ps1 -Check EditMode`, `-Check PlayMode`, `-Check Build`로 실행한다. 편집기 경로가 다르면 `-UnityPath`로 지정한다. 플레이 화면을 창을 띄우지 않고 캡처하려면 `-Check Screenshot`을 사용한다. Windows 테스트 실행 파일 검증은 `-Check PlayerTests`를 사용한다. 원본 프로젝트가 Unity에서 열려 있으면 별도 프로젝트 복사본에서 테스트한다.
 
 기본 씬 재생성은 Unity 메뉴 `Project Delta/1일차/기본 씬 재생성`으로 실행한다. 생성기는 해당 기본 씬 세 개를 덮어쓰므로 씬 편집 후에는 변경을 먼저 보존한다.
 
@@ -45,4 +52,4 @@ PowerShell에서 `Tools/Run-DayFourChecks.ps1 -Check EditMode`, `-Check PlayMode
 
 세 번째 방과 지도를 구성하는 메뉴는 `Project Delta/4일차/시험 방과 지도 구성`이다. 기존 방·문 설정이 시험 구성과 다르거나 새 출구 칸이 점유되어 있으면 구성을 중단한다.
 
-검증 기록은 `Artifacts`, 4일차 Windows 빌드는 `Builds/Day04`에 생성되며 Git에서 제외한다. 기존 빌드는 `Builds/Windows`, `Builds/Day02`, `Builds/Day03`에 남는다.
+검증 기록은 `Artifacts`, 5일차 Windows 빌드는 `Builds/Day05`에 생성되며 Git에서 제외한다. 기존 빌드도 각 일차의 경로에 남는다.

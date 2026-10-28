@@ -14,6 +14,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private GameInputRouter input; // 탐험 상호작용 입력
         private RoomTransitionState state; // 층 지도상의 현재 방
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
+        public static int? GenerationSeedOverride // 자동 검증용 생성 시드 지정
+        { // 속성 시작
+            get; // 지정 시드 조회
+            set; // 검증 시드 설정
+        } // 속성 끝
         public event Action RoomChanged; // 성공한 방 이동 알림
         public DungeonLayout Layout // 화면과 공유하는 방 구조
         { // 속성 시작
@@ -25,9 +30,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 발견 기록 조회
             private set; // 새 게임 기록 설정
         } // 속성 끝
+        public int Seed // 이번 던전의 생성 시드
+        { // 속성 시작
+            get; // 시드 조회
+            private set; // 실행 시드 설정
+        } // 속성 끝
         public int RoomX => state.RoomX; // 현재 방 가로 좌표
         public int RoomY => state.RoomY; // 현재 방 세로 좌표
         public MoveDirection Facing => player.Facing; // 현재 플레이어의 이동 방향
+        public bool IsReady => state != null && Layout != null && Discovery != null && player != null; // 생성과 화면 연결 준비 상태
         public void Configure(GameObject first, GameObject second, GridMoveController controller) // 씬 제작 시 방과 플레이어 연결
         { // 연결 시작
             var roomList = new[] // 기존 두 방의 씬 연결
@@ -144,16 +155,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 출구 순회 끝
             try // 방 연결 유효성 검사
             { // 검사 시작
-                Layout = new DungeonLayout(definitions, exits); // 실제 이동과 지도에 공통 구조 생성
-                Discovery = new DungeonDiscovery(Layout, rooms[0].X, rooms[0].Y); // 새 게임의 시작 방 방문 기록
+                _ = new DungeonLayout(definitions, exits); // 기존 시험 방 연결 검증
+                Seed = GenerationSeedOverride ?? Guid.NewGuid().GetHashCode(); // 검증 시드 또는 새 게임의 난수 시드
+                Layout = DungeonGenerator.Generate(Seed); // 시드 기반 1층 구조 생성
+                rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
+                Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
             } // 검사 끝
-            catch (ArgumentException exception) // 잘못된 방 구조 처리
+            catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
+                Layout = null; // 실패한 방 구조 제거
+                Discovery = null; // 실패한 방문 기록 제거
                 Debug.LogError("Invalid dungeon layout: " + exception.Message); // 구성 오류 기록
                 enabled = false; // 잘못된 이동 중단
                 return; // 추가 초기화 종료
             } // 오류 조건 끝
-            state = new RoomTransitionState(rooms[0].X, rooms[0].Y); // 시작 방 좌표 초기화
+            state = new RoomTransitionState(0, 0); // 시작 방 좌표 초기화
             input = AppRoot.Instance.Input; // 공통 탐험 입력 조회
         } // 초기화 끝
         private void OnEnable() // 상호작용 입력 연결
