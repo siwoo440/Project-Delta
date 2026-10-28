@@ -9,6 +9,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly System.Random random = new System.Random(); // 전투 판정 난수
         private AppRoot owner; // 탐험 상태와 체력 관리자
         private BattleRound round; // 시험 전투 라운드 상태
+        private BattleActor[] participants; // 도주 확률 계산용 참가자
         private BattleActor current; // 현재 시험 행동자
         private CombatFighter player; // 플레이어 시험 전투 능력치
         private CombatFighter enemy; // 상대 시험 전투 능력치
@@ -17,6 +18,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text enemyHealth; // 상대 체력 표시
         private Text notice; // 최근 행동 결과 표시
         private Button advance; // 기본 공격 버튼
+        private Button flee; // 정식 도주 버튼
         private Button exit; // 시험 종료 또는 결과 복귀 버튼
         private CombatOutcome outcome; // 현재 전투 승패 상태
         private int lastActionFrame = -1; // 같은 프레임의 중복 행동 차단
@@ -45,7 +47,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 배경색
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 전투 안내 강조 색상
                 UiFactory.CreateText(canvas.transform, "Header", "전투", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 전투 화면 제목
-                UiFactory.CreateText(canvas.transform, "Status", "조우 · 기본 공격", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
+                UiFactory.CreateText(canvas.transform, "Status", "조우 · 기본 공격과 도주", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-390f, 70f), new Vector2(560f, 100f), accent); // 플레이어 영역
                 UiFactory.CreateText(canvas.transform, "Opponent", "상위 개체", 38, new Vector2(390f, 70f), new Vector2(560f, 100f), new Color(1f, 0.62f, 0.58f)); // 상대 영역
@@ -53,8 +55,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(390f, -20f), new Vector2(560f, 65f), Color.white); // 상대 체력
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
                 view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 25, new Vector2(0f, -175f), new Vector2(1200f, 70f), Color.white); // 최근 행동 결과
-                view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(0f, -275f)); // 기본 공격 버튼
+                view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-235f, -275f)); // 기본 공격 버튼
                 view.advance.onClick.AddListener(view.Advance); // 실제 공격 진행 연결
+                view.flee = UiFactory.CreateButton(canvas.transform, "FleeBattleButton", "도주", new Vector2(235f, -275f)); // 정식 도주 버튼
+                view.flee.onClick.AddListener(view.Flee); // 실제 도주 판정 연결
                 view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "시험 종료", new Vector2(0f, -390f)); // 시험 종료와 결과 복귀 버튼
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
@@ -69,7 +73,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         private void StartTrialRound() // 시험 참가자의 첫 행동 준비
         { // 준비 시작
-            var participants = new[] // 시험 참가자 목록
+            participants = new[] // 시험 참가자 목록
             { // 목록 시작
                 new BattleActor("플레이어", 10, true, 0), // 시험 플레이어 속도
                 new BattleActor("상위 개체", 5, false, 1) // 시험 상대 속도
@@ -99,6 +103,33 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전투 종료 조건 시작
                 return; // 종료된 전투의 추가 행동 차단
             } // 전투 종료 조건 끝
+            CompletePlayerTurn(); // 플레이어 행동 후 남은 순서 진행
+        } // 행동 끝
+        private void Flee() // 정식 도주 시도
+        { // 도주 시작
+            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            { // 행동 거절 조건 시작
+                return; // 잘못된 도주 차단
+            } // 행동 거절 조건 끝
+            var roll = Roll(0, 100); // 기존 도주 난수
+            if (!FleeRules.TryFlee(current, participants, roll, out var escaped)) // 도주 판정 유효성 검사
+            { // 도주 거절 조건 시작
+                return; // 잘못된 도주 행동 차단
+            } // 도주 거절 조건 끝
+            lastActionFrame = Time.frameCount; // 같은 프레임의 재요청 차단
+            if (escaped) // 도주 성공 검사
+            { // 도주 성공 처리 시작
+                var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
+                var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+                travel?.CompleteCurrentEncounter(); // 기존 규칙의 조우 완료와 대상 제거
+                owner.EndCombat(); // 보상 없이 탐험 복귀
+                return; // 종료한 전투의 추가 행동 차단
+            } // 도주 성공 처리 끝
+            notice.text = "도주 실패 · 성공률 " + FleeRules.Chance(current, participants) + "%"; // 실제 실패와 확률 안내
+            CompletePlayerTurn(); // 실패한 행동 소모와 상대 행동
+        } // 도주 끝
+        private void CompletePlayerTurn() // 플레이어 행동 후 적 행동과 다음 라운드
+        { // 턴 진행 시작
             round.TryCompleteAction(); // 플레이어 행동 완료
             if (round.TryNext(out current)) // 적 행동 순서 확인
             { // 적 행동 조건 시작
@@ -146,6 +177,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 진행 조건 끝
             roundText.text = outcome == CombatOutcome.Victory ? "승리" : "패배"; // 실제 전투 결과 표시
             advance.interactable = false; // 종료된 전투의 공격 차단
+            flee.interactable = false; // 종료된 전투의 도주 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             return true; // 전투 종료 확인
