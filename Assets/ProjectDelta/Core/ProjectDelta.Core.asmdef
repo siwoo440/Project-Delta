@@ -1,0 +1,5 @@
+{
+    "name": "ProjectDelta.Core",
+    "rootNamespace": "ProjectDelta.Core",
+    "noEngineReferences": true
+}

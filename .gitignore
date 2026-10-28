@@ -1,0 +1,28 @@
+# Unity 생성 폴더 제외
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+# 개발 도구 생성 파일 제외
+.vs/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.pidb
+*.pdb
+*.opendb
+*.VC.db
+.vsconfig
+# 작업 및 검증 산출물 제외
+/.superpowers/
+/Artifacts/
+/Tools/Local/
+.DS_Store
+Thumbs.db

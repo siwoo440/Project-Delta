@@ -1,0 +1,6 @@
+{
+    "name": "ProjectDelta.Editor",
+    "rootNamespace": "ProjectDelta.Editor",
+    "references": ["ProjectDelta.Core", "ProjectDelta.Runtime"],
+    "includePlatforms": ["Editor"]
+}

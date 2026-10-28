@@ -1,0 +1,5 @@
+{
+    "name": "ProjectDelta.PlayModeTests",
+    "references": ["ProjectDelta.Core", "ProjectDelta.Runtime", "Unity.ugui", "Unity.InputSystem"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}

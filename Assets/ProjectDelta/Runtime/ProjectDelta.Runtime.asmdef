@@ -1,0 +1,5 @@
+{
+    "name": "ProjectDelta.Runtime",
+    "rootNamespace": "ProjectDelta.Runtime",
+    "references": ["ProjectDelta.Core", "Unity.InputSystem", "Unity.ugui"]
+}
