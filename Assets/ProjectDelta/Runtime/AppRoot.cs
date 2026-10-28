@@ -14,6 +14,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 인벤토리 조회
             private set; // 새 게임 인벤토리 변경
         } = new InventoryState(); // 기본 빈 인벤토리 생성
+        public DoorKeyRing Keys // 현재 게임의 열쇠 보관소
+        { // 속성 시작
+            get; // 열쇠 조회
+            private set; // 새 게임 열쇠 변경
+        } = new DoorKeyRing(); // 빈 열쇠 보관소 생성
+        public event System.Action InventoryClosed; // 인벤토리 복귀 알림
         public int PlayerHealth // 탐험 중 플레이어 현재 체력
         { // 속성 시작
             get; // 현재 체력 조회
@@ -63,6 +69,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 새 게임 조건 시작
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
+                Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
         } // 메서드 끝
@@ -101,6 +108,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 inventoryScreen = null; // 화면 참조 해제
             } // 화면 정리 끝
             Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+            InventoryClosed?.Invoke(); // 탐험 화면 복귀 알림
         } // 닫기 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
         { // 반영 시작

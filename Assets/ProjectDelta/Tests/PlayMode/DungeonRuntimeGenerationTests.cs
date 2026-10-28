@@ -13,6 +13,15 @@ using UnityEngine.TestTools; // 프레임 기반 검증
 using UnityEngine.Tilemaps; // 실제 출구와 도착 칸 검사
 namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
+    public sealed class DoorArrivalBlocker : MonoBehaviour // 도착 시 문 앞 칸 차단 모사
+    { // 클래스 시작
+        public TileBase Tile; // 차단에 사용할 타일
+        public Vector3Int Cell; // 차단할 도착 칸
+        private void OnEnable() // 도착 방 활성화 처리
+        { // 처리 시작
+            transform.Find("Obstacles").GetComponent<Tilemap>().SetTile(Cell, Tile); // 도착 칸의 장애물 추가
+        } // 처리 끝
+    } // 클래스 끝
     public sealed class FloorActivationProbe : MonoBehaviour // 방 활성화 시점 검증
     { // 클래스 시작
         public static int Activations; // 방 활성화 횟수
@@ -218,6 +227,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var oldDiscovery = travel.Discovery; // 기존 방문 기록 보관
             var inventory = AppRoot.Instance.Inventory; // 현재 인벤토리 보관
             inventory.Add("floor-test", "층 이동 시험", 1, 1); // 층 이동 전 아이템 획득
+            var keys = AppRoot.Instance.Keys; // 현재 게임의 열쇠 보관소
+            Assert.That(keys.Add(1), Is.True); // 층 이동 전 시험 열쇠 지급
             typeof(AppRoot).GetProperty("PlayerHealth").SetValue(AppRoot.Instance, 42); // 손상된 탐험 체력 모사
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단이 아닌 방 상호작용
             InputSystem.Update(); // 상호작용 반영
@@ -265,6 +276,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 성공한 층 이동의 체력 회복
             Assert.That(AppRoot.Instance.Inventory, Is.SameAs(inventory)); // 층 이동 시 기존 인벤토리 유지
             Assert.That(inventory.Slots[0].ItemId, Is.EqualTo("floor-test")); // 층 이동 시 아이템 보존
+            Assert.That(AppRoot.Instance.Keys, Is.SameAs(keys)); // 층 이동 시 열쇠 보관소 유지
+            Assert.That(keys.Count, Is.EqualTo(1)); // 층 이동 시 열쇠 수량 보존
             Assert.That(FloorActivationProbe.Activations, Is.EqualTo(1)); // 새 층 확정 전 활성화 방지
             Assert.That(travel.Layout, Is.Not.SameAs(oldLayout)); // 새로운 층 구조 확인
             Assert.That(travel.Discovery, Is.Not.SameAs(oldDiscovery)); // 독립된 방문 기록 확인
@@ -559,7 +572,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             { // 렌더링 시작
                 target.Create(); // 별도 영역 생성
                 camera.targetTexture = target; // 별도 영역 연결
-                dungeon.enabled = false; // 탐험 화면 가림
+                if (dungeon != canvas) // 다른 화면을 캡처하는지 검사
+                { // 탐험 화면 가림 시작
+                    dungeon.enabled = false; // 다른 화면의 탐험 안내 가림
+                } // 탐험 화면 가림 끝
                 canvas.renderMode = RenderMode.ScreenSpaceCamera; // 카메라 기준 화면 표시
                 canvas.worldCamera = camera; // 실제 게임 카메라 연결
                 canvas.planeDistance = 1f; // 전투 화면 거리 지정
@@ -734,10 +750,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.Floor, Is.EqualTo(savedFloor)); // 기존 층 보존
             Assert.That(travel.Discovery, Is.SameAs(savedDiscovery)); // 기존 방문 기록 보존
             Assert.That(property.GetValue(AppRoot.Instance), Is.SameAs(inventory)); // 인벤토리 내용 유지
+            Assert.That(AppRoot.Instance.Keys.Add(1), Is.True); // 새 게임 전 시험 열쇠 지급
             AppRoot.Instance.ReturnToTitle(); // 타이틀 복귀
             yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
             AppRoot.Instance.StartNewGame(); // 새 게임 요청
             yield return WaitForPhase(GamePhase.Exploration); // 새 던전 도착 대기
+            Assert.That(AppRoot.Instance.Keys.Count, Is.Zero); // 새 게임의 열쇠 초기화 확인
             var fresh = (InventoryState)property.GetValue(AppRoot.Instance); // 새 게임의 인벤토리
             Assert.That(fresh, Is.Not.SameAs(inventory)); // 새 게임의 독립 인벤토리
             Assert.That(fresh.Slots[0].IsEmpty, Is.True); // 새 게임의 빈 슬롯 확인
@@ -844,6 +862,164 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 실제 잠긴 문과 열쇠 이동 검증
+        public IEnumerator LockedDoor_RequiresKey_AndRestoresItOnFailedArrival() // 잠금 확인과 열쇠 복구 및 왕복
+        { // 검증 시작
+            var seed = Enumerable.Range(0, 100).First(value => new DoorLockState(DungeonGenerator.Generate(value)).TrialDoor != null); // 시험 말단 방이 있는 시드
+            RoomTravelController.GenerationSeedOverride = seed; // 재현 가능한 시험 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var lockedProperty = typeof(RoomTravelController).GetProperty("TrialLockedDoor"); // 실제 시험 잠긴 문 조회
+            Assert.That(lockedProperty, Is.Not.Null); // 시험 잠긴 문 제공 확인
+            var door = (RoomDoor)lockedProperty.GetValue(travel); // 현재 층의 시험 잠긴 문
+            Assert.That(door, Is.Not.Null); // 접근 가능한 시험 문 존재 확인
+            var lockMethod = typeof(RoomTravelController).GetMethod("IsDoorLocked"); // 실제 잠금 상태 조회
+            Assert.That(lockMethod, Is.Not.Null); // 양방향 잠금 상태 제공 확인
+            var keyProperty = typeof(AppRoot).GetProperty("Keys"); // 게임의 열쇠 보관소 조회
+            Assert.That(keyProperty, Is.Not.Null); // 열쇠 보관소 제공 확인
+            var keys = (DoorKeyRing)keyProperty.GetValue(AppRoot.Instance); // 실제 보유 열쇠
+            var layout = travel.Layout; // 현재 층의 방 연결
+            var start = layout.GetRoom(travel.RoomX, travel.RoomY); // 현재 출발 방
+            var source = layout.GetRoom(door.RoomX, door.RoomY); // 잠긴 문의 출발 방
+            foreach (var routeDoor in FindTestRoute(layout, start, source)) // 출발 방까지 실제 경로 순회
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, routeDoor); // 실제 키 입력으로 문 통과
+            } // 경로 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 객체 조회
+            var sourceArguments = new object[] // 출발 방 좌표 인수
+            { // 인수 목록 시작
+                door.RoomX, door.RoomY // 잠긴 문의 출발 좌표
+            }; // 인수 목록 끝
+            var targetArguments = new object[] // 도착 방 좌표 인수
+            { // 인수 목록 시작
+                door.TargetRoomX, door.TargetRoomY // 잠긴 문의 도착 좌표
+            }; // 인수 목록 끝
+            var sourceRoot = (GameObject)finder.Invoke(travel, sourceArguments); // 실제 출발 방
+            var targetRoot = (GameObject)finder.Invoke(travel, targetArguments); // 실제 도착 방
+            var floor = sourceRoot.transform.Find("Floor").GetComponent<Tilemap>(); // 출발 방 바닥
+            var obstacles = sourceRoot.transform.Find("Obstacles").GetComponent<Tilemap>(); // 출발 방 장애물
+            var before = new Vector3Int(door.ApproachX, door.ApproachY, 0) - Offset(door.Direction); // 문 앞 한 칸 전 위치
+            Assert.That(player.ChangeRoom(floor, obstacles, before.x, before.y), Is.True); // 실제 출구 접근 위치 배치
+            yield return null; // 위치 변경 프레임 종료
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(DirectionKey(door.Direction))); // 실제 문 방향 이동
+            InputSystem.Update(); // 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            InputSystem.Update(); // 해제 반영
+            var deadline = Time.realtimeSinceStartup + 10f; // 이동 대기 제한
+            while (player.IsMoving && Time.realtimeSinceStartup < deadline) // 문 앞 이동 완료 대기
+            { // 이동 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 이동 대기 끝
+            Assert.That(player.IsMoving, Is.False); // 문 앞 도착 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열쇠 없이 문 상호작용
+            InputSystem.Update(); // 잠긴 문 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 안내 표시 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.RoomX)); // 열쇠 없는 가로 방 유지
+            Assert.That(travel.RoomY, Is.EqualTo(door.RoomY)); // 열쇠 없는 세로 방 유지
+            var lockArguments = new object[] // 잠금 상태 조회 인수
+            { // 인수 목록 시작
+                door // 현재 시험 문
+            }; // 인수 목록 끝
+            Assert.That((bool)lockMethod.Invoke(travel, lockArguments), Is.True); // 열쇠 없는 잠금 유지
+            var notice = GameObject.Find("DoorNotice").GetComponent<UnityEngine.UI.Text>(); // 실제 잠금 안내 조회
+            Assert.That(notice.text, Does.Contain("열쇠: 0")); // 열쇠 부족 안내 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 실제 잠긴 문 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.I)); // 시험 열쇠 획득 화면 열기
+            InputSystem.Update(); // 인벤토리 열기 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 열기 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 인벤토리 표시 대기
+            var keyButton = GameObject.Find("TrialKeyButton"); // 시험 열쇠 지급 버튼 조회
+            Assert.That(keyButton, Is.Not.Null); // 시험 열쇠 버튼 확인
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(keyButton); // 열쇠 버튼 선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 시험 열쇠 획득 입력
+            yield return null; // 화면 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 획득 결과 반영 대기
+            Assert.That(keys.Count, Is.EqualTo(1)); // 시험 열쇠 한 개 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.I)); // 인벤토리 닫기
+            yield return null; // 취소 입력 처리
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 닫기 키 해제
+            yield return null; // 탐험 복귀 대기
+            Assert.That(notice.text, Is.Empty); // 인벤토리 복귀 시 이전 열쇠 안내 제거
+            var blocker = targetRoot.AddComponent<DoorArrivalBlocker>(); // 도착 방 활성화 시 차단 장치
+            blocker.Cell = new Vector3Int(door.TargetX, door.TargetY, 0); // 실제 문 도착 칸
+            blocker.Tile = floor.GetTile(Vector3Int.zero); // 차단용 시험 타일
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 도착 차단된 문 열기 시도
+            InputSystem.Update(); // 문 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 실패한 이동 정리 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.RoomX)); // 실패 시 기존 가로 방 유지
+            Assert.That(travel.RoomY, Is.EqualTo(door.RoomY)); // 실패 시 기존 세로 방 유지
+            Assert.That(keys.Count, Is.EqualTo(1)); // 실패한 이동의 열쇠 복구
+            Assert.That((bool)lockMethod.Invoke(travel, lockArguments), Is.True); // 실패한 이동의 잠금 복구
+            Object.Destroy(blocker); // 도착 차단 장치 제거
+            targetRoot.transform.Find("Obstacles").GetComponent<Tilemap>().SetTile(blocker.Cell, null); // 시험 장애물 제거
+            yield return null; // 장치 제거 완료 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열쇠로 실제 문 열기
+            InputSystem.Update(); // 문 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 방 이동 표시 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 성공한 도착 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(door.TargetRoomY)); // 성공한 도착 세로 좌표
+            Assert.That(keys.Count, Is.Zero); // 열쇠 한 개 소모 확인
+            var reverse = layout.GetConnection(door.TargetRoomX, door.TargetRoomY, door.RoomX, door.RoomY); // 같은 문의 역방향 연결
+            lockArguments[0] = reverse; // 반대 방향 문으로 조회 변경
+            Assert.That((bool)lockMethod.Invoke(travel, lockArguments), Is.False); // 역방향 잠금 해제 확인
+            yield return UseDoor(travel, player, reverse); // 열쇠 없이 실제 역방향 이동
+            Assert.That(keys.Count, Is.Zero); // 열린 문의 중복 소모 방지
+            Assert.That(travel.RoomX, Is.EqualTo(door.RoomX)); // 출발 방 복귀 확인
+        } // 검증 끝
+        private static System.Collections.Generic.List<RoomDoor> FindTestRoute(DungeonLayout layout, DungeonRoom start, DungeonRoom target) // 시험 목적 방까지 연결 경로 조회
+        { // 경로 조회 시작
+            var queue = new Queue<DungeonRoom>(); // 연결 방 탐색 대기열
+            var previous = new Dictionary<DungeonRoom, RoomDoor>(); // 방별 이전 출구 목록
+            queue.Enqueue(start); // 시작 방 예약
+            previous.Add(start, null); // 시작 방 방문 표시
+            while (queue.Count > 0 && !previous.ContainsKey(target)) // 목적 방까지 탐색
+            { // 탐색 시작
+                var current = queue.Dequeue(); // 다음 방 조회
+                foreach (var door in layout.Doors) // 현재 구조의 출구 순회
+                { // 출구 검사 시작
+                    if (door.RoomX != current.X || door.RoomY != current.Y) // 현재 방 출구 검사
+                    { // 다른 방 조건 시작
+                        continue; // 다른 방 출구 제외
+                    } // 다른 방 조건 끝
+                    var next = layout.GetRoom(door.TargetRoomX, door.TargetRoomY); // 연결된 방 조회
+                    if (previous.ContainsKey(next)) // 이미 방문한 방 검사
+                    { // 중복 조건 시작
+                        continue; // 중복 탐색 제외
+                    } // 중복 조건 끝
+                    previous.Add(next, door); // 이전 출구 보관
+                    queue.Enqueue(next); // 다음 방 탐색 예약
+                } // 출구 검사 끝
+            } // 탐색 끝
+            Assert.That(previous.ContainsKey(target), Is.True); // 시험 목적 방의 도달 가능 확인
+            var route = new List<RoomDoor>(); // 목적 방까지 실제 출구 목록
+            var cursor = target; // 목적 방부터 역추적
+            while (cursor != start) // 시작 방까지 반복
+            { // 역추적 시작
+                var door = previous[cursor]; // 현재 방으로 들어온 출구
+                route.Add(door); // 출구 경로 보관
+                cursor = layout.GetRoom(door.RoomX, door.RoomY); // 이전 방 조회
+            } // 역추적 끝
+            route.Reverse(); // 출발 방부터 이동 순서 정렬
+            return route; // 실제 연결 경로 전달
+        } // 경로 조회 끝
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작

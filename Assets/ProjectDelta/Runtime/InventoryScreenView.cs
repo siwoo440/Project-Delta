@@ -9,6 +9,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly Text[] slots = new Text[10]; // 실제 슬롯 표시 목록
         private Text status; // 슬롯 수와 획득 결과 표시
         private int lastPickupFrame = -1; // 같은 프레임의 중복 획득 차단
+        private int lastKeyFrame = -1; // 같은 프레임의 중복 열쇠 지급 차단
         public static InventoryScreenView Create(AppRoot owner) // 실제 인벤토리 화면 생성
         { // 생성 시작
             var screen = new GameObject("InventoryScreen", typeof(InventoryScreenView)); // 인벤토리 상위 객체
@@ -37,10 +38,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     view.slots[index] = UiFactory.CreateText(canvas.transform, "InventorySlot_" + index, "", 24, new Vector2(x, y), new Vector2(720f, 65f), Color.white); // 개별 슬롯 표시
                 } // 슬롯 화면 생성 끝
                 UiFactory.CreateText(canvas.transform, "Notice", "시험 획득은 개발 확인용입니다", 22, new Vector2(0f, -255f), new Vector2(1200f, 55f), accent); // 시험 기능 안내
-                var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-235f, -365f)); // 시험 획득 버튼
+                var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-500f, -365f)); // 시험 획득 버튼
                 pickup.onClick.AddListener(view.AddTrialItem); // 시험 아이템 획득 연결
                 pickup.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
-                var close = UiFactory.CreateButton(canvas.transform, "CloseInventoryButton", "닫기", new Vector2(235f, -365f)); // 탐험 복귀 버튼
+                var key = UiFactory.CreateButton(canvas.transform, "TrialKeyButton", "시험 열쇠 지급", new Vector2(0f, -365f)); // 시험 열쇠 지급 버튼
+                key.onClick.AddListener(view.AddTrialKey); // 시험 열쇠 지급 연결
+                key.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
+                var close = UiFactory.CreateButton(canvas.transform, "CloseInventoryButton", "닫기", new Vector2(500f, -365f)); // 탐험 복귀 버튼
                 close.onClick.AddListener(owner.CloseInventory); // 인벤토리 닫기 연결
                 close.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
                 view.Refresh(); // 현재 게임의 슬롯 표시
@@ -72,6 +76,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 status.text = "가방이 가득 찼습니다 · 남은 수량 " + result.Remaining; // 미획득 수량 안내
             } // 공간 부족 조건 끝
         } // 획득 끝
+        private void AddTrialKey() // 개발 확인용 열쇠 지급
+        { // 지급 시작
+            if (lastKeyFrame == Time.frameCount) // 같은 프레임 중복 검사
+            { // 중복 조건 시작
+                return; // 중복 지급 차단
+            } // 중복 조건 끝
+            lastKeyFrame = Time.frameCount; // 지급 프레임 기록
+            var added = owner.Keys.Add(1); // 열쇠 한 개 지급
+            Refresh(); // 보유 열쇠 표시 갱신
+            if (!added) // 최대 보유량 검사
+            { // 지급 실패 조건 시작
+                status.text = "열쇠를 더 받을 수 없습니다"; // 지급 실패 안내
+            } // 지급 실패 조건 끝
+        } // 지급 끝
         private void Refresh() // 현재 게임의 인벤토리 표시
         { // 갱신 시작
             var occupied = 0; // 사용 중인 슬롯 수
@@ -84,7 +102,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 사용 중 조건 끝
                 slots[index].text = (index + 1) + ". " + (slot.IsEmpty ? "비어 있음" : slot.Name + " × " + slot.Quantity); // 슬롯 번호와 아이템 표시
             } // 슬롯 표시 끝
-            status.text = "가방 " + occupied + " / " + slots.Length; // 사용 슬롯과 전체 슬롯 표시
+            status.text = "가방 " + occupied + " / " + slots.Length + " · 열쇠 " + owner.Keys.Count; // 사용 슬롯과 전체 슬롯 표시
         } // 갱신 끝
     } // 클래스 끝
     public sealed class InventoryCancelRelay : MonoBehaviour, ICancelHandler // 선택 버튼의 취소 입력 중계

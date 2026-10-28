@@ -14,6 +14,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         [SerializeField] private GridMoveController player; // 실제 격자 플레이어
         private GameInputRouter input; // 탐험 상호작용 입력
         private RoomTransitionState state; // 층 지도상의 현재 방
+        private DoorLockState doorLocks; // 현재 층의 시험 문 잠금
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
         private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
@@ -28,6 +29,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             set; // 검증 시드 설정
         } // 속성 끝
         public event Action RoomChanged; // 성공한 방 이동 알림
+        public event Action<string> DoorNoticeChanged; // 문 상태 안내 변경 알림
+        public RoomDoor TrialLockedDoor => doorLocks?.TrialDoor; // 현재 층의 시험 잠금 문
+        public bool IsDoorLocked(RoomDoor door) // 문 연결의 잠금 여부
+        { // 조회 시작
+            return doorLocks != null && doorLocks.IsLocked(door); // 양방향 잠금 조회
+        } // 조회 끝
         public DungeonLayout Layout // 화면과 공유하는 방 구조
         { // 속성 시작
             get; // 방 구조 조회
@@ -167,12 +174,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 SaveTemplates(); // 변경 전 방 원형 보관
                 Seed = GenerationSeedOverride ?? Guid.NewGuid().GetHashCode(); // 검증 시드 또는 새 게임의 난수 시드
                 Layout = DungeonGenerator.Generate(Seed); // 시드 기반 1층 구조 생성
+                doorLocks = new DoorLockState(Layout); // 현재 층의 시험 문 선택
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
                 Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
+                UpdateLockMarkers(Layout, rooms, doorLocks); // 잠긴 문의 양방향 표시
             } // 검사 끝
             catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
@@ -258,6 +267,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 문 없음 조건 시작
                 return; // 일치하는 출구 없음
             } // 문 없음 조건 끝
+            var requiresKey = doorLocks.IsLocked(door); // 현재 문의 잠금 검사
+            if (requiresKey && AppRoot.Instance.Keys.Count <= 0) // 열쇠 부족 검사
+            { // 열쇠 부족 조건 시작
+                DoorNoticeChanged?.Invoke("잠긴 문 · 열쇠: " + AppRoot.Instance.Keys.Count); // 현재 열쇠 안내
+                return; // 잠긴 문 이동 차단
+            } // 열쇠 부족 조건 끝
             var previous = FindRoom(state.RoomX, state.RoomY); // 현재 방의 씬 객체 조회
             var destination = FindRoom(door.TargetRoomX, door.TargetRoomY); // 도착 방의 씬 객체 조회
             if (previous == null || destination == null) // 실제 방 객체 검사
@@ -276,14 +291,36 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 거절 조건 시작
                 return; // 기존 방과 위치 유지
             } // 전환 거절 조건 끝
+            if (requiresKey && !doorLocks.TryUnlock(door, AppRoot.Instance.Keys)) // 열쇠 예약과 잠금 해제 검사
+            { // 해제 실패 조건 시작
+                state = new RoomTransitionState(door.RoomX, door.RoomY); // 이전 방 좌표 복구
+                return; // 실패한 이동 중단
+            } // 해제 실패 조건 끝
             destination.SetActive(true); // 도착 방 표시
             if (!player.ChangeRoom(floor, obstacles, door.TargetX, door.TargetY)) // 방 활성화 후 도착 칸 재검사
             { // 도착 실패 조건 시작
+                if (requiresKey && !doorLocks.Rollback(door, AppRoot.Instance.Keys)) // 예약 열쇠와 잠금 복구 검사
+                { // 복구 실패 조건 시작
+                    Debug.LogError("Failed to restore the reserved door key."); // 예기치 않은 상태 오류 기록
+                } // 복구 실패 조건 끝
                 state = new RoomTransitionState(door.RoomX, door.RoomY); // 이전 방 좌표 복구
                 destination.SetActive(false); // 실패한 목적 방 표시 취소
                 lastTransitionFrame = Time.frameCount; // 같은 프레임의 재시도 차단
                 return; // 기존 플레이어와 방 유지
             } // 도착 실패 조건 끝
+            if (requiresKey) // 잠긴 문 이동 성공 검사
+            { // 잠금 해제 확정 시작
+                if (!doorLocks.Commit(door, AppRoot.Instance.Keys)) // 예약 열쇠 확정 검사
+                { // 확정 실패 조건 시작
+                    Debug.LogError("Failed to commit the reserved door key."); // 예기치 않은 상태 오류 기록
+                } // 확정 실패 조건 끝
+                UpdateLockMarkers(Layout, rooms, doorLocks); // 양방향 문 표시 갱신
+                DoorNoticeChanged?.Invoke("문을 열었습니다 · 열쇠: " + AppRoot.Instance.Keys.Count); // 열쇠 사용 안내
+            } // 잠금 해제 확정 끝
+            else // 일반 문 이동 분기
+            { // 일반 이동 안내 시작
+                DoorNoticeChanged?.Invoke(string.Empty); // 이전 문 안내 제거
+            } // 일반 이동 안내 끝
             previous.SetActive(false); // 이전 방 표시 종료
             Discovery.TryVisit(door.TargetRoomX, door.TargetRoomY); // 실제 도착한 방만 방문 기록
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
@@ -453,6 +490,60 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 방 검사 끝
             throw new InvalidOperationException("An encounter room binding is required."); // 조우 방 누락 거절
         } // 표시 끝
+        private static void UpdateLockMarkers(DungeonLayout layout, RoomBinding[] bindings, DoorLockState locks) // 시험 문의 양방향 표시 갱신
+        { // 표시 갱신 시작
+            var first = locks.TrialDoor; // 시험 문 조회
+            if (first == null) // 시험 문 존재 검사
+            { // 시험 문 없음 조건 시작
+                return; // 표시할 문 없음
+            } // 시험 문 없음 조건 끝
+            var reverse = layout.GetConnection(first.TargetRoomX, first.TargetRoomY, first.RoomX, first.RoomY); // 반대 방향 문 조회
+            UpdateLockMarker(bindings, first, locks.IsLocked(first)); // 정방향 표시 갱신
+            UpdateLockMarker(bindings, reverse, locks.IsLocked(reverse)); // 역방향 표시 갱신
+        } // 표시 갱신 끝
+        private static void UpdateLockMarker(RoomBinding[] bindings, RoomDoor door, bool locked) // 한쪽 문 표시 색상 갱신
+        { // 표시 갱신 시작
+            if (door == null) // 문 존재 검사
+            { // 문 누락 조건 시작
+                return; // 누락된 문 제외
+            } // 문 누락 조건 끝
+            var binding = Array.Find(bindings, room => room.X == door.RoomX && room.Y == door.RoomY); // 출발 방 연결 조회
+            if (binding == null || binding.Root == null) // 실제 방 존재 검사
+            { // 방 누락 조건 시작
+                return; // 누락된 방 제외
+            } // 방 누락 조건 끝
+            var floor = binding.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 방 바닥 조회
+            var grid = binding.Root.GetComponent<Grid>(); // 방 격자 조회
+            var offset = Vector3Int.zero; // 문의 방향별 칸 차이
+            switch (door.Direction) // 문 방향 선택
+            { // 방향 선택 시작
+                case MoveDirection.Up: // 위쪽 문
+                    offset = Vector3Int.up; // 위쪽 칸 차이
+                    break; // 방향 선택 종료
+                case MoveDirection.Down: // 아래쪽 문
+                    offset = Vector3Int.down; // 아래쪽 칸 차이
+                    break; // 방향 선택 종료
+                case MoveDirection.Left: // 왼쪽 문
+                    offset = Vector3Int.left; // 왼쪽 칸 차이
+                    break; // 방향 선택 종료
+                case MoveDirection.Right: // 오른쪽 문
+                    offset = Vector3Int.right; // 오른쪽 칸 차이
+                    break; // 방향 선택 종료
+            } // 방향 선택 끝
+            var cell = new Vector3Int(door.ApproachX, door.ApproachY, 0) + offset; // 문 표시 칸
+            var size = grid.cellSize; // 격자 칸 크기
+            var gap = grid.cellGap; // 격자 칸 간격
+            var anchor = floor.tileAnchor; // 바닥 타일 중심
+            var local = new Vector3((cell.x + anchor.x) * size.x + cell.x * gap.x, (cell.y + anchor.y) * size.y + cell.y * gap.y, (cell.z + anchor.z) * size.z + cell.z * gap.z); // 문 칸의 지역 좌표
+            var position = floor.transform.TransformPoint(local); // 문 칸의 실제 위치
+            foreach (Transform child in binding.Root.transform) // 방의 표시 객체 순회
+            { // 문 표시 검사 시작
+                if (child.name == "DoorMarker" && child.gameObject.activeSelf && Vector3.Distance(child.position, position) < 0.01f) // 해당 문 표시 검사
+                { // 일치 조건 시작
+                    child.GetComponent<SpriteRenderer>().color = locked ? new Color(0.68f, 0.42f, 1f) : new Color(1f, 0.88f, 0.2f); // 잠금에 따른 문 색상
+                } // 일치 조건 끝
+            } // 문 표시 검사 끝
+        } // 표시 갱신 끝
         private void TryNextFloor() // 준비 성공 시에만 다음 층 확정
         { // 전환 시작
             if (Floor >= 2) // 합의된 마지막 층 검사
@@ -469,6 +560,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 준비 시작
                 var nextSeed = unchecked(Seed + floorProgress.Floor * 7919); // 층별 재현 가능한 새 시드
                 var nextLayout = DungeonGenerator.Generate(nextSeed); // 임시 1층 규칙으로 새 층 생성
+                var nextLocks = new DoorLockState(nextLayout); // 새 층의 독립 문 잠금
                 var nextDiscovery = new DungeonDiscovery(nextLayout, 0, 0); // 새 층의 독립 방문 기록
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
                 stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
@@ -489,6 +581,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 상위 객체 연결 끝
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
                 AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
+                UpdateLockMarkers(nextLayout, nextRooms, nextLocks); // 새 층 잠긴 문 표시
                 var start = Array.Find(nextRooms, room => room.X == 0 && room.Y == 0); // 새 층 시작 방 조회
                 var floor = start.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 시작 방 바닥
                 var obstacles = start.Root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 시작 방 장애물
@@ -514,6 +607,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 stage = null; // 성공한 층의 실패 정리 방지
                 rooms = nextRooms; // 새 층의 실제 방 연결
                 Layout = nextLayout; // 새 층의 방 구조 확정
+                doorLocks = nextLocks; // 새 층의 문 잠금 확정
                 Discovery = nextDiscovery; // 새 층의 방문 기록 확정
                 state = new RoomTransitionState(0, 0); // 새 층 시작 방 좌표
                 floorProgress.Complete(true); // 다음 층 번호 확정

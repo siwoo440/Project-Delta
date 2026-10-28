@@ -6,6 +6,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class DungeonScreenView : MonoBehaviour // 던전 안내 표시
     { // 클래스 시작
         private Text status; // 현재 방 이름 표시
+        private Text doorNotice; // 잠긴 문과 열쇠 안내
         private RoomTravelController travel; // 실제 방 이동과 역할 정보
         private void Start() // 기본 안내 화면 구성
         { // 구성 시작
@@ -14,24 +15,43 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
-            UiFactory.CreateText(canvas.transform, "Scope", "노랑: 문  ·  파랑: 계단  ·  분홍: 상위 개체", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
+            doorNotice = UiFactory.CreateText(canvas.transform, "DoorNotice", "", 23, new Vector2(0f, -310f), new Vector2(1200f, 60f), mint); // 문 상호작용 안내
+            UiFactory.CreateText(canvas.transform, "Scope", "노랑: 문  ·  보라: 잠긴 문  ·  파랑: 계단  ·  분홍: 상위 개체", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
             UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문·계단  ·  대상 근처 이동: 조우", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
             var roomObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체 조회
             travel = roomObject == null ? null : roomObject.GetComponent<RoomTravelController>(); // 방 이동 제어기 연결
             DungeonMiniMap.Create(canvas.transform, travel); // 발견한 방의 미니맵 생성
+            if (AppRoot.Instance != null) // 공통 게임 객체 존재 검사
+            { // 인벤토리 연결 시작
+                AppRoot.Instance.InventoryClosed += ClearDoorNotice; // 인벤토리 복귀 시 안내 초기화
+            } // 인벤토리 연결 끝
             if (travel != null && travel.IsReady) // 생성된 방 구조와 실제 상태 검사
             { // 방 정보 연결 시작
                 travel.RoomChanged += UpdateRoom; // 성공한 방 이동 알림 연결
+                travel.DoorNoticeChanged += UpdateDoorNotice; // 문 안내 변경 연결
                 UpdateRoom(); // 시작 방의 이름 표시
             } // 방 정보 연결 끝
         } // 구성 끝
         private void OnDestroy() // 화면 이벤트 연결 정리
         { // 정리 시작
+            if (AppRoot.Instance != null) // 공통 게임 객체 존재 검사
+            { // 인벤토리 연결 해제 시작
+                AppRoot.Instance.InventoryClosed -= ClearDoorNotice; // 인벤토리 복귀 연결 해제
+            } // 인벤토리 연결 해제 끝
             if (travel != null) // 방 이동 객체 존재 검사
             { // 연결 해제 시작
                 travel.RoomChanged -= UpdateRoom; // 방 이름 갱신 연결 해제
+                travel.DoorNoticeChanged -= UpdateDoorNotice; // 문 안내 연결 해제
             } // 연결 해제 끝
         } // 정리 끝
+        private void ClearDoorNotice() // 인벤토리 복귀 시 이전 문 안내 제거
+        { // 제거 시작
+            doorNotice.text = string.Empty; // 오래된 열쇠 수량 안내 제거
+        } // 제거 끝
+        private void UpdateDoorNotice(string message) // 문 상호작용 안내 갱신
+        { // 갱신 시작
+            doorNotice.text = message; // 실제 안내 문구 표시
+        } // 갱신 끝
         private void UpdateRoom() // 현재 방의 역할 표시
         { // 갱신 시작
             var room = travel.Layout.GetRoom(travel.RoomX, travel.RoomY); // 실제 현재 방 정보 조회
