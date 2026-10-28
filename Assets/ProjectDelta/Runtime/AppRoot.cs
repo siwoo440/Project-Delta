@@ -8,6 +8,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private SceneLoader sceneLoader; // 실제 씬 로더
         private CombatScreenView combatScreen; // 시험 전투 화면
+        private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
+        public InventoryState Inventory // 현재 게임의 아이템 상태
+        { // 속성 시작
+            get; // 인벤토리 조회
+            private set; // 새 게임 인벤토리 변경
+        } = new InventoryState(); // 기본 빈 인벤토리 생성
         public int PlayerHealth // 탐험 중 플레이어 현재 체력
         { // 속성 시작
             get; // 현재 체력 조회
@@ -41,6 +47,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             Input = GetComponent<GameInputRouter>(); // 입력 제어 연결
             Input.Initialize(); // 전용 입력 준비
             Input.BackRequested += ReturnToTitle; // 탐험 복귀 입력 연결
+            Input.InventoryRequested += OpenInventory; // 인벤토리 열기 입력 연결
             Application.targetFrameRate = 60; // 기본 목표 프레임
         } // 초기 준비 끝
         private void Start() // 최초 실행 흐름
@@ -55,6 +62,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
             { // 새 게임 조건 시작
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
+                Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
         } // 메서드 끝
@@ -62,6 +70,38 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        public void OpenInventory() // 탐험 중 인벤토리 화면 열기
+        { // 열기 시작
+            if (!Flow.TryOpenInventory()) // 인벤토리 진입 상태 검사
+            { // 진입 거절 조건 시작
+                return; // 중복 또는 탐험 외 요청 차단
+            } // 진입 거절 조건 끝
+            Input.SetPhase(GamePhase.Inventory); // 탐험 입력 잠금과 화면 입력 활성화
+            try // 실제 인벤토리 화면 준비
+            { // 화면 준비 시작
+                inventoryScreen = InventoryScreenView.Create(this); // 인벤토리 화면 생성
+            } // 화면 준비 끝
+            catch (System.Exception exception) // 화면 생성 실패 복구
+            { // 실패 복구 시작
+                Flow.TryCloseInventory(); // 기존 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Inventory screen failed: " + exception.Message); // 실제 오류 기록
+            } // 실패 복구 끝
+        } // 열기 끝
+        public void CloseInventory() // 인벤토리 화면 닫고 탐험 복귀
+        { // 닫기 시작
+            if (!Flow.TryCloseInventory()) // 인벤토리 상태 검사
+            { // 닫기 거절 조건 시작
+                return; // 중복 또는 잘못된 닫기 차단
+            } // 닫기 거절 조건 끝
+            if (inventoryScreen != null) // 인벤토리 화면 존재 검사
+            { // 화면 정리 시작
+                inventoryScreen.gameObject.SetActive(false); // 기존 화면 즉시 숨김
+                Destroy(inventoryScreen.gameObject); // 인벤토리 화면 정리
+                inventoryScreen = null; // 화면 참조 해제
+            } // 화면 정리 끝
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 닫기 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
         { // 반영 시작
             PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지
@@ -131,6 +171,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Input != null) // 입력 객체 존재 검사
             { // 해제 조건 시작
                 Input.BackRequested -= ReturnToTitle; // 복귀 입력 연결 해제
+                Input.InventoryRequested -= OpenInventory; // 인벤토리 열기 연결 해제
             } // 해제 조건 끝
             Instance = null; // 공통 객체 등록 해제
         } // 해제 끝

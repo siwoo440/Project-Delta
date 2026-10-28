@@ -25,6 +25,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action BackRequested; // 타이틀 복귀 요청 알림
         public event Action<Vector2Int> MoveRequested; // 한 칸 이동 요청 알림
         public event Action InteractionRequested; // 정면 상호작용 요청 알림
+        public event Action InventoryRequested; // 인벤토리 열기 요청 알림
         public event Action ExplorationLocked; // 탐험 입력 잠금 알림
         public bool IsUiEnabled => uiMap != null && uiMap.enabled; // 실제 화면 입력 상태
         public bool IsExplorationEnabled => explorationMap != null && explorationMap.enabled; // 실제 탐험 입력 상태
@@ -43,6 +44,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             submit.AddBinding("<Gamepad>/buttonSouth"); // 게임패드 선택 연결
             var cancel = uiMap.AddAction("Cancel", InputActionType.Button, "<Keyboard>/escape"); // 화면 취소 입력 생성
             cancel.AddBinding("<Gamepad>/buttonEast"); // 게임패드 취소 연결
+            cancel.AddBinding("<Keyboard>/i"); // 인벤토리 단축키 닫기 연결
+            cancel.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 닫기 연결
             var point = uiMap.AddAction("Point", InputActionType.PassThrough, "<Mouse>/position"); // 마우스 위치 입력
             var click = uiMap.AddAction("Click", InputActionType.PassThrough, "<Mouse>/leftButton"); // 마우스 선택 입력
             var scroll = uiMap.AddAction("Scroll", InputActionType.PassThrough, "<Mouse>/scroll"); // 마우스 스크롤 입력
@@ -60,6 +63,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var interact = explorationMap.AddAction("Interact", InputActionType.Button, "<Keyboard>/e"); // 탐험 상호작용 입력
             interact.AddBinding("<Gamepad>/buttonSouth"); // 게임패드 상호작용 연결
             interact.performed += OnInteract; // 상호작용 요청 감지
+            var inventory = explorationMap.AddAction("Inventory", InputActionType.Button, "<Keyboard>/i"); // 인벤토리 열기 입력
+            inventory.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 열기 연결
+            inventory.performed += OnInventory; // 인벤토리 열기 감지
             var eventObject = new GameObject("EventSystem"); // 단일 화면 입력 객체
             eventObject.SetActive(false); // 연결 전 입력 활성화 방지
             eventObject.transform.SetParent(transform, false); // 공통 객체 아래 배치
@@ -98,7 +104,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 입력 잠금 조건 시작
                 ExplorationLocked?.Invoke(); // 대기 중인 이동 취소 요청
             } // 입력 잠금 조건 끝
-            if (phase == GamePhase.Title || phase == GamePhase.Combat) // 화면 입력 상태 검사
+            if (phase == GamePhase.Title || phase == GamePhase.Combat || phase == GamePhase.Inventory) // 화면 입력 상태 검사
             { // 화면 입력 조건 시작
                 uiModule.enabled = true; // 화면 입력 전달 활성화
                 uiMap.Enable(); // 타이틀 입력만 활성화
@@ -127,6 +133,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void OnBack(InputAction.CallbackContext context) // 복귀 입력 전달
         { // 전달 시작
             BackRequested?.Invoke(); // 화면 흐름에 복귀 요청
+        } // 전달 끝
+        private void OnInventory(InputAction.CallbackContext context) // 탐험 인벤토리 열기 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                InventoryRequested?.Invoke(); // 인벤토리 열기 요청
+            } // 탐험 조건 끝
         } // 전달 끝
         private void OnInteract(InputAction.CallbackContext context) // 탐험 상호작용 전달
         { // 전달 시작
@@ -237,6 +250,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             moveStick.canceled -= OnMoveStickCanceled; // 스틱 중립 연결 해제
             explorationMap.FindAction("Back").performed -= OnBack; // 복귀 감지 연결 해제
             explorationMap.FindAction("Interact").performed -= OnInteract; // 상호작용 감지 연결 해제
+            explorationMap.FindAction("Inventory").performed -= OnInventory; // 인벤토리 열기 연결 해제
             foreach (var reference in references) // 생성한 참조 순회
             { // 참조 정리 시작
                 Destroy(reference); // 실행 전용 참조 삭제

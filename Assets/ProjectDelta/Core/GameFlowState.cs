@@ -10,6 +10,24 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 상태 읽기
             private set; // 내부 상태 변경
         } = GamePhase.Initializing; // 초기 준비 상태
+        public bool TryOpenInventory() // 탐험 중 인벤토리 진입
+        { // 진입 시작
+            if (Phase != GamePhase.Exploration) // 탐험 상태 검사
+            { // 진입 거절 조건 시작
+                return false; // 탐험 외 인벤토리 차단
+            } // 진입 거절 조건 끝
+            Phase = GamePhase.Inventory; // 인벤토리 화면 상태 적용
+            return true; // 인벤토리 진입 허용
+        } // 진입 끝
+        public bool TryCloseInventory() // 인벤토리에서 탐험 복귀
+        { // 복귀 시작
+            if (Phase != GamePhase.Inventory) // 인벤토리 상태 검사
+            { // 복귀 거절 조건 시작
+                return false; // 잘못된 닫기 요청 차단
+            } // 복귀 거절 조건 끝
+            Phase = GamePhase.Exploration; // 기존 탐험 상태 복구
+            return true; // 인벤토리 닫기 허용
+        } // 복귀 끝
         public bool TryStartCombat() // 탐험에서 시험 전투 진입
         { // 진입 시작
             if (Phase != GamePhase.Exploration) // 탐험 상태 검사

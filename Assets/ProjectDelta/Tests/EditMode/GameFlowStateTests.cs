@@ -73,6 +73,21 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 기존 탐험 복귀
             Assert.That(flow.TryEndCombat(), Is.False); // 중복 종료 차단
         } // 검증 끝
+        [Test] // 인벤토리 전환과 중복 요청 검증
+        public void Inventory_RequiresExploration_AndRestoresExploration() // 탐험과 인벤토리 왕복 확인
+        { // 검증 시작
+            var flow = CreateTitleState(); // 타이틀 상태 준비
+            Assert.That(flow.TryOpenInventory(), Is.False); // 타이틀에서 열기 차단
+            Assert.That(flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 탐험 전환 요청
+            flow.CompleteTransition(); // 탐험 전환 완료
+            Assert.That(flow.TryOpenInventory(), Is.True); // 탐험에서 열기 허용
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Inventory)); // 인벤토리 상태 확인
+            Assert.That(flow.TryOpenInventory(), Is.False); // 중복 열기 차단
+            Assert.That(flow.TryStartCombat(), Is.False); // 열린 인벤토리의 조우 차단
+            Assert.That(flow.TryCloseInventory(), Is.True); // 인벤토리 닫기 허용
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 기존 탐험 복귀
+            Assert.That(flow.TryCloseInventory(), Is.False); // 중복 닫기 차단
+        } // 검증 끝
         private static GameFlowState CreateTitleState() // 타이틀 검증 준비
         { // 준비 시작
             var flow = new GameFlowState(); // 초기 상태 생성
