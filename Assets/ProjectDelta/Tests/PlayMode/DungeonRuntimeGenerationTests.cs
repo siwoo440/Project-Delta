@@ -476,8 +476,36 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 조우 화면 갱신 대기
             Assert.That(player.X, Is.EqualTo(0)); // 도착 가로 칸 확인
             Assert.That(player.Y, Is.EqualTo(1)); // 포착 범위 도착 확인
-            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 자동 전투 진입 확인
-            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 탐험 입력 잠금 확인
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 조우 선택 화면 진입 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 조우 중 탐험 입력 잠금
+            Assert.That(AppRoot.Instance.Input.IsUiEnabled, Is.True); // 조우 화면 입력 활성화
+            Assert.That(GameObject.Find("BattleCanvas"), Is.Null); // 선택 전 전투 시작 차단
+            var encounterCanvas = GameObject.Find("EncounterCanvas"); // 실제 조우 화면 조회
+            var encounterButton = GameObject.Find("EncounterFightButton"); // 조우 전투 선택 버튼
+            Assert.That(encounterCanvas, Is.Not.Null); // 조우 화면 존재 확인
+            Assert.That(encounterButton, Is.Not.Null); // 실제 전투 선택 제공 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(encounterButton)); // 키보드 기본 선택 확인
+            yield return null; // 조우 초상화의 화면 크기 반영 대기
+            yield return null; // 실제 조우 표시 안정화 대기
+            var portrait = GameObject.Find("EncounterPortrait"); // 시험 대상의 초상화 조회
+            Assert.That(portrait, Is.Not.Null); // 조우 초상화 존재 확인
+            Assert.That(portrait.GetComponent<UnityEngine.UI.RawImage>().enabled, Is.True); // 실제 초상화 표시 확인
+            Assert.That(portrait.GetComponent<RectTransform>().sizeDelta.x, Is.GreaterThan(0f)); // 표시 가능한 초상화 크기 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("EncounterCanvas"); // 실제 조우 선택 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 조우 전투 선택 입력
+            yield return null; // 조우 선택 처리 대기
+            yield return null; // 선택 키를 누른 상태 유지
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 선택 후 전투 진입 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 누른 선택 키의 중복 공격 방지
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 조우 선택 키 해제
+            yield return null; // 전투 화면 입력 준비 대기
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 전투 중 탐험 입력 잠금 확인
             Assert.That(AppRoot.Instance.Input.IsUiEnabled, Is.True); // 전투 화면 입력 확인
             var battle = GameObject.Find("BattleCanvas"); // 전투 화면 조회
             Assert.That(battle, Is.Not.Null); // 실제 전투 화면 표시 확인
@@ -513,13 +541,6 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var noticeText = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 공격 결과 안내
             Assert.That(noticeText.text, Does.Contain("플레이어 공격")); // 플레이어 공격 결과 유지 확인
             Assert.That(noticeText.text, Does.Contain("상위 개체 공격")); // 상대 공격 결과 함께 표시
-            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
-            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
-            { // 캡처 조건 시작
-                var image = CaptureScreen("BattleCanvas"); // 실제 전투 화면 렌더링
-                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
-                Object.Destroy(image); // 캡처 이미지 정리
-            } // 캡처 조건 끝
             advance.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 기본 공격
             Assert.That(roundText.text, Does.Contain("승리")); // 적 체력 소진과 승리 확인
             Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 승리 후 복귀 버튼 선택 확인
@@ -862,6 +883,44 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 조우 화면 생성 실패 복구 검증
+        public IEnumerator Encounter_ScreenFailure_RestoresExploration() // 입력 관리자 누락과 탐험 복구
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current; // 실제 화면 입력 관리자
+            Assert.That(eventSystem, Is.Not.Null); // 입력 관리자 존재 확인
+            eventSystem.gameObject.SetActive(false); // 조우 화면의 입력 관리자 누락 모사
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^Encounter screen failed:")); // 예상한 조우 화면 오류
+            Assert.That(AppRoot.Instance.StartEncounter(), Is.False); // 입력 없는 조우 화면 거절
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 조우 실패 시 탐험 복구
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
+            eventSystem.gameObject.SetActive(true); // 화면 입력 관리자 복구
+            yield return null; // 입력 복구 대기
+            Assert.That(AppRoot.Instance.StartEncounter(), Is.True); // 입력 복구 후 조우 재시도
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 재시도한 조우 진입 확인
+        } // 검증 끝
+        [UnityTest] // 전투 화면 생성 실패 복구 검증
+        public IEnumerator Encounter_CombatScreenFailure_RestoresChoice() // 실제 화면 오류와 조우 복구
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            Assert.That(AppRoot.Instance.StartEncounter(), Is.True); // 실제 조우 화면 진입
+            yield return null; // 조우 화면 준비 대기
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current; // 실제 화면 입력 관리자
+            Assert.That(eventSystem, Is.Not.Null); // 입력 관리자 존재 확인
+            eventSystem.gameObject.SetActive(false); // 전투 화면 생성 실패 상황 모사
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^Combat screen failed:")); // 예상한 화면 생성 오류
+            Assert.That(AppRoot.Instance.StartCombat(), Is.False); // 실패한 전투 화면 진입 거절
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 기존 조우 상태 복구
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 조우 중 탐험 입력 유지
+            Assert.That(GameObject.Find("EncounterCanvas"), Is.Not.Null); // 기존 조우 화면 보존
+            Assert.That(GameObject.Find("BattleCanvas"), Is.Null); // 실패한 전투 화면 즉시 숨김
+            eventSystem.gameObject.SetActive(true); // 화면 입력 관리자 복구
+            yield return null; // 실패한 전투 화면 정리 대기
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 조우 화면에서 전투 재시도
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 재시도한 전투 진입 확인
+        } // 검증 끝
         [UnityTest] // 게임패드 방어 선택 검증
         public IEnumerator Combat_Defend_GamepadSelectionReducesDamage() // 실제 게임패드 선택과 피해 확인
         { // 검증 시작
@@ -1199,7 +1258,17 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 yield return null; // 다음 프레임 대기
             } // 대기 끝
             yield return null; // 전투 화면 생성 대기
-            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실제 자동 조우 확인
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 실제 자동 조우 화면 확인
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 조우 선택용 게임패드 연결
+            InputSystem.Update(); // 게임패드 반영
+            yield return null; // 조우 입력 준비 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 전투 선택
+            yield return null; // 조우 선택 처리 대기
+            yield return null; // 선택 버튼을 누른 상태 유지
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 게임패드 전투 진입 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 누른 버튼의 중복 공격 방지
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 전투 입력 준비 대기
             var flee = GameObject.Find("FleeBattleButton"); // 실제 도주 버튼
             Assert.That(flee, Is.Not.Null); // 정식 도주 버튼 확인
             UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(flee); // 도주 버튼 선택

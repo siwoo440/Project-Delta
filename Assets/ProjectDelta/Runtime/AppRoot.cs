@@ -8,6 +8,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private SceneLoader sceneLoader; // 실제 씬 로더
         private CombatScreenView combatScreen; // 시험 전투 화면
+        private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         public InventoryState Inventory // 현재 게임의 아이템 상태
         { // 속성 시작
@@ -114,8 +115,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 반영 시작
             PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지
         } // 반영 끝
-        public bool StartCombat() // 자동 조우의 전투 화면 진입
+        public bool StartEncounter() // 탐험 중 조우 선택 화면 진입
         { // 진입 시작
+            if (!Flow.TryStartEncounter()) // 조우 진입 상태 검사
+            { // 진입 거절 조건 시작
+                return false; // 중복 조우 차단
+            } // 진입 거절 조건 끝
+            Input.SetPhase(GamePhase.Encounter); // 탐험 입력 잠금과 조우 입력 활성화
+            try // 실제 조우 화면 준비
+            { // 화면 준비 시작
+                encounterScreen = EncounterScreenView.Create(this); // 시험 조우 선택 화면 생성
+                return true; // 실제 화면 진입 성공
+            } // 화면 준비 끝
+            catch (System.Exception exception) // 조우 화면 생성 실패 복구
+            { // 실패 복구 시작
+                Flow.TryCancelEncounter(); // 기존 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Encounter screen failed: " + exception.Message); // 실제 오류 기록
+                return false; // 잘못된 조우 진입 거절
+            } // 실패 복구 끝
+        } // 진입 끝
+        public bool StartCombat() // 조우 선택 또는 시험 전투 화면 진입
+        { // 진입 시작
+            var fromEncounter = Flow.Phase == GamePhase.Encounter; // 조우 화면에서의 전투 선택 검사
             if (!Flow.TryStartCombat()) // 전투 진입 상태 검사
             { // 진입 거절 조건 시작
                 return false; // 중복 조우 차단
@@ -124,12 +146,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             try // 실제 전투 화면 준비
             { // 화면 준비 시작
                 combatScreen = CombatScreenView.Create(this); // 시험 전투 화면 생성
+                if (fromEncounter && encounterScreen != null) // 전투 선택 후 기존 조우 화면 검사
+                { // 조우 화면 정리 시작
+                    encounterScreen.gameObject.SetActive(false); // 조우 화면 즉시 숨김
+                    Destroy(encounterScreen.gameObject); // 전환 완료된 조우 화면 제거
+                    encounterScreen = null; // 기존 조우 화면 참조 해제
+                } // 조우 화면 정리 끝
                 return true; // 실제 화면 진입 성공
             } // 화면 준비 끝
             catch (System.Exception exception) // 화면 생성 실패 복구
             { // 실패 복구 시작
-                Flow.TryEndCombat(); // 기존 탐험 상태 복구
-                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                if (fromEncounter) // 조우 화면에서 시작한 전투 검사
+                { // 조우 복구 시작
+                    Flow.TryRevertCombatToEncounter(); // 기존 조우 상태 복구
+                } // 조우 복구 끝
+                else // 시험 전투의 탐험 복구
+                { // 탐험 복구 시작
+                    Flow.TryEndCombat(); // 기존 탐험 상태 복구
+                } // 탐험 복구 끝
+                Input.SetPhase(Flow.Phase); // 이전 화면의 입력 복구
+                if (fromEncounter && encounterScreen != null) // 복구할 조우 화면 검사
+                { // 조우 선택 복구 시작
+                    encounterScreen.SelectDefault(); // 전투 선택 버튼 복구
+                } // 조우 선택 복구 끝
                 Debug.LogError("Combat screen failed: " + exception.Message); // 실제 오류 기록
                 return false; // 잘못된 전투 진입 거절
             } // 실패 복구 끝

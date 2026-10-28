@@ -233,7 +233,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
             if (room != null && room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()) && EncounterRange.Contains(player.X, player.Y, 0, 0)) // 대상 주변 여덟 방향 검사
             { // 자동 조우 조건 시작
-                AppRoot.Instance.StartCombat(); // 전투 진입과 대기 이동 취소
+                AppRoot.Instance.StartEncounter(); // 조우 선택 화면과 대기 이동 취소
             } // 자동 조우 조건 끝
         } // 검사 끝
         public bool CompleteCurrentEncounter() // 승리한 방의 시험 조우 완료

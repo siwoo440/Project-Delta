@@ -73,11 +73,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 화면 구성 끝
             catch // 화면 준비 실패 정리
             { // 실패 정리 시작
+                screen.SetActive(false); // 실패한 화면 즉시 숨김
                 Destroy(screen); // 불완전한 화면 제거
                 throw; // 원래 오류 전달
             } // 실패 정리 끝
         } // 생성 끝
-        private static void AddPortrait(Transform parent, string name, string resourcePath, Vector2 position) // 선택적인 전투 초상화 생성
+        internal static void AddPortrait(Transform parent, string name, string resourcePath, Vector2 position) // 선택적인 화면 초상화 생성
         { // 생성 시작
             var texture = Resources.Load<Texture2D>(resourcePath); // 전투 이미지 리소스 조회
             if (texture == null) // 이미지 누락 검사

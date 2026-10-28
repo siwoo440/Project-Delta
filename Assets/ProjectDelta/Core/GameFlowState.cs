@@ -5,6 +5,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     { // 클래스 시작
         private GamePhase previousPhase; // 전환 전 상태
         private GamePhase destinationPhase; // 전환 목적 상태
+        private GamePhase combatOrigin; // 전투 화면 생성 전 상태
         public GamePhase Phase // 현재 상태
         { // 속성 시작
             get; // 상태 읽기
@@ -28,12 +29,40 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             Phase = GamePhase.Exploration; // 기존 탐험 상태 복구
             return true; // 인벤토리 닫기 허용
         } // 복귀 끝
-        public bool TryStartCombat() // 탐험에서 시험 전투 진입
+        public bool TryStartEncounter() // 탐험 중 조우 선택 화면 진입
         { // 진입 시작
             if (Phase != GamePhase.Exploration) // 탐험 상태 검사
             { // 진입 거절 조건 시작
                 return false; // 탐험 외 조우 차단
             } // 진입 거절 조건 끝
+            Phase = GamePhase.Encounter; // 조우 선택 상태 적용
+            return true; // 조우 진입 허용
+        } // 진입 끝
+        public bool TryCancelEncounter() // 조우 화면 생성 실패 복구
+        { // 복구 시작
+            if (Phase != GamePhase.Encounter) // 조우 상태 검사
+            { // 복구 거절 조건 시작
+                return false; // 잘못된 복구 차단
+            } // 복구 거절 조건 끝
+            Phase = GamePhase.Exploration; // 기존 탐험 상태 복구
+            return true; // 조우 실패 복구 성공
+        } // 복구 끝
+        public bool TryRevertCombatToEncounter() // 전투 화면 생성 실패 시 조우 복구
+        { // 복구 시작
+            if (Phase != GamePhase.Combat || combatOrigin != GamePhase.Encounter) // 조우에서 시작한 전투 검사
+            { // 복구 거절 조건 시작
+                return false; // 잘못된 조우 복구 차단
+            } // 복구 거절 조건 끝
+            Phase = GamePhase.Encounter; // 이전 조우 화면 상태 복구
+            return true; // 전투 실패 복구 성공
+        } // 복구 끝
+        public bool TryStartCombat() // 조우 선택 또는 시험 전투 진입
+        { // 진입 시작
+            if (Phase != GamePhase.Exploration && Phase != GamePhase.Encounter) // 탐험 또는 조우 상태 검사
+            { // 진입 거절 조건 시작
+                return false; // 다른 화면의 전투 시작 차단
+            } // 진입 거절 조건 끝
+            combatOrigin = Phase; // 실패 시 복구할 이전 상태 보관
             Phase = GamePhase.Combat; // 시험 전투 상태 적용
             return true; // 전투 진입 허용
         } // 진입 끝
