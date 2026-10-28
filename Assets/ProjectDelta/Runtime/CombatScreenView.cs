@@ -8,6 +8,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         internal const int TrialPlayerSpeed = 10; // 시험 플레이어 속도
         internal const int TrialEnemySpeed = 5; // 시험 상대 속도
+        internal const int TrialEnemyHealth = 70; // 시험 상대 최대 체력
         private readonly System.Random random = new System.Random(); // 전투 판정 난수
         private AppRoot owner; // 탐험 상태와 체력 관리자
         private BattleRound round; // 시험 전투 라운드 상태
@@ -105,7 +106,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 new BattleActor("상위 개체", TrialEnemySpeed, false, 1) // 시험 상대 속도
             }; // 목록 끝
             player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
-            enemy = new CombatFighter(participants[1], 70, 11, 7, 85, 8); // 시험 상위 개체 능력치
+            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 85, 8); // 시험 상위 개체 능력치
             round = new BattleRound(participants); // 참가자별 라운드 생성
             if (!round.TryStartRound() || !round.TryNext(out current)) // 첫 라운드와 행동자 검사
             { // 준비 실패 조건 시작

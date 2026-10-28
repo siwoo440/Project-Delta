@@ -883,6 +883,133 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 조우 관찰 성공과 회차 기록 검증
+        public IEnumerator EncounterObserve_Success_ShowsInfoAndResetsWithNewGame() // 실제 관찰 선택과 정보 재확인
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 상대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("ObserveRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 관찰 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 동점 성공 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var observe = GameObject.Find("EncounterObserveButton"); // 실제 관찰 버튼 조회
+            Assert.That(observe, Is.Not.Null); // 관찰 선택 제공 확인
+            for (var index = 0; index < 2; index++) // 전투 선택에서 관찰 선택까지 이동
+            { // 선택 이동 시작
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 처리 대기
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(observe)); // 키보드 관찰 선택 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 관찰 선택
+            yield return null; // 관찰 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 관찰 결과 표시 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 성공한 관찰 후 조우 유지
+            var description = GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>(); // 실제 관찰 정보 표시
+            Assert.That(description.text, Does.Contain("체력 70")); // 1단계 시험 체력 공개
+            Assert.That(description.text, Does.Contain("기본 공격")); // 시험 상대 공격 성향 공개
+            Assert.That(observe.transform.Find("Label").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("정보 확인")); // 관찰 완료 후 정보 확인 안내
+            var journalProperty = typeof(AppRoot).GetProperty("Observations"); // 현재 회차 관찰 기록 조회
+            Assert.That(journalProperty, Is.Not.Null); // 회차 관찰 기록 제공 확인
+            var journal = journalProperty.GetValue(AppRoot.Instance); // 실제 관찰 기록
+            var contains = journal.GetType().GetMethod("Contains"); // 대상 기록 조회 메서드
+            var arguments = new object[] // 시험 대상 식별자 인수
+            { // 인수 목록 시작
+                "trial-elite" // 현재 시험 대상 식별자
+            }; // 인수 목록 끝
+            Assert.That(contains.Invoke(journal, arguments), Is.True); // 성공한 관찰 기록 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("EncounterCanvas"); // 실제 관찰 결과 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            observe.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 관찰한 정보 다시 확인
+            Assert.That(rolls.Count, Is.Zero); // 정보 확인 시 추가 주사위 없음
+            Assert.That(description.text, Does.Contain("체력 70")); // 재확인한 시험 체력 표시
+            AppRoot.Instance.ReturnToTitle(); // 새 게임을 위한 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            AppRoot.Instance.StartNewGame(); // 새 게임 요청
+            yield return WaitForPhase(GamePhase.Exploration); // 새 던전 도착 대기
+            var fresh = journalProperty.GetValue(AppRoot.Instance); // 새 회차 관찰 기록
+            Assert.That(fresh, Is.Not.SameAs(journal)); // 새 회차의 독립 기록 확인
+            Assert.That(contains.Invoke(fresh, arguments), Is.False); // 새 게임의 시험 기록 초기화
+        } // 검증 끝
+        [UnityTest] // 관찰 실패 후 전투 화면 오류 복구 검증
+        public IEnumerator EncounterObserve_FailedCombatCreation_DoesNotReroll() // 실패 판정 보존과 전투 재시도
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
+            rolls.Enqueue(1); // 플레이어 최소 주사위
+            rolls.Enqueue(20); // 상대 최대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("ObserveRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 관찰 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var observe = GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>(); // 실제 관찰 버튼
+            var escape = GameObject.Find("EncounterEscapeButton").GetComponent<UnityEngine.UI.Button>(); // 실제 도망 버튼
+            var fight = GameObject.Find("EncounterFightButton"); // 실제 전투 선택 버튼
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current; // 실제 화면 입력 관리자
+            eventSystem.SetSelectedGameObject(observe.gameObject); // 관찰 버튼의 실제 선택 상태
+            eventSystem.gameObject.SetActive(false); // 전투 화면 생성 실패 모사
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^Combat screen failed:")); // 예상한 전투 화면 오류
+            observe.onClick.Invoke(); // 실패한 관찰과 전투 생성 요청
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 오류 후 조우 화면 복구
+            Assert.That(observe.interactable, Is.False); // 관찰 재시도 비활성화
+            Assert.That(escape.interactable, Is.False); // 실패 후 다른 조우 행동 차단
+            Assert.That(rolls.Count, Is.Zero); // 실패한 판정의 주사위 소비 확인
+            observe.onClick.Invoke(); // 잘못된 중복 관찰 요청
+            Assert.That(rolls.Count, Is.Zero); // 추가 주사위 소비 방지
+            eventSystem.gameObject.SetActive(true); // 화면 입력 관리자 복구
+            yield return null; // 입력 관리자 반영 대기
+            yield return null; // 전투 버튼 선택 복구 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(fight)); // 전투 재시도 선택 복구
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 전투 재시도 입력
+            yield return null; // 전투 선택 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 전투 화면 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 판정의 전투 재시도 성공
+        } // 검증 끝
+        [UnityTest] // 게임패드 관찰 실패의 전투 진입 검증
+        public IEnumerator EncounterObserve_GamepadFailure_StartsCombat() // 실제 관찰 실패와 미공개 정보 확인
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
+            rolls.Enqueue(1); // 플레이어 최소 주사위
+            rolls.Enqueue(20); // 상대 최대 주사위
+            var property = typeof(EncounterScreenView).GetProperty("ObserveRollOverride"); // 검증 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 관찰 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var observe = GameObject.Find("EncounterObserveButton"); // 실제 관찰 버튼 조회
+            Assert.That(observe, Is.Not.Null); // 관찰 선택 제공 확인
+            for (var index = 0; index < 2; index++) // 전투 선택에서 관찰 선택까지 이동
+            { // 선택 이동 시작
+                InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 처리 대기
+                InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(observe)); // 게임패드 관찰 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 실제 관찰 선택
+            yield return null; // 관찰 실패와 전투 처리 대기
+            yield return null; // 선택 버튼 유지 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 관찰 실패 후 일반 전투 진입
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 누른 선택 버튼의 중복 공격 방지
+            var journal = typeof(AppRoot).GetProperty("Observations").GetValue(AppRoot.Instance); // 현재 회차 관찰 기록
+            var arguments = new object[] // 시험 대상 식별자 인수
+            { // 인수 목록 시작
+                "trial-elite" // 현재 시험 대상 식별자
+            }; // 인수 목록 끝
+            Assert.That(journal.GetType().GetMethod("Contains").Invoke(journal, arguments), Is.False); // 실패한 관찰 정보 미공개
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 전투 입력 준비 대기
+        } // 검증 끝
         [UnityTest] // 성공한 조우 도망의 이동 실패 복구 검증
         public IEnumerator EncounterEscape_Success_RetriesBlockedArrivalAndKeepsMonster() // 이전 방 복구와 재조우 확인
         { // 검증 시작
@@ -937,6 +1064,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.RoomX, Is.EqualTo(target.X)); // 이동 실패 시 조우 방 가로 유지
             Assert.That(travel.RoomY, Is.EqualTo(target.Y)); // 이동 실패 시 조우 방 세로 유지
             Assert.That(rolls.Count, Is.Zero); // 성공한 주사위 한 번만 사용
+            var fight = GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>(); // 전투 선택 버튼
+            var observe = GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>(); // 관찰 선택 버튼
+            Assert.That(fight.interactable || observe.interactable, Is.False); // 성공한 도망의 다른 선택 차단
+            fight.onClick.Invoke(); // 잘못된 전투 선택 요청
+            observe.onClick.Invoke(); // 잘못된 관찰 선택 요청
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 이동 전 조우 화면 보존
             Assert.That(GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("이동 실패")); // 이동 실패 안내
             Object.Destroy(blocker); // 시험 차단 장치 제거
             previous.transform.Find("Obstacles").GetComponent<Tilemap>().SetTile(blocker.Cell, null); // 시험 장애물 제거
@@ -1643,6 +1776,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
             typeof(EncounterScreenView).GetProperty("EscapeRollOverride")?.SetValue(null, null); // 검증용 도망 주사위 해제
+            typeof(EncounterScreenView).GetProperty("ObserveRollOverride")?.SetValue(null, null); // 검증용 관찰 주사위 해제
             if (testController != null) // 검증용 제어 객체 존재 검사
             { // 제어 객체 정리 시작
                 Object.Destroy(testController); // 검증용 제어 객체 제거
