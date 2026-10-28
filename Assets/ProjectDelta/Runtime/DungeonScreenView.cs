@@ -10,8 +10,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
             UiFactory.CreateText(canvas.transform, "Status", "한 번 입력하면 한 칸 이동합니다", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 기본 이동 방식 안내
-            UiFactory.CreateText(canvas.transform, "Scope", "흰 화살표: 바라보는 방향  ·  붉은 칸: 장애물", 23, new Vector2(0f, -380f), new Vector2(1400f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 장애물 표시 안내
-            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  Esc / 패드 취소: 타이틀", 23, new Vector2(0f, -455f), new Vector2(1500f, 60f), mint); // 이동과 복귀 조작 안내
+            UiFactory.CreateText(canvas.transform, "Scope", "흰 화살표: 방향  ·  노란 화살표: 문  ·  붉은 칸: 장애물", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
+            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문  ·  Esc: 타이틀", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
         } // 구성 끝
     } // 클래스 끝
 } // 이름 공간 끝

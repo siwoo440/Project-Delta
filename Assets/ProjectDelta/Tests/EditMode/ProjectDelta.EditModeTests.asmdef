@@ -1,6 +1,6 @@
 {
     "name": "ProjectDelta.EditModeTests",
-    "references": ["ProjectDelta.Core", "ProjectDelta.Editor"],
+    "references": ["ProjectDelta.Core", "ProjectDelta.Editor", "ProjectDelta.Runtime"],
     "includePlatforms": ["Editor"],
     "optionalUnityReferences": ["TestAssemblies"]
 }

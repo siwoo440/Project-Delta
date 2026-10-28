@@ -30,6 +30,7 @@ namespace ProjectDelta.Editor // 제작 도구 이름 공간
             CreateDungeonGrid(tile); // 탐험용 정지 격자 배치
             new GameObject("DungeonScreen", typeof(DungeonScreenView)); // 던전 안내 화면 배치
             DayTwoProjectSetup.ConfigureCurrentScene(true); // 새 격자의 이동과 시험 장애물 구성
+            DayThreeProjectSetup.ConfigureCurrentScene(); // 새 던전의 두 시험 방 연결
             EditorSceneManager.SaveScene(dungeon, SceneFolder + "/DungeonScene.unity"); // 던전 씬 저장
             EditorBuildSettings.scenes = new[] // 실제 실행 씬 목록
             { // 씬 목록 시작

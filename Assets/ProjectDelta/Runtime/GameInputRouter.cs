@@ -24,6 +24,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly Dictionary<int, Vector2Int> lastStickDirections = new Dictionary<int, Vector2Int>(); // 장치별 마지막 스틱 방향
         public event Action BackRequested; // 타이틀 복귀 요청 알림
         public event Action<Vector2Int> MoveRequested; // 한 칸 이동 요청 알림
+        public event Action InteractionRequested; // 정면 상호작용 요청 알림
         public event Action ExplorationLocked; // 탐험 입력 잠금 알림
         public bool IsUiEnabled => uiMap != null && uiMap.enabled; // 실제 화면 입력 상태
         public bool IsExplorationEnabled => explorationMap != null && explorationMap.enabled; // 실제 탐험 입력 상태
@@ -56,6 +57,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var back = explorationMap.AddAction("Back", InputActionType.Button, "<Keyboard>/escape"); // 던전 복귀 입력 생성
             back.AddBinding("<Gamepad>/buttonEast"); // 게임패드 복귀 연결
             back.performed += OnBack; // 복귀 요청 감지 연결
+            var interact = explorationMap.AddAction("Interact", InputActionType.Button, "<Keyboard>/e"); // 탐험 상호작용 입력
+            interact.AddBinding("<Gamepad>/buttonSouth"); // 게임패드 상호작용 연결
+            interact.performed += OnInteract; // 상호작용 요청 감지
             var eventObject = new GameObject("EventSystem"); // 단일 화면 입력 객체
             eventObject.SetActive(false); // 연결 전 입력 활성화 방지
             eventObject.transform.SetParent(transform, false); // 공통 객체 아래 배치
@@ -123,6 +127,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void OnBack(InputAction.CallbackContext context) // 복귀 입력 전달
         { // 전달 시작
             BackRequested?.Invoke(); // 화면 흐름에 복귀 요청
+        } // 전달 끝
+        private void OnInteract(InputAction.CallbackContext context) // 탐험 상호작용 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                InteractionRequested?.Invoke(); // 정면 상호작용 요청
+            } // 탐험 조건 끝
         } // 전달 끝
         private InputAction AddMoveButton(string name, string letter, string arrow, string pad) // 개별 방향 버튼 생성
         { // 생성 시작
@@ -225,6 +236,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             moveStick.performed -= OnMoveStick; // 스틱 입력 연결 해제
             moveStick.canceled -= OnMoveStickCanceled; // 스틱 중립 연결 해제
             explorationMap.FindAction("Back").performed -= OnBack; // 복귀 감지 연결 해제
+            explorationMap.FindAction("Interact").performed -= OnInteract; // 상호작용 감지 연결 해제
             foreach (var reference in references) // 생성한 참조 순회
             { // 참조 정리 시작
                 Destroy(reference); // 실행 전용 참조 삭제

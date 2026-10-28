@@ -14,6 +14,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Vector3 animationStart; // 화면 이동 시작 위치
         private Vector3 animationTarget; // 화면 이동 목표 위치
         private float elapsed; // 현재 이동 경과 시간
+        private int roomTransitionFrame = -1; // 방 전환 직후 입력 차단 프레임
         public int X => state.X; // 확정된 가로 칸
         public int Y => state.Y; // 확정된 세로 칸
         public MoveDirection Facing => state.Facing; // 현재 표시 방향
@@ -24,6 +25,26 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             obstacles = obstacleMap; // 장애물 타일맵 연결
             directionIndicator = indicator; // 방향 화살표 연결
         } // 연결 끝
+        public bool CanArrive(Tilemap floorMap, Tilemap obstacleMap, int x, int y) // 새 방 도착 칸의 안전성 검사
+        { // 판정 시작
+            var cell = new Vector3Int(x, y, 0); // 도착할 격자 칸
+            return floorMap != null && obstacleMap != null && floorMap.HasTile(cell) && !obstacleMap.HasTile(cell); // 바닥과 장애물 검사
+        } // 판정 끝
+        public bool ChangeRoom(Tilemap floorMap, Tilemap obstacleMap, int x, int y) // 이동이 끝난 플레이어의 방 전환
+        { // 전환 시작
+            if (state == null || state.IsMoving || !CanArrive(floorMap, obstacleMap, x, y)) // 이동 상태와 도착 칸 검사
+            { // 전환 불가 조건 시작
+                return false; // 기존 플레이어 위치 유지
+            } // 전환 불가 조건 끝
+            var facing = state.Facing; // 이전 이동 방향 보관
+            floor = floorMap; // 새 방 바닥 연결
+            obstacles = obstacleMap; // 새 방 장애물 연결
+            state = new GridMoveState(x, y, CanEnter, facing); // 새 방 내부 좌표와 방향 설정
+            transform.position = floor.GetCellCenterWorld(new Vector3Int(x, y, 0)); // 도착 칸 중심으로 배치
+            roomTransitionFrame = Time.frameCount; // 같은 프레임 이동 입력 차단
+            UpdateDirection(); // 기존 방향 표시 유지
+            return true; // 방 전환 성공
+        } // 전환 끝
         private void Awake() // 실제 던전 상태 초기화
         { // 초기화 시작
             if (floor == null || obstacles == null || directionIndicator == null || AppRoot.Instance == null) // 필수 씬 연결 검사
@@ -75,7 +96,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 갱신 끝
         private void OnMoveRequested(Vector2Int direction) // 입력된 한 칸 이동 요청
         { // 요청 시작
-            if (state == null || input == null || !input.IsExplorationEnabled) // 탐험 입력 가능 여부
+            if (state == null || input == null || !input.IsExplorationEnabled || roomTransitionFrame == Time.frameCount) // 탐험 입력과 방 전환 검사
             { // 차단 조건 시작
                 return; // 탐험 외 입력 무시
             } // 차단 조건 끝

@@ -25,10 +25,11 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 이동 상태 조회
             private set; // 내부 이동 상태 변경
         } // 속성 끝
-        public GridMoveState(int x, int y, Func<int, int, bool> canEnter) // 시작 칸과 통행 규칙
+        public GridMoveState(int x, int y, Func<int, int, bool> canEnter, MoveDirection facing = MoveDirection.Down) // 시작 칸과 통행 규칙
         { // 생성 시작
             X = x; // 시작 가로 칸
             Y = y; // 시작 세로 칸
+            Facing = facing; // 시작 방향 설정
             this.canEnter = canEnter ?? throw new ArgumentNullException(nameof(canEnter)); // 유효한 통행 판정 보관
         } // 생성 끝
         public MoveRequestResult RequestMove(MoveDirection direction) // 이동 요청
