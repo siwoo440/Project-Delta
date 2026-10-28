@@ -464,6 +464,23 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.Update(); // 해제 반영
             yield return null; // 입력 갱신 대기
             Assert.That(player.Y, Is.EqualTo(1)); // 전투 중 탐험 이동 차단
+            var roundTextObject = GameObject.Find("RoundStatus"); // 실제 라운드 안내 조회
+            Assert.That(roundTextObject, Is.Not.Null); // 라운드 안내 존재 확인
+            var roundText = roundTextObject.GetComponent<UnityEngine.UI.Text>(); // 실제 라운드 글자
+            Assert.That(roundText.text, Does.Contain("1라운드")); // 첫 라운드 표시 확인
+            Assert.That(roundText.text, Does.Contain("플레이어")); // 첫 행동자 표시 확인
+            var advance = GameObject.Find("AdvanceBattleButton"); // 행동 진행 버튼 조회
+            Assert.That(advance, Is.Not.Null); // 행동 진행 버튼 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.UpArrow)); // 행동 진행 버튼 방향 입력
+            yield return null; // 실제 화면 방향 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            yield return null; // 방향 해제 반영
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(advance)); // 행동 진행 버튼 선택 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 행동 진행 선택 입력
+            yield return null; // 실제 화면 선택 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 선택 해제 반영
+            Assert.That(roundText.text, Does.Contain("상위 개체")); // 두 번째 행동자 표시 확인
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
             { // 캡처 조건 시작
@@ -471,6 +488,14 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
                 Object.Destroy(image); // 캡처 이미지 정리
             } // 캡처 조건 끝
+            advance.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 마지막 행동 진행
+            Assert.That(roundText.text, Does.Contain("2라운드")); // 다음 라운드 시작 확인
+            Assert.That(roundText.text, Does.Contain("플레이어")); // 새 라운드 첫 행동자 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.DownArrow)); // 종료 버튼 방향 입력
+            yield return null; // 실제 화면 방향 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            yield return null; // 방향 해제 반영
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 종료 버튼 선택 확인
             var submits = 0; // 화면 선택 입력 발생 횟수
             var clicks = 0; // 버튼 선택 처리 횟수
             var module = UnityEngine.EventSystems.EventSystem.current.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>(); // 실제 화면 입력 모듈
@@ -542,8 +567,24 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 장치 준비 대기
             Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 진입
             yield return null; // 화면과 선택 준비 대기
-            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 선택 버튼
+            var advance = GameObject.Find("AdvanceBattleButton"); // 시험 행동 진행 버튼
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadUp)); // 진행 버튼 방향 입력
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 해제 처리 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(advance)); // 진행 버튼 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 행동 진행
             yield return null; // 실제 화면 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 행동 처리 대기
+            var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 라운드 안내 조회
+            Assert.That(roundText.text, Does.Contain("상위 개체")); // 게임패드 행동 진행 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadDown)); // 종료 버튼 방향 입력
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 해제 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 종료 선택
+            yield return null; // 실제 종료 입력 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
             yield return null; // 종료 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 탐험 복귀 확인
