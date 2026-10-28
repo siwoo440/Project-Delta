@@ -29,6 +29,7 @@ namespace ProjectDelta.Editor // 제작 도구 이름 공간
             var dungeon = CreateScreenScene(); // 던전 배경 씬 생성
             CreateDungeonGrid(tile); // 탐험용 정지 격자 배치
             new GameObject("DungeonScreen", typeof(DungeonScreenView)); // 던전 안내 화면 배치
+            DayTwoProjectSetup.ConfigureCurrentScene(true); // 새 격자의 이동과 시험 장애물 구성
             EditorSceneManager.SaveScene(dungeon, SceneFolder + "/DungeonScene.unity"); // 던전 씬 저장
             EditorBuildSettings.scenes = new[] // 실제 실행 씬 목록
             { // 씬 목록 시작
@@ -51,11 +52,15 @@ namespace ProjectDelta.Editor // 제작 도구 이름 공간
         [MenuItem("Project Delta/1일차/Windows 빌드")] // 편집기 빌드 메뉴
         public static void BuildWindows() // Windows 시험 빌드
         { // 빌드 시작
-            Directory.CreateDirectory("Builds/Windows"); // 빌드 출력 폴더 준비
+            BuildWindowsAt("Builds/Windows"); // 1일차 기본 출력 경로
+        } // 빌드 끝
+        public static void BuildWindowsAt(string outputFolder) // 지정 폴더의 Windows 빌드
+        { // 빌드 시작
+            Directory.CreateDirectory(outputFolder); // 빌드 출력 폴더 준비
             var options = new BuildPlayerOptions // 실제 빌드 옵션
             { // 옵션 목록 시작
                 scenes = System.Array.ConvertAll(EditorBuildSettings.scenes, scene => scene.path), // 검증 대상 씬 목록
-                locationPathName = "Builds/Windows/ProjectDelta.exe", // 실행 파일 경로
+                locationPathName = Path.Combine(outputFolder, "ProjectDelta.exe"), // 실행 파일 경로
                 target = BuildTarget.StandaloneWindows64, // Windows 64비트 대상
                 options = BuildOptions.None // 일반 실행 파일 빌드
             }; // 옵션 목록 끝
@@ -64,7 +69,7 @@ namespace ProjectDelta.Editor // 제작 도구 이름 공간
             { // 실패 조건 시작
                 throw new BuildFailedException("Windows build failed: " + report.summary.result); // 실패 종료 전달
             } // 실패 조건 끝
-            Debug.Log("DAY01_WINDOWS_BUILD_SUCCEEDED: " + report.summary.totalSize + " bytes"); // 빌드 성공 근거 기록
+            Debug.Log("DELTA_WINDOWS_BUILD_SUCCEEDED: " + report.summary.totalSize + " bytes"); // 빌드 성공 근거 기록
         } // 빌드 끝
         private static Scene CreateScreenScene() // 고정 직교 화면 생성
         { // 생성 시작
