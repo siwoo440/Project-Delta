@@ -15,6 +15,11 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 체력 조회
             private set; // 내부 체력 변경
         } // 속성 끝
+        public bool IsDefending // 다음 행동 전까지 유지되는 방어 상태
+        { // 속성 시작
+            get; // 현재 방어 상태 조회
+            private set; // 내부 방어 상태 변경
+        } // 속성 끝
         public int Attack // 기본 공격력
         { // 속성 시작
             get; // 공격력 조회
@@ -42,6 +47,19 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             Evasion = System.Math.Max(0, evasion); // 음수를 제외한 회피
             Actor.IsAlive = Health > 0; // 초기 체력에 따른 생존 상태
         } // 생성 끝
+        public bool BeginDefense() // 생존 참가자의 방어 행동 시작
+        { // 방어 시작
+            if (!Actor.IsAlive || Health <= 0) // 생존 상태 검사
+            { // 사망 조건 시작
+                return false; // 사망 참가자의 방어 차단
+            } // 사망 조건 끝
+            IsDefending = true; // 다음 행동까지 방어 상태 유지
+            return true; // 방어 행동 성공
+        } // 방어 끝
+        public void EndDefense() // 새 행동 차례의 방어 종료
+        { // 해제 시작
+            IsDefending = false; // 이전 방어 상태 해제
+        } // 해제 끝
         public int ApplyDamage(int amount) // 체력 피해 적용
         { // 적용 시작
             if (amount <= 0 || Health <= 0) // 유효한 피해와 생존 상태 검사
@@ -51,6 +69,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             var applied = System.Math.Min(amount, Health); // 남은 체력까지만 피해 적용
             Health -= applied; // 현재 체력 감소
             Actor.IsAlive = Health > 0; // 체력에 따른 생존 상태 갱신
+            if (!Actor.IsAlive) // 체력 소진 검사
+            { // 사망 조건 시작
+                IsDefending = false; // 사망 참가자의 방어 종료
+            } // 사망 조건 끝
             return applied; // 실제 적용된 피해 전달
         } // 적용 끝
     } // 클래스 끝

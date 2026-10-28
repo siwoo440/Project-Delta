@@ -19,6 +19,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text notice; // 최근 행동 결과 표시
         private Button advance; // 기본 공격 버튼
         private Button flee; // 정식 도주 버튼
+        private Button defend; // 방어 행동 버튼
         private Button exit; // 시험 종료 또는 결과 복귀 버튼
         private CombatOutcome outcome; // 현재 전투 승패 상태
         private int lastActionFrame = -1; // 같은 프레임의 중복 행동 차단
@@ -49,7 +50,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AddPortrait(canvas.transform, "PlayerPortrait", "BattlePortraits/PlayerPrototype", new Vector2(-600f, 45f)); // 주인공 임시 초상화
                 AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 상위 개체 임시 초상화
                 UiFactory.CreateText(canvas.transform, "Header", "전투", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 전투 화면 제목
-                UiFactory.CreateText(canvas.transform, "Status", "조우 · 기본 공격과 도주", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
+                UiFactory.CreateText(canvas.transform, "Status", "조우 · 공격과 방어, 도주", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
                 UiFactory.CreateText(canvas.transform, "Opponent", "상위 개체", 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 상대 영역
@@ -57,12 +58,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
                 view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 25, new Vector2(0f, -175f), new Vector2(1200f, 70f), Color.white); // 최근 행동 결과
-                view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-235f, -275f)); // 기본 공격 버튼
+                view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-470f, -275f)); // 기본 공격 버튼
                 view.advance.onClick.AddListener(view.Advance); // 실제 공격 진행 연결
-                view.flee = UiFactory.CreateButton(canvas.transform, "FleeBattleButton", "도주", new Vector2(235f, -275f)); // 정식 도주 버튼
+                view.flee = UiFactory.CreateButton(canvas.transform, "FleeBattleButton", "도주", new Vector2(0f, -275f)); // 정식 도주 버튼
                 view.flee.onClick.AddListener(view.Flee); // 실제 도주 판정 연결
+                view.defend = UiFactory.CreateButton(canvas.transform, "DefendBattleButton", "방어", new Vector2(470f, -275f)); // 방어 행동 버튼
+                view.defend.onClick.AddListener(view.Defend); // 실제 방어 행동 연결
                 view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "시험 종료", new Vector2(0f, -390f)); // 시험 종료와 결과 복귀 버튼
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
+                canvas.gameObject.AddComponent<CombatActionLayout>().Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend); // 화면 너비별 행동 버튼 배치
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 EventSystem.current.SetSelectedGameObject(view.advance.gameObject); // 기본 공격 버튼 선택 지정
                 return view; // 준비된 화면 전달
@@ -124,6 +128,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 전투 종료 조건 끝
             CompletePlayerTurn(); // 플레이어 행동 후 남은 순서 진행
         } // 행동 끝
+        private void Defend() // 플레이어의 방어 행동
+        { // 방어 시작
+            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            { // 행동 거절 조건 시작
+                return; // 중복 또는 잘못된 방어 차단
+            } // 행동 거절 조건 끝
+            if (!player.BeginDefense()) // 생존 참가자의 방어 시작 검사
+            { // 방어 거절 조건 시작
+                return; // 잘못된 방어 행동 차단
+            } // 방어 거절 조건 끝
+            lastActionFrame = Time.frameCount; // 같은 프레임의 재요청 차단
+            notice.text = "방어 · 피해 감소 " + CombatRules.DefenseReduction(player.Defense) + "%"; // 방어 행동과 감소율 표시
+            CompletePlayerTurn(); // 방어 행동 소모와 상대 행동
+        } // 방어 끝
         private void Flee() // 정식 도주 시도
         { // 도주 시작
             if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
@@ -152,6 +170,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             round.TryCompleteAction(); // 플레이어 행동 완료
             if (round.TryNext(out current)) // 적 행동 순서 확인
             { // 적 행동 조건 시작
+                if (!current.IsPlayer) // 상대의 새 행동 차례 검사
+                { // 상대 방어 해제 시작
+                    enemy.EndDefense(); // 상대의 이전 방어 상태 해제
+                } // 상대 방어 해제 끝
                 if (!current.IsPlayer && ResolveAttack(enemy, player)) // 적의 기본 공격 처리
                 { // 적 공격 성공 조건 시작
                     owner.UpdatePlayerHealth(player.Health); // 공격 후 현재 탐험 체력 반영
@@ -167,6 +189,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 roundText.text = "행동 가능한 참가자가 없습니다"; // 더 진행할 참가자 없음
                 return; // 잘못된 행동자 표시 방지
             } // 다음 라운드 실패 조건 끝
+            if (current.IsPlayer) // 새 플레이어 행동 차례 검사
+            { // 플레이어 방어 해제 시작
+                player.EndDefense(); // 이전 방어 상태 종료
+            } // 플레이어 방어 해제 끝
             UpdateDisplay(); // 현재 라운드와 체력 갱신
         } // 행동 끝
         private bool ResolveAttack(CombatFighter attacker, CombatFighter defender) // 한 참가자의 기본 공격 처리
@@ -197,6 +223,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             roundText.text = outcome == CombatOutcome.Victory ? "승리" : "패배"; // 실제 전투 결과 표시
             advance.interactable = false; // 종료된 전투의 공격 차단
             flee.interactable = false; // 종료된 전투의 도주 차단
+            defend.interactable = false; // 종료된 전투의 방어 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             return true; // 전투 종료 확인
@@ -226,6 +253,46 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             playerHealth.text = "체력 " + player.Health + "/" + player.MaxHealth; // 플레이어 체력 표시
             enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
         } // 표시 끝
+    } // 클래스 끝
+    public sealed class CombatActionLayout : MonoBehaviour // 화면 너비에 맞는 행동 버튼 배치
+    { // 클래스 시작
+        private RectTransform canvasRect; // 전투 화면의 실제 크기
+        private Button attack; // 공격 버튼
+        private Button flee; // 도주 버튼
+        private Button defend; // 방어 버튼
+        private float lastWidth = -1f; // 이전에 적용한 화면 너비
+        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton) // 화면과 행동 버튼 연결
+        { // 연결 시작
+            canvasRect = canvas; // 화면 크기 연결
+            attack = attackButton; // 공격 버튼 연결
+            flee = fleeButton; // 도주 버튼 연결
+            defend = defendButton; // 방어 버튼 연결
+            Refresh(canvasRect.rect.width); // 최초 화면 크기 반영
+        } // 연결 끝
+        private void LateUpdate() // 화면 너비 변경 감지
+        { // 검사 시작
+            if (canvasRect != null && !Mathf.Approximately(lastWidth, canvasRect.rect.width)) // 실제 화면 크기 변경 검사
+            { // 크기 변경 조건 시작
+                Refresh(canvasRect.rect.width); // 현재 화면에 맞게 버튼 배치
+            } // 크기 변경 조건 끝
+        } // 검사 끝
+        public void Refresh(float canvasWidth) // 주어진 화면 너비의 버튼 크기와 위치
+        { // 배치 시작
+            lastWidth = canvasWidth; // 적용한 화면 너비 기록
+            var width = Mathf.Min(320f, Mathf.Max(0f, (canvasWidth - 112f) / 3f)); // 양쪽 여백과 버튼 간격 확보
+            var offset = width + 24f; // 버튼 사이 간격을 포함한 위치
+            Place(attack, -offset, width); // 왼쪽 공격 버튼 배치
+            Place(flee, 0f, width); // 중앙 도주 버튼 배치
+            Place(defend, offset, width); // 오른쪽 방어 버튼 배치
+        } // 배치 끝
+        private static void Place(Button button, float x, float width) // 한 행동 버튼의 위치와 글자 영역
+        { // 배치 시작
+            var rect = button.GetComponent<RectTransform>(); // 실제 버튼 위치 조회
+            rect.anchoredPosition = new Vector2(x, -275f); // 행동 버튼의 가로 위치
+            rect.sizeDelta = new Vector2(width, 84f); // 화면 너비에 맞는 버튼 크기
+            var label = button.transform.Find("Label").GetComponent<RectTransform>(); // 버튼 글자 영역 조회
+            label.sizeDelta = rect.sizeDelta; // 버튼 안의 글자 영역 유지
+        } // 배치 끝
     } // 클래스 끝
     public sealed class CombatPortraitLayout : MonoBehaviour // 화면 너비에 맞는 초상화 배치
     { // 클래스 시작

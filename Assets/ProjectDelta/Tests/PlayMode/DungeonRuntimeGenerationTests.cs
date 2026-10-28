@@ -862,6 +862,88 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 게임패드 방어 선택 검증
+        public IEnumerator Combat_Defend_GamepadSelectionReducesDamage() // 실제 게임패드 선택과 피해 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 명중과 최소 피해 편차 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            var defend = GameObject.Find("DefendBattleButton"); // 실제 방어 버튼 조회
+            Assert.That(defend, Is.Not.Null); // 방어 버튼 존재 확인
+            var layout = GameObject.Find("BattleCanvas").GetComponent<CombatActionLayout>(); // 실제 행동 버튼 배치
+            Assert.That(layout, Is.Not.Null); // 화면 너비별 배치 제공 확인
+            layout.Refresh(900f); // 좁은 창의 가상 화면 너비 적용
+            var attackRect = GameObject.Find("AdvanceBattleButton").GetComponent<RectTransform>(); // 공격 버튼 위치
+            var defendRect = defend.GetComponent<RectTransform>(); // 방어 버튼 위치
+            Assert.That(-attackRect.anchoredPosition.x + attackRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(418.01f)); // 왼쪽 버튼의 화면 안쪽 여백
+            Assert.That(defendRect.anchoredPosition.x + defendRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(418.01f)); // 오른쪽 버튼의 화면 안쪽 여백
+            layout.Refresh(1920f); // 기준 화면의 버튼 복구
+            for (var index = 0; index < 2; index++) // 공격 버튼에서 방어 버튼까지 이동
+            { // 선택 이동 시작
+                InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 처리 대기
+                InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(defend)); // 게임패드 방어 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 실제 방어 선택
+            yield return null; // 방어 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 상대 행동과 다음 차례 대기
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(97)); // 게임패드 방어 피해 감소
+            Assert.That(GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("방어")); // 방어 결과 표시
+        } // 검증 끝
+        [UnityTest] // 실제 방어 선택과 턴 처리 검증
+        public IEnumerator Combat_Defend_ReducesDamageUntilNextTurn() // 키보드 방어와 다음 공격 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 명중과 최소 피해 편차 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            var defend = GameObject.Find("DefendBattleButton"); // 실제 방어 버튼 조회
+            Assert.That(defend, Is.Not.Null); // 방어 버튼 존재 확인
+            for (var index = 0; index < 2; index++) // 공격 버튼에서 방어 버튼까지 이동
+            { // 선택 이동 시작
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 처리 대기
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(defend)); // 키보드 방어 버튼 선택 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 방어 선택
+            yield return null; // 방어 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 상대 행동과 다음 차례 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 방어 후 전투 유지
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(97)); // 6 피해의 방어 감소 결과
+            var notice = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 행동 결과 표시
+            Assert.That(notice.text, Does.Contain("방어")); // 방어 행동 결과 안내
+            Assert.That(notice.text, Does.Contain("3 피해")); // 감소된 상대 피해 표시
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("2라운드")); // 방어 행동 후 다음 라운드
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 방어 결과 전투 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            var view = GameObject.Find("BattleScreen").GetComponent<CombatScreenView>(); // 실제 전투 화면 제어
+            var playerField = typeof(CombatScreenView).GetField("player", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 플레이어 상태 조회
+            var fighter = (CombatFighter)playerField.GetValue(view); // 현재 플레이어 전투 상태
+            var defending = typeof(CombatFighter).GetProperty("IsDefending"); // 방어 상태 조회
+            Assert.That((bool)defending.GetValue(fighter), Is.False); // 다음 플레이어 차례의 방어 해제
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 다음 차례 기본 공격
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(91)); // 방어 해제 후 적의 원래 피해
+        } // 검증 끝
         [UnityTest] // 강제 개방 실패와 열쇠 사용 검증
         public IEnumerator ForceDoor_KeyboardFailure_AllowsKeyAndBlocksRetry() // 실제 키보드 실패와 게임패드 재시도
         { // 검증 시작
