@@ -7,6 +7,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class AppRoot : MonoBehaviour // 공통 실행 객체
     { // 클래스 시작
         private SceneLoader sceneLoader; // 실제 씬 로더
+        private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
         private CombatScreenView combatScreen; // 시험 전투 화면
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
@@ -25,6 +26,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 열쇠 조회
             private set; // 새 게임 열쇠 변경
         } = new DoorKeyRing(); // 빈 열쇠 보관소 생성
+        public string ObservationSaveMessage // 관찰 저장과 복구 안내
+        { // 속성 시작
+            get; // 현재 저장 안내 조회
+            private set; // 내부 저장 안내 변경
+        } = string.Empty; // 기본 안내 없음
+        public string PendingObservationId // 저장 대기 중인 성공 판정 대상
+        { // 속성 시작
+            get; // 저장 대기 대상 조회
+            set; // 조우 화면의 성공 판정 보관
+        } = string.Empty; // 기본 대기 대상 없음
+        public bool ObservationSaveBlocked => observationStorage == null || observationStorage.IsBlocked; // 복구 또는 재시작이 필요한 저장 상태
         public event System.Action InventoryClosed; // 인벤토리 복귀 알림
         public int PlayerHealth // 탐험 중 플레이어 현재 체력
         { // 속성 시작
@@ -55,6 +67,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 중복 조건 끝
             Instance = this; // 단일 공통 객체 등록
             DontDestroyOnLoad(gameObject); // 씬 전환 중 객체 유지
+            try // 2D 전용 관찰 기록 읽기
+            { // 저장 읽기 시작
+                observationStorage = new ObservationStorage(ObservationStorage.ResolveDirectory()); // 독립 저장 폴더 연결
+                Observations = observationStorage.Load(out var warning); // 검증된 관찰 기록과 복구 안내
+                ObservationSaveMessage = warning; // 사용자에게 표시할 저장 상태
+            } // 저장 읽기 끝
+            catch (System.Exception) // 저장 경로 준비 실패
+            { // 경로 실패 시작
+                observationStorage = null; // 잘못된 저장 경로 차단
+                ObservationSaveMessage = "관찰 저장 경로를 사용할 수 없습니다. 기존 파일을 확인해 주세요."; // 저장 경로 오류 안내
+            } // 경로 실패 끝
             sceneLoader = GetComponent<SceneLoader>(); // 씬 로더 연결
             Input = GetComponent<GameInputRouter>(); // 입력 제어 연결
             Input.Initialize(); // 전용 입력 준비
@@ -75,7 +98,6 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 새 게임 조건 시작
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
-                Observations = new ObservationJournal(); // 새 게임의 관찰 기록 초기화
                 Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
@@ -117,6 +139,36 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
             InventoryClosed?.Invoke(); // 탐험 화면 복귀 알림
         } // 닫기 끝
+        public bool TryRecordObservation(string id) // 관찰 결과의 안전한 영구 저장
+        { // 저장 시작
+            if (Observations.Contains(id)) // 이미 기록한 대상 검사
+            { // 기존 기록 조건 시작
+                return true; // 중복 저장 없이 기존 정보 유지
+            } // 기존 기록 조건 끝
+            if (observationStorage == null) // 저장 기능 준비 검사
+            { // 저장 불가 조건 시작
+                ObservationSaveMessage = "관찰 저장 경로를 사용할 수 없습니다. 기존 파일을 확인해 주세요."; // 저장 경로 오류 안내
+                return false; // 임시 관찰 결과 보존
+            } // 저장 불가 조건 끝
+            var candidate = new ObservationJournal(); // 기존 기록의 독립 복사
+            foreach (var existing in Observations.Snapshot()) // 저장된 대상 순회
+            { // 기존 기록 복사 시작
+                candidate.TryRecord(existing); // 검증된 기존 기록 보존
+            } // 기존 기록 복사 끝
+            if (!candidate.TryRecord(id)) // 새로운 대상 식별자 검사
+            { // 잘못된 대상 조건 시작
+                ObservationSaveMessage = "관찰 대상을 기록할 수 없습니다."; // 잘못된 기록 안내
+                return false; // 잘못된 관찰 저장 차단
+            } // 잘못된 대상 조건 끝
+            if (!observationStorage.TrySave(candidate, out var error)) // 안전한 파일 저장 검사
+            { // 저장 실패 조건 시작
+                ObservationSaveMessage = error; // 실제 저장 실패 안내 보관
+                return false; // 성공 판정은 화면에서 재시도 대기
+            } // 저장 실패 조건 끝
+            Observations = candidate; // 성공적으로 저장된 기록 확정
+            ObservationSaveMessage = string.Empty; // 이전 저장 오류 안내 해제
+            return true; // 실제 영구 기록 성공
+        } // 저장 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
         { // 반영 시작
             PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지

@@ -57,7 +57,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 시험 대상의 임시 그림
                 UiFactory.CreateText(canvas.transform, "Header", "조우", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 조우 화면 제목
                 UiFactory.CreateText(canvas.transform, "Status", "상위 개체를 발견했습니다", 30, new Vector2(0f, 295f), new Vector2(1100f, 70f), accent); // 시험 조우 상황
-                view.description = UiFactory.CreateText(canvas.transform, "EncounterDescription", "행동을 선택하세요", 32, new Vector2(-160f, 45f), new Vector2(800f, 80f), Color.white); // 현재 선택 안내
+                view.description = UiFactory.CreateText(canvas.transform, "EncounterDescription", "행동을 선택하세요", 26, new Vector2(-160f, 45f), new Vector2(800f, 130f), Color.white); // 현재 선택과 저장 오류 안내
                 UiFactory.CreateText(canvas.transform, "EncounterScope", "회유 · 유혹 · 아이템은 준비 중", 23, new Vector2(0f, -420f), new Vector2(1400f, 60f), accent); // 미구현 선택 안내
                 view.fight = UiFactory.CreateButton(canvas.transform, "EncounterFightButton", "전투", new Vector2(-235f, -300f)); // 실제 전투 선택
                 view.fight.onClick.AddListener(view.ChooseFight); // 전투 화면 진입 연결
@@ -105,23 +105,32 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 ShowObservedInfo(); // 추가 주사위 없이 기록된 정보 표시
                 return; // 중복 관찰 차단
             } // 정보 확인 조건 끝
-            var playerRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 플레이어 관찰 주사위
-            var enemyRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 상대 은폐 주사위
-            if (!ObservationRules.TryResolve(CombatScreenView.TrialPlayerSpeed, 0, TrialResistance, 0, playerRoll, enemyRoll, out var success)) // 속도와 저항 판정 검사
-            { // 판정 오류 조건 시작
-                description.text = "관찰 판정을 처리할 수 없습니다"; // 잘못된 판정 안내
-                return; // 기존 조우 화면 유지
-            } // 판정 오류 조건 끝
-            if (!success) // 관찰 실패 검사
-            { // 관찰 실패 조건 시작
-                failedChoice = true; // 실패한 조우 행동의 재시도 차단
-                observe.interactable = false; // 관찰 재시도 비활성화
-                escape.interactable = false; // 실패 후 다른 조우 행동 차단
-                description.text = "관찰 실패 · 전투를 선택하세요"; // 실패와 전투 재시도 안내
-                owner.StartCombat(); // 관찰 실패 후 일반 전투 진입
-                return; // 정보 공개 차단
-            } // 관찰 실패 조건 끝
-            owner.Observations.TryRecord(TrialMonsterId); // 현재 회차의 시험 관찰 기록
+            if (owner.PendingObservationId != TrialMonsterId) // 아직 굴리지 않은 관찰 판정 검사
+            { // 관찰 판정 시작
+                var playerRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 플레이어 관찰 주사위
+                var enemyRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 상대 은폐 주사위
+                if (!ObservationRules.TryResolve(CombatScreenView.TrialPlayerSpeed, 0, TrialResistance, 0, playerRoll, enemyRoll, out var success)) // 속도와 저항 판정 검사
+                { // 판정 오류 조건 시작
+                    description.text = "관찰 판정을 처리할 수 없습니다"; // 잘못된 판정 안내
+                    return; // 기존 조우 화면 유지
+                } // 판정 오류 조건 끝
+                if (!success) // 관찰 실패 검사
+                { // 관찰 실패 조건 시작
+                    failedChoice = true; // 실패한 조우 행동의 재시도 차단
+                    observe.interactable = false; // 관찰 재시도 비활성화
+                    escape.interactable = false; // 실패 후 다른 조우 행동 차단
+                    description.text = "관찰 실패 · 전투를 선택하세요"; // 실패와 전투 재시도 안내
+                    owner.StartCombat(); // 관찰 실패 후 일반 전투 진입
+                    return; // 정보 공개 차단
+                } // 관찰 실패 조건 끝
+                owner.PendingObservationId = TrialMonsterId; // 화면 이동 후에도 성공 판정 보존
+            } // 관찰 판정 끝
+            if (!owner.TryRecordObservation(TrialMonsterId)) // 안전한 영구 기록 검사
+            { // 저장 실패 조건 시작
+                description.text = owner.ObservationSaveMessage + (owner.ObservationSaveBlocked ? " 원본 확인 후 재시작 · 미저장 판정 초기화" : " 관찰 선택으로 재시도"); // 실제 오류와 복구 시 미저장 판정 초기화 안내
+                return; // 성공한 판정을 다시 굴리지 않고 보존
+            } // 저장 실패 조건 끝
+            owner.PendingObservationId = string.Empty; // 저장 완료된 관찰 대기 해제
             observe.transform.Find("Label").GetComponent<Text>().text = "정보 확인"; // 관찰 완료 후 정보 확인 안내
             ShowObservedInfo(); // 실제 시험 대상의 1단계 정보 표시
         } // 관찰 끝

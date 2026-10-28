@@ -15,6 +15,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             UiFactory.CreateText(canvas.transform, "Eyebrow", "PROJECT  /  DELTA", 24, new Vector2(0f, 235f), new Vector2(900f, 70f), mint); // 프로젝트 이름 표시
             UiFactory.CreateText(canvas.transform, "Title", "프로젝트 델타", 72, new Vector2(0f, 130f), new Vector2(1200f, 120f), Color.white); // 게임 제목 표시
             UiFactory.CreateText(canvas.transform, "Subtitle", "미지의 던전에서 시작되는 선택과 관계", 25, new Vector2(0f, 28f), new Vector2(1200f, 70f), new Color(0.63f, 0.69f, 0.72f)); // 게임 방향 표시
+            if (AppRoot.Instance != null && !string.IsNullOrEmpty(AppRoot.Instance.ObservationSaveMessage)) // 관찰 저장 오류 또는 복구 안내 검사
+            { // 저장 안내 조건 시작
+                UiFactory.CreateText(canvas.transform, "ObservationSaveWarning", AppRoot.Instance.ObservationSaveMessage, 21, new Vector2(0f, -265f), new Vector2(1500f, 100f), new Color(1f, 0.72f, 0.55f)); // 기존 저장 보호 상태 안내
+            } // 저장 안내 조건 끝
             newGameButton = UiFactory.CreateButton(canvas.transform, "NewGameButton", "새 게임", new Vector2(0f, -115f)); // 새 게임 버튼 생성
             newGameButton.onClick.AddListener(OnNewGame); // 화면 요청 연결
             UiFactory.CreateText(canvas.transform, "BuildLabel", "1일차  ·  2D 기본 실행 구조", 21, new Vector2(0f, -390f), new Vector2(1000f, 70f), mint); // 개발 범위 표시

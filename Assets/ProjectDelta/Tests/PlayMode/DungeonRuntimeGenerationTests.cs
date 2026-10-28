@@ -43,6 +43,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 준비 표시
         public void PrepareInput() // 가상 입력을 실제 게임에 전달
         { // 준비 시작
+            ObservationStorage.TestDirectoryOverride = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "ObservationPlayModeTests", System.Guid.NewGuid().ToString("N"))); // 개별 시험의 독립 저장 경로
             originalBackground = InputSystem.settings.backgroundBehavior; // 기존 입력 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 검증 포커스 영향 제외
 #if UNITY_EDITOR // 편집기 입력 설정 시작
@@ -884,7 +885,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
         [UnityTest] // 조우 관찰 성공과 회차 기록 검증
-        public IEnumerator EncounterObserve_Success_ShowsInfoAndResetsWithNewGame() // 실제 관찰 선택과 정보 재확인
+        public IEnumerator EncounterObserve_Success_PersistsAcrossNewGameAndRestart() // 실제 관찰 선택과 정보 재확인
         { // 검증 시작
             var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
             rolls.Enqueue(10); // 플레이어 주사위
@@ -936,8 +937,61 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             AppRoot.Instance.StartNewGame(); // 새 게임 요청
             yield return WaitForPhase(GamePhase.Exploration); // 새 던전 도착 대기
             var fresh = journalProperty.GetValue(AppRoot.Instance); // 새 회차 관찰 기록
-            Assert.That(fresh, Is.Not.SameAs(journal)); // 새 회차의 독립 기록 확인
-            Assert.That(contains.Invoke(fresh, arguments), Is.False); // 새 게임의 시험 기록 초기화
+            Assert.That(fresh, Is.SameAs(journal)); // 새 게임에서도 관찰 기록 유지
+            Assert.That(contains.Invoke(fresh, arguments), Is.True); // 새 게임의 시험 기록 확인
+            Object.Destroy(AppRoot.Instance.gameObject); // 현재 실행의 공통 객체 종료
+            yield return null; // 객체 종료 반영 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행과 같은 시작 씬 진입
+            yield return WaitForPhase(GamePhase.Title); // 새 실행의 타이틀 대기
+            var reloaded = journalProperty.GetValue(AppRoot.Instance); // 저장 파일에서 다시 읽은 기록
+            Assert.That(contains.Invoke(reloaded, arguments), Is.True); // 새 실행에서도 관찰 기록 유지
+        } // 검증 끝
+        [UnityTest] // 저장 실패 후 관찰 성공 판정 유지 검증
+        public IEnumerator EncounterObserve_SaveFailure_RetriesWithoutReroll() // 같은 판정의 저장 재시도 확인
+        { // 검증 시작
+            var path = ObservationStorage.TestDirectoryOverride; // 현재 시험 전용 저장 경로
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)); // 시험 부모 폴더 준비
+            System.IO.File.WriteAllText(path, "test blocker"); // 저장 폴더 생성을 막는 시험 파일
+            var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 상대 주사위
+            EncounterScreenView.ObserveRollOverride = (minimum, maximum) => rolls.Dequeue(); // 동점 성공 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var observe = GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>(); // 실제 관찰 버튼
+            observe.onClick.Invoke(); // 성공 판정과 저장 실패 모사
+            var description = GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>(); // 실제 관찰 결과 표시
+            Assert.That(description.text, Does.Contain("접근 권한")); // 실제 저장 실패 원인 확인
+            Assert.That(AppRoot.Instance.Observations.Contains("trial-elite"), Is.False); // 저장 실패한 정보 공개 차단
+            Assert.That(rolls.Count, Is.Zero); // 성공 판정의 주사위 사용 확인
+            System.IO.File.Delete(path); // 시험에서 만든 차단 파일만 제거
+            AppRoot.Instance.ReturnToTitle(); // 저장 대기 중 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 전환 대기
+            yield return EnterEliteEncounter(); // 새 조우 화면 진입
+            observe = GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>(); // 새 조우의 관찰 버튼
+            description = GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>(); // 새 조우의 결과 표시
+            observe.onClick.Invoke(); // 성공 판정의 저장 재시도
+            Assert.That(AppRoot.Instance.Observations.Contains("trial-elite"), Is.True); // 재시도한 관찰 기록 확인
+            Assert.That(description.text, Does.Contain("체력 70")); // 저장 성공 후 정보 공개
+            Assert.That(rolls.Count, Is.Zero); // 주사위 재사용 없이 저장 확인
+        } // 검증 끝
+        [UnityTest] // 저장 충돌과 재시작 안내 검증
+        public IEnumerator EncounterObserve_StorageConflict_ExplainsRestartLoss() // 외부 변경의 원본 보호와 안내 확인
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 관찰 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 상대 주사위
+            EncounterScreenView.ObserveRollOverride = (minimum, maximum) => rolls.Dequeue(); // 동점 성공 주사위 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var path = ObservationStorage.TestDirectoryOverride; // 현재 시험 전용 저장 경로
+            System.IO.Directory.CreateDirectory(path); // 시험 저장 폴더 준비
+            var current = System.IO.Path.Combine(path, "observation-v1.json"); // 외부 변경을 모사할 시험 파일
+            System.IO.File.WriteAllText(current, "external test data"); // 다른 실행의 변경 모사
+            var observe = GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>(); // 실제 관찰 버튼
+            observe.onClick.Invoke(); // 성공 판정과 저장 충돌 모사
+            var description = GameObject.Find("EncounterDescription").GetComponent<UnityEngine.UI.Text>(); // 실제 관찰 결과 표시
+            Assert.That(description.text, Does.Contain("변경")); // 저장 충돌 원인 안내
+            Assert.That(description.text, Does.Contain("미저장 판정 초기화")); // 재시작 시 판정 손실 안내
+            Assert.That(System.IO.File.ReadAllText(current), Is.EqualTo("external test data")); // 다른 실행의 파일 보존
         } // 검증 끝
         [UnityTest] // 관찰 실패 후 전투 화면 오류 복구 검증
         public IEnumerator EncounterObserve_FailedCombatCreation_DoesNotReroll() // 실패 판정 보존과 전투 재시도
@@ -1798,6 +1852,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 Object.Destroy(AppRoot.Instance.gameObject); // 검증용 공통 객체 제거
             } // 정리 조건 끝
             yield return null; // 객체 제거 완료 대기
+            ObservationStorage.TestDirectoryOverride = null; // 개별 시험 저장 경로 해제
             InputSystem.settings.backgroundBehavior = originalBackground; // 기존 백그라운드 입력 설정 복구
 #if UNITY_EDITOR // 편집기 입력 설정 복구
             InputSystem.settings.editorInputBehaviorInPlayMode = originalEditor; // 기존 편집기 설정 복구
