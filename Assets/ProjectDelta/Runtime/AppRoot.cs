@@ -8,6 +8,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private SceneLoader sceneLoader; // 실제 씬 로더
         private CombatScreenView combatScreen; // 시험 전투 화면
+        public int PlayerHealth // 탐험 중 플레이어 현재 체력
+        { // 속성 시작
+            get; // 현재 체력 조회
+            private set; // 내부 체력 변경
+        } = 100; // 최초 체력 설정
         public static AppRoot Instance // 유일한 공통 객체
         { // 속성 시작
             get; // 객체 읽기
@@ -47,12 +52,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 최초 실행 끝
         public void StartNewGame() // 새 게임 요청
         { // 메서드 시작
+            if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
+            { // 새 게임 조건 시작
+                PlayerHealth = 100; // 원본 기본 최대 체력 초기화
+            } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
         } // 메서드 끝
         public void ReturnToTitle() // 타이틀 복귀 요청
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
+        { // 반영 시작
+            PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지
+        } // 반영 끝
         public bool StartCombat() // 자동 조우의 전투 화면 진입
         { // 진입 시작
             if (!Flow.TryStartCombat()) // 전투 진입 상태 검사

@@ -216,6 +216,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(floorProperty.GetValue(travel), Is.EqualTo(1)); // 첫 층 확인
             var oldLayout = travel.Layout; // 기존 층 구조 보관
             var oldDiscovery = travel.Discovery; // 기존 방문 기록 보관
+            typeof(AppRoot).GetProperty("PlayerHealth").SetValue(AppRoot.Instance, 42); // 손상된 탐험 체력 모사
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단이 아닌 방 상호작용
             InputSystem.Update(); // 상호작용 반영
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
@@ -259,6 +260,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             travel.SendMessage("OnInteraction"); // 같은 프레임 중복 요청
             yield return null; // 화면 갱신 대기
             Assert.That(floorProperty.GetValue(travel), Is.EqualTo(2)); // 다음 층과 중복 차단 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 성공한 층 이동의 체력 회복
             Assert.That(FloorActivationProbe.Activations, Is.EqualTo(1)); // 새 층 확정 전 활성화 방지
             Assert.That(travel.Layout, Is.Not.SameAs(oldLayout)); // 새로운 층 구조 확인
             Assert.That(travel.Discovery, Is.Not.SameAs(oldDiscovery)); // 독립된 방문 기록 확인
@@ -292,6 +294,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
             var oldLayout = travel.Layout; // 기존 층 구조 보관
             var oldDiscovery = travel.Discovery; // 기존 방문 기록 보관
+            typeof(AppRoot).GetProperty("PlayerHealth").SetValue(AppRoot.Instance, 42); // 손상된 탐험 체력 모사
             for (var index = 1; index <= 6; index++) // 계단 방까지 주 경로 순회
             { // 경로 이동 시작
                 var target = oldLayout.Rooms[index]; // 다음 경로 방
@@ -319,6 +322,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.Update(); // 해제 반영
             yield return null; // 실패한 방 정리 대기
             Assert.That(travel.Floor, Is.EqualTo(1)); // 기존 층 번호 유지
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(42)); // 실패한 층 이동의 체력 보존
             Assert.That(travel.Layout, Is.SameAs(oldLayout)); // 기존 층 구조 유지
             Assert.That(travel.Discovery, Is.SameAs(oldDiscovery)); // 기존 방문 기록 유지
             Assert.That(root.activeInHierarchy, Is.True); // 기존 계단 방 표시 유지
@@ -331,6 +335,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.Update(); // 해제 반영
             yield return null; // 새 층 표시 대기
             Assert.That(travel.Floor, Is.EqualTo(2)); // 실패 후 정상 재시도 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 재시도 성공 시 체력 회복
         } // 검증 끝
         [UnityTest] // 최초 생성 실패 복구 검증
         public IEnumerator BlockedStairTemplate_DoesNotChangeOriginalRooms() // 계단 칸 충돌 시 기존 방 보존
@@ -376,6 +381,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator EliteEncounter_OpensCombatAndReturnsToSamePosition() // 실제 이동으로 조우하고 원래 자리 복귀
         { // 검증 시작
             RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전 시드
+            var rollOverride = typeof(CombatScreenView).GetProperty("RandomOverride"); // 검증용 전투 난수 연결 조회
+            Assert.That(rollOverride, Is.Not.Null); // 결정 가능한 전투 난수 확인
+            rollOverride.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => minimum)); // 명중과 최소 피해 편차 고정
             yield return EnterDungeon(); // 실제 던전 진입
             keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
             InputSystem.Update(); // 입력 장치 반영
@@ -457,7 +465,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var battle = GameObject.Find("BattleCanvas"); // 전투 화면 조회
             Assert.That(battle, Is.Not.Null); // 실제 전투 화면 표시 확인
             var button = GameObject.Find("ExitBattleButton"); // 시험 종료 버튼 조회
-            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 기본 선택 버튼 확인
+            var advance = GameObject.Find("AdvanceBattleButton"); // 기본 공격 버튼 조회
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(advance)); // 기본 공격 선택 확인
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 전투 중 이동 입력
             InputSystem.Update(); // 입력 반영
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
@@ -469,7 +478,6 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var roundText = roundTextObject.GetComponent<UnityEngine.UI.Text>(); // 실제 라운드 글자
             Assert.That(roundText.text, Does.Contain("1라운드")); // 첫 라운드 표시 확인
             Assert.That(roundText.text, Does.Contain("플레이어")); // 첫 행동자 표시 확인
-            var advance = GameObject.Find("AdvanceBattleButton"); // 행동 진행 버튼 조회
             Assert.That(advance, Is.Not.Null); // 행동 진행 버튼 확인
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.UpArrow)); // 행동 진행 버튼 방향 입력
             yield return null; // 실제 화면 방향 입력 반영
@@ -480,7 +488,14 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 실제 화면 선택 처리 대기
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
             yield return null; // 선택 해제 반영
-            Assert.That(roundText.text, Does.Contain("상위 개체")); // 두 번째 행동자 표시 확인
+            Assert.That(roundText.text, Does.Contain("2라운드")); // 적 행동 완료와 다음 라운드 확인
+            var enemyHealth = GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>(); // 상대 체력 표시 조회
+            var playerHealth = GameObject.Find("PlayerHealth").GetComponent<UnityEngine.UI.Text>(); // 플레이어 체력 표시 조회
+            Assert.That(enemyHealth.text, Does.Contain("27/70")); // 기존 공식으로 적 체력 감소 확인
+            Assert.That(playerHealth.text, Does.Contain("94/100")); // 자동 적 공격 후 체력 감소 확인
+            var noticeText = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 공격 결과 안내
+            Assert.That(noticeText.text, Does.Contain("플레이어 공격")); // 플레이어 공격 결과 유지 확인
+            Assert.That(noticeText.text, Does.Contain("상위 개체 공격")); // 상대 공격 결과 함께 표시
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
             { // 캡처 조건 시작
@@ -488,14 +503,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
                 Object.Destroy(image); // 캡처 이미지 정리
             } // 캡처 조건 끝
-            advance.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 마지막 행동 진행
-            Assert.That(roundText.text, Does.Contain("2라운드")); // 다음 라운드 시작 확인
-            Assert.That(roundText.text, Does.Contain("플레이어")); // 새 라운드 첫 행동자 확인
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.DownArrow)); // 종료 버튼 방향 입력
-            yield return null; // 실제 화면 방향 입력 반영
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
-            yield return null; // 방향 해제 반영
-            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 종료 버튼 선택 확인
+            advance.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 기본 공격
+            Assert.That(roundText.text, Does.Contain("승리")); // 적 체력 소진과 승리 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 승리 후 복귀 버튼 선택 확인
             var submits = 0; // 화면 선택 입력 발생 횟수
             var clicks = 0; // 버튼 선택 처리 횟수
             var module = UnityEngine.EventSystems.EventSystem.current.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>(); // 실제 화면 입력 모듈
@@ -516,6 +526,18 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(player.X, Is.EqualTo(0)); // 플레이어 가로 칸 보존
             Assert.That(player.Y, Is.EqualTo(1)); // 플레이어 세로 칸 보존
             Assert.That(travel.Discovery, Is.SameAs(savedDiscovery)); // 기존 방문 기록 보존
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 전투 후 현재 체력 보존
+            Assert.That(root.transform.Find("EncounterMarker"), Is.Null); // 승리한 조우 대상 제거 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.A)); // 기존 포착 범위 내 이동
+            InputSystem.Update(); // 실제 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            while (player.IsMoving) // 이동 완료 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            yield return null; // 조우 여부 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 완료된 조우 재발 방지
         } // 검증 끝
         private static Texture2D CaptureBattle() // 실제 전투 화면의 별도 렌더링
         { // 캡처 시작
@@ -561,6 +583,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator Combat_CanReturnUsingGamepad() // 게임패드 선택으로 탐험 복귀
         { // 검증 시작
             RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            var rollOverride = typeof(CombatScreenView).GetProperty("RandomOverride"); // 검증용 전투 난수 연결 조회
+            Assert.That(rollOverride, Is.Not.Null); // 결정 가능한 전투 난수 확인
+            rollOverride.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => minimum)); // 명중과 최소 편차 고정
             yield return EnterDungeon(); // 실제 던전 진입
             gamepad = InputSystem.AddDevice<Gamepad>(); // 검증용 게임패드 연결
             InputSystem.Update(); // 장치 연결 반영
@@ -568,6 +593,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 진입
             yield return null; // 화면과 선택 준비 대기
             var advance = GameObject.Find("AdvanceBattleButton"); // 시험 행동 진행 버튼
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(advance)); // 게임패드 기본 공격 선택 확인
             InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadUp)); // 진행 버튼 방향 입력
             yield return null; // 방향 입력 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
@@ -578,7 +604,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
             yield return null; // 행동 처리 대기
             var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 라운드 안내 조회
-            Assert.That(roundText.text, Does.Contain("상위 개체")); // 게임패드 행동 진행 확인
+            Assert.That(roundText.text, Does.Contain("2라운드")); // 게임패드 공격과 적 행동 확인
             InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadDown)); // 종료 버튼 방향 입력
             yield return null; // 방향 입력 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
@@ -590,10 +616,72 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 탐험 복귀 확인
             Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
         } // 검증 끝
+        [UnityTest] // 실제 전투 패배 흐름 검증
+        public IEnumerator Combat_PlayerDefeat_ReturnsToTitle() // 체력 소진 후 패배 화면과 타이틀 복귀
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            var rollOverride = typeof(CombatScreenView).GetProperty("RandomOverride"); // 검증용 전투 난수 연결 조회
+            Assert.That(rollOverride, Is.Not.Null); // 결정 가능한 전투 난수 확인
+            rollOverride.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => minimum)); // 명중과 최소 편차 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            var healthProperty = typeof(AppRoot).GetProperty("PlayerHealth"); // 현재 플레이어 체력 조회
+            Assert.That(healthProperty, Is.Not.Null); // 탐험 체력 보관 확인
+            healthProperty.SetValue(AppRoot.Instance, 1); // 패배가 가능한 현재 체력 지정
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 시작
+            yield return null; // 전투 화면 준비 대기
+            var advance = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 기본 공격 버튼
+            advance.onClick.Invoke(); // 플레이어와 적의 기본 공격 진행
+            var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 실제 결과 표시 조회
+            Assert.That(roundText.text, Does.Contain("패배")); // 플레이어 체력 소진에 따른 패배 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.Zero); // 패배한 현재 체력 확인
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 패배 결과에서 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(AppRoot.Instance.Input.IsUiEnabled, Is.True); // 타이틀 입력 복구 확인
+            AppRoot.Instance.StartNewGame(); // 새 게임 요청
+            yield return WaitForPhase(GamePhase.Exploration); // 새 던전 도착 대기
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 새 게임의 기본 체력 초기화
+        } // 검증 끝
+        [UnityTest] // 양측 공격 결과 표시 검증
+        public IEnumerator Combat_MissAndEnemyHit_ShowBothResults() // 빗나감과 적중 메시지 동시 보존
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            var rolls = new Queue<int>(new[] // 명중과 편차 난수 순서
+            { // 난수 목록 시작
+                99, 0, 0, 0 // 플레이어 빗나감과 적의 명중
+            }); // 난수 목록 끝
+            CombatScreenView.RandomOverride = (minimum, maximum) => rolls.Dequeue(); // 결정 가능한 전투 난수
+            yield return EnterDungeon(); // 실제 던전 진입
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 시작
+            yield return null; // 전투 화면 준비 대기
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 한 라운드 기본 공격
+            var notice = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 결과 안내 조회
+            Assert.That(notice.text, Does.Contain("플레이어 공격 · 빗나감")); // 플레이어 빗나감 결과 보존
+            Assert.That(notice.text, Does.Contain("상위 개체 공격")); // 적 공격 결과 함께 표시
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 적 공격에 따른 실제 체력 확인
+        } // 검증 끝
+        [UnityTest] // 같은 프레임의 중복 공격 방지 검증
+        public IEnumerator Combat_DuplicateActionInOneFrame_IsIgnored() // 한 프레임의 두 번 공격 차단
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 명중과 최소 피해 편차 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 시작
+            yield return null; // 전투 화면 준비 대기
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            var health = GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>(); // 상대 체력 표시
+            attack.onClick.Invoke(); // 첫 공격 요청
+            Assert.That(health.text, Does.Contain("27/70")); // 첫 공격의 실제 피해 확인
+            attack.onClick.Invoke(); // 같은 프레임의 중복 요청
+            Assert.That(health.text, Does.Contain("27/70")); // 중복 공격으로 인한 추가 피해 차단
+            yield return null; // 다음 프레임 대기
+            attack.onClick.Invoke(); // 다음 프레임의 새 공격 요청
+            Assert.That(health.text, Does.Contain("0/70")); // 새 공격과 승리 처리 확인
+        } // 검증 끝
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
+            typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             if (testController != null) // 검증용 제어 객체 존재 검사
             { // 제어 객체 정리 시작
                 Object.Destroy(testController); // 검증용 제어 객체 제거

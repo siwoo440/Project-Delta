@@ -1,4 +1,5 @@
 using System; // 방 변경 알림과 구성 오류
+using System.Collections.Generic; // 완료한 조우 기록
 using ProjectDelta.Core; // 순수 방 연결 규칙
 using UnityEngine; // 실제 방 객체
 using UnityEngine.Tilemaps; // 방의 바닥과 장애물
@@ -15,6 +16,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private RoomTransitionState state; // 층 지도상의 현재 방
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
+        private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
         private RoomBinding[] templates; // 변경 전 보존한 방 원형
         private DoorBinding[] templateDoors; // 원형의 기존 문 정의
         private GameObject templateHolder; // 숨긴 방 원형 보관 객체
@@ -210,11 +212,35 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 탐험 외 조우 차단
             } // 검사 제외 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
-            if (room != null && room.Kind == RoomKind.Elite && EncounterRange.Contains(player.X, player.Y, 0, 0)) // 대상 주변 여덟 방향 검사
+            if (room != null && room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()) && EncounterRange.Contains(player.X, player.Y, 0, 0)) // 대상 주변 여덟 방향 검사
             { // 자동 조우 조건 시작
                 AppRoot.Instance.StartCombat(); // 전투 진입과 대기 이동 취소
             } // 자동 조우 조건 끝
         } // 검사 끝
+        public bool CompleteCurrentEncounter() // 승리한 방의 시험 조우 완료
+        { // 완료 시작
+            if (!IsReady) // 현재 방 준비 상태 검사
+            { // 준비 안 됨 조건 시작
+                return false; // 잘못된 조우 완료 차단
+            } // 준비 안 됨 조건 끝
+            var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (room == null || room.Kind != RoomKind.Elite || !completedEncounters.Add(EncounterKey())) // 상위 개체 방과 중복 완료 검사
+            { // 완료 거절 조건 시작
+                return false; // 잘못된 방과 중복 완료 차단
+            } // 완료 거절 조건 끝
+            var root = FindRoom(state.RoomX, state.RoomY); // 실제 현재 방 조회
+            var marker = root == null ? null : root.transform.Find("EncounterMarker"); // 실제 조우 대상 표시 조회
+            if (marker != null) // 조우 대상 표시 검사
+            { // 표시 제거 시작
+                marker.gameObject.SetActive(false); // 완료한 대상 즉시 숨김
+                Destroy(marker.gameObject); // 완료한 대상 제거
+            } // 표시 제거 끝
+            return true; // 조우 완료 성공
+        } // 완료 끝
+        private string EncounterKey() // 층과 방으로 조우 기록 구분
+        { // 식별 시작
+            return Floor + ":" + state.RoomX + ":" + state.RoomY; // 현재 층의 고유 방 식별자
+        } // 식별 끝
         private void OnInteraction() // 실제 문 앞 상호작용 처리
         { // 처리 시작
             if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 입력 상태와 이동 완료 검사
@@ -491,6 +517,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Discovery = nextDiscovery; // 새 층의 방문 기록 확정
                 state = new RoomTransitionState(0, 0); // 새 층 시작 방 좌표
                 floorProgress.Complete(true); // 다음 층 번호 확정
+                AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
             catch (Exception exception) // 새 층 준비 실패 처리
             { // 실패 처리 시작
