@@ -98,7 +98,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 입력 잠금 조건 시작
                 ExplorationLocked?.Invoke(); // 대기 중인 이동 취소 요청
             } // 입력 잠금 조건 끝
-            if (phase == GamePhase.Title) // 타이틀 상태 검사
+            if (phase == GamePhase.Title || phase == GamePhase.Combat) // 화면 입력 상태 검사
             { // 화면 입력 조건 시작
                 uiModule.enabled = true; // 화면 입력 전달 활성화
                 uiMap.Enable(); // 타이틀 입력만 활성화

@@ -1,4 +1,5 @@
 using System.Collections; // 프레임 기반 대기
+using System.Collections.Generic; // 경로 탐색 목록
 using System.Linq; // 방 구조 비교
 using System.Reflection; // 실제 방 연결 조회
 using NUnit.Framework; // 검증 도구
@@ -23,6 +24,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
     public sealed class DungeonRuntimeGenerationTests // 생성된 실제 던전 검증
     { // 클래스 시작
         private Keyboard keyboard; // 검증용 키보드
+        private Gamepad gamepad; // 검증용 게임패드
         private GameObject testPrototype; // 오류 경로 검증용 방 객체
         private GameObject testController; // 오류 경로 검증용 제어 객체
         private InputSettings.BackgroundBehavior originalBackground; // 기존 백그라운드 입력 설정
@@ -370,6 +372,183 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(existingMarker.activeSelf, Is.True); // 기존 문 표시 보존
             Assert.That(SceneManager.GetActiveScene().GetRootGameObjects().Count(root => root.name.StartsWith("GeneratedRoom_")), Is.EqualTo(generatedBefore)); // 실패한 생성 방 누출 방지
         } // 검증 끝
+        [UnityTest] // 자동 조우와 전투 복귀 검증
+        public IEnumerator EliteEncounter_OpensCombatAndReturnsToSamePosition() // 실제 이동으로 조우하고 원래 자리 복귀
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전 시드
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 방 이동 제어 조회
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어 조회
+            var layout = travel.Layout; // 현재 층 구조
+            var start = layout.GetRoom(travel.RoomX, travel.RoomY); // 출발 방 정의
+            var target = layout.Rooms.First(room => room.Kind == RoomKind.Elite); // 상위 개체 방 정의
+            var queue = new Queue<DungeonRoom>(); // 연결 방 탐색 대기열
+            var previous = new Dictionary<DungeonRoom, RoomDoor>(); // 각 방의 이전 연결
+            queue.Enqueue(start); // 시작 방 예약
+            previous.Add(start, null); // 시작 방 방문 표시
+            while (queue.Count > 0 && !previous.ContainsKey(target)) // 대상 방까지 연결 탐색
+            { // 탐색 시작
+                var current = queue.Dequeue(); // 탐색할 방 조회
+                foreach (var door in layout.Doors) // 모든 출구 순회
+                { // 출구 검사 시작
+                    if (door.RoomX != current.X || door.RoomY != current.Y) // 현재 방의 출구 검사
+                    { // 다른 방 조건 시작
+                        continue; // 다른 방 출구 제외
+                    } // 다른 방 조건 끝
+                    var next = layout.GetRoom(door.TargetRoomX, door.TargetRoomY); // 연결 방 조회
+                    if (previous.ContainsKey(next)) // 이미 찾은 방 검사
+                    { // 중복 조건 시작
+                        continue; // 중복 탐색 제외
+                    } // 중복 조건 끝
+                    previous.Add(next, door); // 이전 연결 보관
+                    queue.Enqueue(next); // 연결 방 탐색 예약
+                } // 출구 검사 끝
+            } // 탐색 끝
+            Assert.That(previous.ContainsKey(target), Is.True); // 상위 개체 방 도달 가능 확인
+            var route = new List<RoomDoor>(); // 실제 이동 경로
+            var cursor = target; // 도착 방부터 역추적
+            while (cursor != start) // 시작 방까지 이전 연결 반복
+            { // 경로 복구 시작
+                var door = previous[cursor]; // 현재 방으로 들어온 문
+                route.Add(door); // 연결 경로 보관
+                cursor = layout.GetRoom(door.RoomX, door.RoomY); // 이전 방 이동
+            } // 경로 복구 끝
+            route.Reverse(); // 출발 방부터 이동 순서 정렬
+            foreach (var door in route) // 실제 이동 경로 순회
+            { // 방 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 키 입력으로 문 통과
+            } // 방 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 객체 조회
+            var arguments = new object[] // 현재 방 좌표 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 상위 개체 방 좌표
+            }; // 인수 목록 끝
+            var root = (GameObject)finder.Invoke(travel, arguments); // 실제 상위 개체 방
+            Assert.That(root.transform.Find("EncounterMarker"), Is.Not.Null); // 시험 몬스터 표시 확인
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 현재 방 바닥
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 현재 방 장애물
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 2), Is.True); // 포착 범위 밖 배치
+            yield return null; // 위치 변경 프레임 종료
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 범위 밖 탐험 유지
+            var savedDiscovery = travel.Discovery; // 현재 층 방문 기록 보관
+            var savedFloor = travel.Floor; // 현재 층 번호 보관
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.S)); // 대상 방향 한 칸 이동
+            InputSystem.Update(); // 방향 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 입력 해제
+            InputSystem.Update(); // 해제 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.S)); // 이동 중 추가 방향 입력
+            InputSystem.Update(); // 대기 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 대기 방향 해제
+            InputSystem.Update(); // 해제 반영
+            var deadline = Time.realtimeSinceStartup + 10f; // 이동 완료 대기 시간
+            while (player.IsMoving && Time.realtimeSinceStartup < deadline) // 이동 완료 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            yield return null; // 조우 화면 갱신 대기
+            Assert.That(player.X, Is.EqualTo(0)); // 도착 가로 칸 확인
+            Assert.That(player.Y, Is.EqualTo(1)); // 포착 범위 도착 확인
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 자동 전투 진입 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 탐험 입력 잠금 확인
+            Assert.That(AppRoot.Instance.Input.IsUiEnabled, Is.True); // 전투 화면 입력 확인
+            var battle = GameObject.Find("BattleCanvas"); // 전투 화면 조회
+            Assert.That(battle, Is.Not.Null); // 실제 전투 화면 표시 확인
+            var button = GameObject.Find("ExitBattleButton"); // 시험 종료 버튼 조회
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(button)); // 기본 선택 버튼 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 전투 중 이동 입력
+            InputSystem.Update(); // 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 입력 갱신 대기
+            Assert.That(player.Y, Is.EqualTo(1)); // 전투 중 탐험 이동 차단
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureBattle(); // 실제 전투 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 조건 끝
+            var submits = 0; // 화면 선택 입력 발생 횟수
+            var clicks = 0; // 버튼 선택 처리 횟수
+            var module = UnityEngine.EventSystems.EventSystem.current.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>(); // 실제 화면 입력 모듈
+            module.submit.action.performed += context => submits++; // 화면 선택 입력 관찰
+            button.GetComponent<UnityEngine.UI.Button>().onClick.AddListener(() => clicks++); // 버튼 선택 결과 관찰
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 선택 버튼 확인 입력
+            yield return null; // 입력 갱신과 화면 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 종료 화면 반영 대기
+            Assert.That(submits, Is.EqualTo(1), "Submit action count"); // 입력 동작 발생 확인
+            Assert.That(clicks, Is.EqualTo(1), "Button click count"); // 화면 모듈의 버튼 전달 확인
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 복귀 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구
+            Assert.That(travel.Floor, Is.EqualTo(savedFloor)); // 현재 층 보존
+            Assert.That(travel.RoomX, Is.EqualTo(target.X)); // 상위 개체 방 가로 좌표 보존
+            Assert.That(travel.RoomY, Is.EqualTo(target.Y)); // 상위 개체 방 세로 좌표 보존
+            Assert.That(player.X, Is.EqualTo(0)); // 플레이어 가로 칸 보존
+            Assert.That(player.Y, Is.EqualTo(1)); // 플레이어 세로 칸 보존
+            Assert.That(travel.Discovery, Is.SameAs(savedDiscovery)); // 기존 방문 기록 보존
+        } // 검증 끝
+        private static Texture2D CaptureBattle() // 실제 전투 화면의 별도 렌더링
+        { // 캡처 시작
+            var camera = Camera.main; // 실제 게임 카메라
+            var canvas = GameObject.Find("BattleCanvas").GetComponent<Canvas>(); // 실제 전투 화면
+            var dungeon = GameObject.Find("DungeonCanvas").GetComponent<Canvas>(); // 기존 탐험 화면
+            var target = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32); // 화면 밖 렌더링 영역
+            var oldActive = RenderTexture.active; // 기존 렌더링 대상
+            var oldTarget = camera.targetTexture; // 기존 카메라 대상
+            var oldMode = canvas.renderMode; // 기존 화면 렌더링 방식
+            var oldCamera = canvas.worldCamera; // 기존 화면 카메라
+            var oldDistance = canvas.planeDistance; // 기존 화면 거리
+            var oldEnabled = dungeon.enabled; // 기존 탐험 화면 표시 상태
+            try // 실제 화면 렌더링
+            { // 렌더링 시작
+                target.Create(); // 별도 영역 생성
+                camera.targetTexture = target; // 별도 영역 연결
+                dungeon.enabled = false; // 탐험 화면 가림
+                canvas.renderMode = RenderMode.ScreenSpaceCamera; // 카메라 기준 화면 표시
+                canvas.worldCamera = camera; // 실제 게임 카메라 연결
+                canvas.planeDistance = 1f; // 전투 화면 거리 지정
+                Canvas.ForceUpdateCanvases(); // 화면 구성 갱신
+                camera.Render(); // 실제 전투 화면 그리기
+                RenderTexture.active = target; // 읽을 화면 선택
+                var image = new Texture2D(1280, 720, TextureFormat.RGB24, false); // 캡처 이미지 생성
+                image.ReadPixels(new Rect(0f, 0f, 1280f, 720f), 0, 0); // 화면 픽셀 읽기
+                image.Apply(); // 픽셀 반영
+                return image; // 실제 전투 화면 전달
+            } // 렌더링 끝
+            finally // 기존 화면과 리소스 복구
+            { // 복구 시작
+                canvas.renderMode = oldMode; // 기존 화면 방식 복구
+                canvas.worldCamera = oldCamera; // 기존 화면 카메라 복구
+                canvas.planeDistance = oldDistance; // 기존 화면 거리 복구
+                dungeon.enabled = oldEnabled; // 탐험 화면 표시 복구
+                camera.targetTexture = oldTarget; // 기존 카메라 대상 복구
+                RenderTexture.active = oldActive; // 기존 활성 대상 복구
+                target.Release(); // 임시 렌더링 메모리 해제
+                Object.Destroy(target); // 임시 렌더링 객체 제거
+            } // 복구 끝
+        } // 캡처 끝
+        [UnityTest] // 게임패드 전투 종료 검증
+        public IEnumerator Combat_CanReturnUsingGamepad() // 게임패드 선택으로 탐험 복귀
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 검증용 게임패드 연결
+            InputSystem.Update(); // 장치 연결 반영
+            yield return null; // 장치 준비 대기
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 실제 시험 전투 진입
+            yield return null; // 화면과 선택 준비 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 선택 버튼
+            yield return null; // 실제 화면 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 종료 처리 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 탐험 복귀 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
+        } // 검증 끝
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작
@@ -382,6 +561,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             { // 검증 방 정리 시작
                 Object.Destroy(testPrototype); // 검증용 방 제거
             } // 검증 방 정리 끝
+            if (gamepad != null && gamepad.added) // 검증 게임패드 존재 검사
+            { // 게임패드 정리 시작
+                InputSystem.RemoveDevice(gamepad); // 검증용 게임패드 제거
+            } // 게임패드 정리 끝
             if (keyboard != null && keyboard.added) // 검증 키보드 존재 검사
             { // 키보드 정리 시작
                 InputSystem.RemoveDevice(keyboard); // 검증용 키보드 제거

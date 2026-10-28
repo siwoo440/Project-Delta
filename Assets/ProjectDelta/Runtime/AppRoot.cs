@@ -7,6 +7,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class AppRoot : MonoBehaviour // 공통 실행 객체
     { // 클래스 시작
         private SceneLoader sceneLoader; // 실제 씬 로더
+        private CombatScreenView combatScreen; // 시험 전투 화면
         public static AppRoot Instance // 유일한 공통 객체
         { // 속성 시작
             get; // 객체 읽기
@@ -52,6 +53,40 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        public bool StartCombat() // 자동 조우의 전투 화면 진입
+        { // 진입 시작
+            if (!Flow.TryStartCombat()) // 전투 진입 상태 검사
+            { // 진입 거절 조건 시작
+                return false; // 중복 조우 차단
+            } // 진입 거절 조건 끝
+            Input.SetPhase(GamePhase.Combat); // 탐험 입력 잠금과 화면 입력 활성화
+            try // 실제 전투 화면 준비
+            { // 화면 준비 시작
+                combatScreen = CombatScreenView.Create(this); // 시험 전투 화면 생성
+                return true; // 실제 화면 진입 성공
+            } // 화면 준비 끝
+            catch (System.Exception exception) // 화면 생성 실패 복구
+            { // 실패 복구 시작
+                Flow.TryEndCombat(); // 기존 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Combat screen failed: " + exception.Message); // 실제 오류 기록
+                return false; // 잘못된 전투 진입 거절
+            } // 실패 복구 끝
+        } // 진입 끝
+        public void EndCombat() // 시험 전투 종료와 탐험 복귀
+        { // 복귀 시작
+            if (!Flow.TryEndCombat()) // 전투 상태 검사
+            { // 복귀 거절 조건 시작
+                return; // 중복 종료 차단
+            } // 복귀 거절 조건 끝
+            if (combatScreen != null) // 전투 화면 존재 검사
+            { // 화면 정리 시작
+                combatScreen.gameObject.SetActive(false); // 기존 전투 화면 즉시 숨김
+                Destroy(combatScreen.gameObject); // 시험 전투 화면 정리
+                combatScreen = null; // 화면 참조 해제
+            } // 화면 정리 끝
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 복귀 끝
         private void RequestTransition(GamePhase destination, string sceneName) // 전환 승인과 입력 잠금
         { // 요청 시작
             if (!Flow.TryBeginTransition(destination)) // 중복 요청 검사

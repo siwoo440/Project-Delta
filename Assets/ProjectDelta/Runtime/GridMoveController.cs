@@ -15,6 +15,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Vector3 animationTarget; // 화면 이동 목표 위치
         private float elapsed; // 현재 이동 경과 시간
         private int roomTransitionFrame = -1; // 방 전환 직후 입력 차단 프레임
+        public event System.Action StepArrived; // 한 칸 도착 알림
         public int X => state.X; // 확정된 가로 칸
         public int Y => state.Y; // 확정된 세로 칸
         public MoveDirection Facing => state.Facing; // 현재 표시 방향
@@ -89,6 +90,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 다음 프레임 이동 대기
             } // 이동 진행 조건 끝
             transform.position = animationTarget; // 목표 칸 중심 확정
+            StepArrived?.Invoke(); // 대기 이동 전 현재 칸 도착 알림
             if (state.FinishMove()) // 대기 입력의 다음 이동 검사
             { // 대기 이동 조건 시작
                 BeginAnimation(); // 첫 대기 입력의 화면 이동 시작

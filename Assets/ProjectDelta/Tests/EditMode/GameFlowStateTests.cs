@@ -58,6 +58,21 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var flow = new GameFlowState(); // 초기 상태 준비
             Assert.Throws<InvalidOperationException>(() => flow.CompleteTransition()); // 누락된 시작 단계 확인
         } // 검증 끝
+        [Test] // 전투 진입과 중복 요청 검증
+        public void Combat_RequiresExploration_AndReturnsToExploration() // 탐험과 전투 왕복 확인
+        { // 검증 시작
+            var flow = CreateTitleState(); // 타이틀 상태 준비
+            Assert.That(flow.TryStartCombat(), Is.False); // 타이틀 조우 차단
+            Assert.That(flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 탐험 전환 요청
+            flow.CompleteTransition(); // 탐험 전환 완료
+            Assert.That(flow.TryEndCombat(), Is.False); // 전투 전 종료 차단
+            Assert.That(flow.TryStartCombat(), Is.True); // 탐험에서 조우 허용
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Combat)); // 전투 상태 확인
+            Assert.That(flow.TryStartCombat(), Is.False); // 중복 조우 차단
+            Assert.That(flow.TryEndCombat(), Is.True); // 전투 종료 허용
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 기존 탐험 복귀
+            Assert.That(flow.TryEndCombat(), Is.False); // 중복 종료 차단
+        } // 검증 끝
         private static GameFlowState CreateTitleState() // 타이틀 검증 준비
         { // 준비 시작
             var flow = new GameFlowState(); // 초기 상태 생성

@@ -166,9 +166,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Seed = GenerationSeedOverride ?? Guid.NewGuid().GetHashCode(); // 검증 시드 또는 새 게임의 난수 시드
                 Layout = DungeonGenerator.Generate(Seed); // 시드 기반 1층 구조 생성
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
+                ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
                 Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
+                AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
             } // 검사 끝
             catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
@@ -190,6 +192,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (input != null) // 입력 준비 검사
             { // 연결 조건 시작
                 input.InteractionRequested += OnInteraction; // 문 상호작용 구독
+                player.StepArrived += OnStepArrived; // 한 칸 도착 시 조우 검사
             } // 연결 조건 끝
         } // 연결 끝
         private void OnDisable() // 상호작용 입력 해제
@@ -197,8 +200,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (input != null) // 입력 존재 검사
             { // 해제 조건 시작
                 input.InteractionRequested -= OnInteraction; // 문 상호작용 구독 해제
+                player.StepArrived -= OnStepArrived; // 한 칸 도착 연결 해제
             } // 해제 조건 끝
         } // 해제 끝
+        private void OnStepArrived() // 한 칸 도착 시 기존 조우 범위 검사
+        { // 검사 시작
+            if (!IsReady || input == null || !input.IsExplorationEnabled) // 탐험 상태 검사
+            { // 검사 제외 조건 시작
+                return; // 탐험 외 조우 차단
+            } // 검사 제외 조건 끝
+            var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (room != null && room.Kind == RoomKind.Elite && EncounterRange.Contains(player.X, player.Y, 0, 0)) // 대상 주변 여덟 방향 검사
+            { // 자동 조우 조건 시작
+                AppRoot.Instance.StartCombat(); // 전투 진입과 대기 이동 취소
+            } // 자동 조우 조건 끝
+        } // 검사 끝
         private void OnInteraction() // 실제 문 앞 상호작용 처리
         { // 처리 시작
             if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 입력 상태와 이동 완료 검사
@@ -336,6 +352,81 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 방 검사 끝
             throw new InvalidOperationException("A stair room binding is required."); // 계단 방 누락 거절
         } // 표시 끝
+        private static void ValidateEncounterRoom(DungeonLayout layout, RoomBinding[] bindings) // 조우 방 원형의 중앙 칸 사전 검사
+        { // 검사 시작
+            DungeonRoom encounter = null; // 생성된 조우 방 정의
+            GameObject origin = null; // 기본 시작 방 원형
+            GameObject exact = null; // 조우 좌표의 기존 방 원형
+            foreach (var room in layout.Rooms) // 생성된 방 정의 순회
+            { // 조우 방 조회 시작
+                if (room.Kind == RoomKind.Elite) // 조우 방 역할 검사
+                { // 조우 조건 시작
+                    encounter = room; // 조우 방 정의 보관
+                    break; // 조우 방 조회 종료
+                } // 조우 조건 끝
+            } // 조우 방 조회 끝
+            if (encounter == null) // 조우 방 존재 검사
+            { // 조우 누락 조건 시작
+                throw new InvalidOperationException("An encounter room binding is required."); // 조우 누락 거절
+            } // 조우 누락 조건 끝
+            foreach (var binding in bindings) // 원형 방 연결 순회
+            { // 원형 조회 시작
+                if (binding.X == 0 && binding.Y == 0) // 시작 방 좌표 검사
+                { // 시작 방 조건 시작
+                    origin = binding.Root; // 복제 원형 보관
+                } // 시작 방 조건 끝
+                if (binding.X == encounter.X && binding.Y == encounter.Y) // 기존 조우 좌표 검사
+                { // 일치 조건 시작
+                    exact = binding.Root; // 해당 좌표의 원형 보관
+                } // 일치 조건 끝
+            } // 원형 조회 끝
+            var root = exact != null ? exact : origin; // 기존 방 또는 시작 방 원형 선택
+            var floorObject = root == null ? null : root.transform.Find("Floor"); // 원형 바닥 객체
+            var obstacleObject = root == null ? null : root.transform.Find("Obstacles"); // 원형 장애물 객체
+            var floor = floorObject == null ? null : floorObject.GetComponent<Tilemap>(); // 원형 바닥 타일맵
+            var obstacles = obstacleObject == null ? null : obstacleObject.GetComponent<Tilemap>(); // 원형 장애물 타일맵
+            if (floor == null || obstacles == null || !floor.HasTile(Vector3Int.zero) || obstacles.HasTile(Vector3Int.zero)) // 조우 칸 통행 검사
+            { // 통행 불가 조건 시작
+                throw new InvalidOperationException("The encounter cell must be walkable."); // 방 변경 전 충돌 거절
+            } // 통행 불가 조건 끝
+        } // 검사 끝
+        private void AddEncounterMarker(DungeonLayout layout, RoomBinding[] bindings) // 조우 방의 중앙 칸 표시
+        { // 표시 시작
+            foreach (var room in layout.Rooms) // 생성된 방 순회
+            { // 방 검사 시작
+                if (room.Kind != RoomKind.Elite) // 조우 방 역할 검사
+                { // 다른 방 조건 시작
+                    continue; // 조우 표시 제외
+                } // 다른 방 조건 끝
+                foreach (var binding in bindings) // 실제 방 연결 순회
+                { // 연결 검사 시작
+                    if (binding.X != room.X || binding.Y != room.Y) // 좌표 일치 검사
+                    { // 다른 방 조건 시작
+                        continue; // 다른 방 제외
+                    } // 다른 방 조건 끝
+                    var root = binding.Root; // 조우 방 객체
+                    var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 바닥 타일맵
+                    var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 장애물 타일맵
+                    if (!floor.HasTile(Vector3Int.zero) || obstacles.HasTile(Vector3Int.zero)) // 조우 칸 통행 검사
+                    { // 충돌 조건 시작
+                        throw new InvalidOperationException("The encounter cell must be walkable."); // 잘못된 조우 위치 거절
+                    } // 충돌 조건 끝
+                    var marker = new GameObject("EncounterMarker", typeof(SpriteRenderer)); // 조우 표시 객체
+                    marker.transform.SetParent(root.transform, false); // 조우 방 아래 배치
+                    var grid = root.GetComponent<Grid>(); // 방 격자 조회
+                    var anchor = floor.tileAnchor; // 바닥 칸 중심 기준
+                    var size = grid.cellSize; // 격자 칸 크기
+                    marker.transform.position = floor.transform.TransformPoint(new Vector3(anchor.x * size.x, anchor.y * size.y, anchor.z * size.z)); // 중앙 칸의 화면 위치
+                    marker.transform.localRotation = Quaternion.Euler(0f, 0f, 0f); // 아래층 방향 표시
+                    var sprite = marker.GetComponent<SpriteRenderer>(); // 조우 표시 렌더러
+                    sprite.sprite = player.transform.Find("DirectionIndicator").GetComponent<SpriteRenderer>().sprite; // 기존 화살표 이미지 사용
+                    sprite.color = new Color(1f, 0.3f, 0.72f); // 파란 조우 색상
+                    sprite.sortingOrder = 3; // 바닥 위 표시
+                    return; // 조우 표시 완료
+                } // 연결 검사 끝
+            } // 방 검사 끝
+            throw new InvalidOperationException("An encounter room binding is required."); // 조우 방 누락 거절
+        } // 표시 끝
         private void TryNextFloor() // 준비 성공 시에만 다음 층 확정
         { // 전환 시작
             if (Floor >= 2) // 합의된 마지막 층 검사
@@ -364,12 +455,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     originals[index] = new RoomBinding(template.X, template.Y, template.IsSecret, copy); // 원형 좌표 연결
                 } // 복제 끝
                 ValidateStairRoom(nextLayout, originals); // 방을 변경하기 전 계단 칸 검사
+                ValidateEncounterRoom(nextLayout, originals); // 방을 변경하기 전 조우 칸 검사
                 var nextRooms = GeneratedRoomFactory.Create(nextLayout, originals, templateDoors, player); // 검증된 새 층 방과 출구 생성
                 foreach (var room in nextRooms) // 새 층의 방 순회
                 { // 상위 객체 연결 시작
                     room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
                 } // 상위 객체 연결 끝
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
+                AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
                 var start = Array.Find(nextRooms, room => room.X == 0 && room.Y == 0); // 새 층 시작 방 조회
                 var floor = start.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 시작 방 바닥
                 var obstacles = start.Root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 시작 방 장애물
