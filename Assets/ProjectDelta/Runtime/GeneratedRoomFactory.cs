@@ -128,7 +128,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var snapshots = new List<RoomSnapshot>(); // 실패 시 복구할 기존 방 상태
             try // 실제 방 생성과 출구 연결
             { // 방 구성 시작
-                template = UnityEngine.Object.Instantiate(origin); // 씬 원본을 보존하는 실행용 방 원형
+                template = UnityEngine.Object.Instantiate(origin, origin.transform.parent); // 기존 상위 객체의 활성 상태 유지
                 template.name = "RoomTemplateRuntime"; // 실행용 원형 이름
                 template.SetActive(false); // 원형 화면 표시 방지
                 var bindings = new List<RoomBinding>(); // 생성된 방과 씬 객체 연결

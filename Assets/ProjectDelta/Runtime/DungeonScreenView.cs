@@ -14,8 +14,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
-            UiFactory.CreateText(canvas.transform, "Scope", "흰 화살표: 방향  ·  노란 화살표: 문  ·  붉은 칸: 장애물", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
-            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문  ·  Esc: 타이틀", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
+            UiFactory.CreateText(canvas.transform, "Scope", "흰 화살표: 방향  ·  노란 화살표: 문  ·  파란 화살표: 계단", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.66f, 0.72f, 0.75f)); // 방향과 문과 장애물 표시 안내
+            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문·계단  ·  Esc: 타이틀", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
             var roomObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체 조회
             travel = roomObject == null ? null : roomObject.GetComponent<RoomTravelController>(); // 방 이동 제어기 연결
             DungeonMiniMap.Create(canvas.transform, travel); // 발견한 방의 미니맵 생성
@@ -45,7 +45,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     status.text = "현재 위치: 시작 방"; // 시작 방 이름 표시
                     break; // 역할 선택 종료
                 case RoomKind.Stairs: // 계단 방
-                    status.text = "현재 위치: 계단 방"; // 계단 방 이름 표시
+                    status.text = travel.Floor >= 2 ? "현재 위치: 계단 방 · 이후 층 준비 중" : "현재 위치: 계단 방"; // 계단 방과 추가 층 안내
                     break; // 역할 선택 종료
                 case RoomKind.Elite: // 상위 개체 방
                     status.text = "현재 위치: 상위 개체 방"; // 상위 개체 방 이름 표시
@@ -54,6 +54,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     status.text = "현재 위치: 일반 방"; // 일반 방 이름 표시
                     break; // 역할 선택 종료
             } // 역할 선택 끝
+            status.text = travel.Floor + "층 · " + status.text; // 현재 층과 방 함께 표시
         } // 갱신 끝
     } // 클래스 끝
 } // 이름 공간 끝

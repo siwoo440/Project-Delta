@@ -12,10 +12,19 @@ using UnityEngine.TestTools; // 프레임 기반 검증
 using UnityEngine.Tilemaps; // 실제 출구와 도착 칸 검사
 namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
+    public sealed class FloorActivationProbe : MonoBehaviour // 방 활성화 시점 검증
+    { // 클래스 시작
+        public static int Activations; // 방 활성화 횟수
+        private void OnEnable() // 실제 활성화 알림
+        { // 알림 시작
+            Activations++; // 활성화 횟수 증가
+        } // 알림 끝
+    } // 클래스 끝
     public sealed class DungeonRuntimeGenerationTests // 생성된 실제 던전 검증
     { // 클래스 시작
         private Keyboard keyboard; // 검증용 키보드
         private GameObject testPrototype; // 오류 경로 검증용 방 객체
+        private GameObject testController; // 오류 경로 검증용 제어 객체
         private InputSettings.BackgroundBehavior originalBackground; // 기존 백그라운드 입력 설정
 #if UNITY_EDITOR // 편집기 입력 설정 보관
         private InputSettings.EditorInputBehaviorInPlayMode originalEditor; // 기존 편집기 입력 설정
@@ -190,10 +199,185 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(extraScreen, Is.Not.Null); // 추가 예외 없는 화면 유지
             Object.Destroy(extraScreen); // 검증용 화면 정리
         } // 검증 끝
+        [UnityTest] // 계단을 통한 실제 층 이동 검증
+        public IEnumerator Stairs_AdvancesFloor_AndResetsDiscovery() // 실제 계단 입력과 새 층 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 1층 시드
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
+            InputSystem.Update(); // 장치 연결 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 방 이동 제어 조회
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어 조회
+            var floorProperty = typeof(RoomTravelController).GetProperty("Floor"); // 층 번호 표시 조회
+            Assert.That(floorProperty, Is.Not.Null); // 층 번호 제공 확인
+            Assert.That(floorProperty.GetValue(travel), Is.EqualTo(1)); // 첫 층 확인
+            var oldLayout = travel.Layout; // 기존 층 구조 보관
+            var oldDiscovery = travel.Discovery; // 기존 방문 기록 보관
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단이 아닌 방 상호작용
+            InputSystem.Update(); // 상호작용 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            InputSystem.Update(); // 해제 반영
+            Assert.That(floorProperty.GetValue(travel), Is.EqualTo(1)); // 일반 방의 층 이동 차단
+            for (var index = 1; index <= 6; index++) // 시작부터 계단 방까지 주 경로 순회
+            { // 경로 이동 시작
+                var target = oldLayout.Rooms[index]; // 다음 주 경로 방
+                var door = oldLayout.GetConnection(travel.RoomX, travel.RoomY, target.X, target.Y); // 다음 방 연결
+                Assert.That(door, Is.Not.Null); // 주 경로 연결 확인
+                yield return UseDoor(travel, player, door); // 실제 키 입력으로 방 이동
+            } // 경로 이동 끝
+            Assert.That(oldLayout.GetRoom(travel.RoomX, travel.RoomY).Kind, Is.EqualTo(RoomKind.Stairs)); // 계단 방 도착 확인
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 현재 방 조회
+            var roomArguments = new object[] // 현재 방 좌표 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 현재 방 좌표
+            }; // 인수 목록 끝
+            var root = (GameObject)finder.Invoke(travel, roomArguments); // 계단 방 객체
+            Assert.That(root.transform.Find("StairMarker"), Is.Not.Null); // 계단 표시 존재 확인
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 계단 방 바닥
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 계단 방 장애물
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 1), Is.True); // 계단이 아닌 칸 배치
+            yield return null; // 방 이동 프레임 종료
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단 외 위치의 상호작용
+            InputSystem.Update(); // 상호작용 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            InputSystem.Update(); // 해제 반영
+            Assert.That(floorProperty.GetValue(travel), Is.EqualTo(1)); // 계단 외 위치에서 이동 차단
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 0), Is.True); // 계단 칸 배치
+            var savedField = typeof(RoomTravelController).GetField("templates", BindingFlags.Instance | BindingFlags.NonPublic); // 새 층 원형 조회
+            var savedRooms = (RoomBinding[])savedField.GetValue(travel); // 보관된 방 원형
+            var savedStart = savedRooms.First(room => room.X == 0 && room.Y == 0).Root; // 시작 방 원형 조회
+            FloorActivationProbe.Activations = 0; // 방 활성화 횟수 초기화
+            savedStart.AddComponent<FloorActivationProbe>(); // 활성화 시점 관찰 연결
+            yield return null; // 방 이동 프레임 종료
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 실제 계단 상호작용 입력
+            InputSystem.Update(); // 상호작용 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            InputSystem.Update(); // 해제 반영
+            travel.SendMessage("OnInteraction"); // 같은 프레임 중복 요청
+            yield return null; // 화면 갱신 대기
+            Assert.That(floorProperty.GetValue(travel), Is.EqualTo(2)); // 다음 층과 중복 차단 확인
+            Assert.That(FloorActivationProbe.Activations, Is.EqualTo(1)); // 새 층 확정 전 활성화 방지
+            Assert.That(travel.Layout, Is.Not.SameAs(oldLayout)); // 새로운 층 구조 확인
+            Assert.That(travel.Discovery, Is.Not.SameAs(oldDiscovery)); // 독립된 방문 기록 확인
+            Assert.That(travel.RoomX, Is.EqualTo(0)); // 새 층 시작 방 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(0)); // 새 층 시작 방 세로 좌표
+            Assert.That(player.X, Is.EqualTo(0)); // 새 층 시작 칸 가로 좌표
+            Assert.That(player.Y, Is.EqualTo(0)); // 새 층 시작 칸 세로 좌표
+            Assert.That(travel.Layout.Rooms.Count(room => travel.Discovery.GetVisibility(room.X, room.Y) == RoomVisibility.Visited), Is.EqualTo(1)); // 새 층 시작 방만 방문 확인
+            var status = GameObject.Find("DungeonCanvas/Status").GetComponent<UnityEngine.UI.Text>(); // 실제 상태 안내 조회
+            Assert.That(status.text, Does.Contain("2층")); // 현재 층 표시 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 화면 캡처 경로 조회
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 검증 캡처 검사
+            { // 캡처 조건 시작
+                var capture = typeof(RoomTravelTests).GetMethod("CaptureOffscreen", BindingFlags.Static | BindingFlags.NonPublic); // 실제 카메라 캡처 도구 조회
+                var image = (Texture2D)capture.Invoke(null, null); // 실제 새 층 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            travel.SendMessage("TryNextFloor"); // 미정인 추가 층 전환 요청
+            Assert.That(travel.Floor, Is.EqualTo(2)); // 3층 전환 차단 확인
+        } // 검증 끝
+        [UnityTest] // 새 층 준비 실패와 재시도 검증
+        public IEnumerator Stairs_BlockedStart_PreservesFloorAndCanRetry() // 시작 칸 차단 시 이전 층 보존
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 방 구조
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
+            InputSystem.Update(); // 장치 연결 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var oldLayout = travel.Layout; // 기존 층 구조 보관
+            var oldDiscovery = travel.Discovery; // 기존 방문 기록 보관
+            for (var index = 1; index <= 6; index++) // 계단 방까지 주 경로 순회
+            { // 경로 이동 시작
+                var target = oldLayout.Rooms[index]; // 다음 경로 방
+                yield return UseDoor(travel, player, oldLayout.GetConnection(travel.RoomX, travel.RoomY, target.X, target.Y)); // 실제 입력으로 방 이동
+            } // 경로 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 조회
+            var roomArguments = new object[] // 현재 방 좌표 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 현재 방 좌표
+            }; // 인수 목록 끝
+            var root = (GameObject)finder.Invoke(travel, roomArguments); // 현재 계단 방
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 계단 방 바닥
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 계단 방 장애물
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 0), Is.True); // 계단 칸 배치
+            var templatesField = typeof(RoomTravelController).GetField("templates", BindingFlags.Instance | BindingFlags.NonPublic); // 새 층 원형 조회
+            var templates = (RoomBinding[])templatesField.GetValue(travel); // 보관된 방 원형
+            var start = templates.First(room => room.X == 0 && room.Y == 0).Root; // 새 층의 시작 방 원형
+            var startObstacles = start.transform.Find("Obstacles").GetComponent<Tilemap>(); // 원형 장애물
+            startObstacles.SetTile(Vector3Int.zero, floor.GetTile(Vector3Int.zero)); // 새 시작 칸 차단 모사
+            yield return null; // 방 전환 프레임 종료
+            LogAssert.Expect(LogType.Warning, "Floor transition failed: The stair cell must be walkable."); // 예상 실패 기록
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단 상호작용
+            InputSystem.Update(); // 실패 요청 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 실패한 방 정리 대기
+            Assert.That(travel.Floor, Is.EqualTo(1)); // 기존 층 번호 유지
+            Assert.That(travel.Layout, Is.SameAs(oldLayout)); // 기존 층 구조 유지
+            Assert.That(travel.Discovery, Is.SameAs(oldDiscovery)); // 기존 방문 기록 유지
+            Assert.That(root.activeInHierarchy, Is.True); // 기존 계단 방 표시 유지
+            Assert.That(player.X, Is.EqualTo(0)); // 기존 가로 칸 유지
+            Assert.That(player.Y, Is.EqualTo(0)); // 기존 세로 칸 유지
+            startObstacles.SetTile(Vector3Int.zero, null); // 차단 원인 제거
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 계단 재시도
+            InputSystem.Update(); // 재시도 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 새 층 표시 대기
+            Assert.That(travel.Floor, Is.EqualTo(2)); // 실패 후 정상 재시도 확인
+        } // 검증 끝
+        [UnityTest] // 최초 생성 실패 복구 검증
+        public IEnumerator BlockedStairTemplate_DoesNotChangeOriginalRooms() // 계단 칸 충돌 시 기존 방 보존
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 계단 배치
+            yield return EnterDungeon(); // 실제 던전 진입
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 기존 방 제어 조회
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 기존 플레이어 조회
+            var savedField = typeof(RoomTravelController).GetField("templates", BindingFlags.Instance | BindingFlags.NonPublic); // 원래 방 원형 조회
+            var savedRooms = (RoomBinding[])savedField.GetValue(travel); // 기존 방 원형 목록
+            var doorsField = typeof(RoomTravelController).GetField("templateDoors", BindingFlags.Instance | BindingFlags.NonPublic); // 원래 문 연결 조회
+            var savedDoors = (DoorBinding[])doorsField.GetValue(travel); // 원래 문 연결 목록
+            testPrototype = new GameObject("BlockedTemplates"); // 별도 시험 원형 상위 객체
+            testPrototype.SetActive(false); // 시험 방 표시 방지
+            var originals = new RoomBinding[savedRooms.Length]; // 시험용 원본 방 목록
+            for (var index = 0; index < savedRooms.Length; index++) // 보관된 원형 순회
+            { // 시험 원형 준비 시작
+                var saved = savedRooms[index]; // 기존 방 원형
+                var copy = Object.Instantiate(saved.Root, testPrototype.transform); // 독립 시험 원형 복제
+                var floor = copy.transform.Find("Floor").GetComponent<Tilemap>(); // 시험 바닥 타일맵
+                var obstacles = copy.transform.Find("Obstacles").GetComponent<Tilemap>(); // 시험 장애물 타일맵
+                obstacles.SetTile(Vector3Int.zero, floor.GetTile(Vector3Int.zero)); // 각 방의 계단 칸 충돌 모사
+                originals[index] = new RoomBinding(saved.X, saved.Y, saved.IsSecret, copy); // 시험 방 좌표 연결
+            } // 시험 원형 준비 끝
+            var start = originals.First(room => room.X == 0 && room.Y == 0).Root; // 시험 시작 방
+            var startObstacles = start.transform.Find("Obstacles").GetComponent<Tilemap>(); // 기존 출구 타일맵
+            var existingTile = startObstacles.GetTile(new Vector3Int(6, 0, 0)); // 기존 출구 타일 보관
+            var existingMarker = start.transform.Find("DoorMarker").gameObject; // 기존 문 표시 보관
+            var generatedBefore = SceneManager.GetActiveScene().GetRootGameObjects().Count(root => root.name.StartsWith("GeneratedRoom_")); // 기존 생성 방 수
+            testController = new GameObject("BlockedController"); // 독립 방 제어 객체
+            testController.SetActive(false); // 구성 전 초기화 방지
+            var controller = testController.AddComponent<RoomTravelController>(); // 시험용 방 제어 추가
+            controller.Configure(originals, savedDoors, player); // 기존 형식의 방과 문 연결
+            LogAssert.Expect(LogType.Error, "Invalid dungeon layout: The stair cell must be walkable."); // 충돌 감지 기록
+            testController.SetActive(true); // 충돌한 방 구조 초기화
+            yield return null; // 실패한 임시 객체 정리 대기
+            Assert.That(controller.IsReady, Is.False); // 충돌한 방 구조 사용 방지
+            Assert.That(startObstacles.GetTile(new Vector3Int(6, 0, 0)), Is.SameAs(existingTile)); // 기존 문 타일 보존
+            Assert.That(existingMarker.activeSelf, Is.True); // 기존 문 표시 보존
+            Assert.That(SceneManager.GetActiveScene().GetRootGameObjects().Count(root => root.name.StartsWith("GeneratedRoom_")), Is.EqualTo(generatedBefore)); // 실패한 생성 방 누출 방지
+        } // 검증 끝
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
+            if (testController != null) // 검증용 제어 객체 존재 검사
+            { // 제어 객체 정리 시작
+                Object.Destroy(testController); // 검증용 제어 객체 제거
+            } // 제어 객체 정리 끝
             if (testPrototype != null) // 검증용 방 존재 검사
             { // 검증 방 정리 시작
                 Object.Destroy(testPrototype); // 검증용 방 제거

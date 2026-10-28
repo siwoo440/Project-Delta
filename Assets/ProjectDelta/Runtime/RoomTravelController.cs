@@ -14,6 +14,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private GameInputRouter input; // 탐험 상호작용 입력
         private RoomTransitionState state; // 층 지도상의 현재 방
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
+        private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
+        private RoomBinding[] templates; // 변경 전 보존한 방 원형
+        private DoorBinding[] templateDoors; // 원형의 기존 문 정의
+        private GameObject templateHolder; // 숨긴 방 원형 보관 객체
+        private GameObject currentFloorHolder; // 생성된 현재 층의 상위 객체
+        public int Floor => floorProgress.Floor; // 현재 층 번호
         public static int? GenerationSeedOverride // 자동 검증용 생성 시드 지정
         { // 속성 시작
             get; // 지정 시드 조회
@@ -156,13 +162,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             try // 방 연결 유효성 검사
             { // 검사 시작
                 _ = new DungeonLayout(definitions, exits); // 기존 시험 방 연결 검증
+                SaveTemplates(); // 변경 전 방 원형 보관
                 Seed = GenerationSeedOverride ?? Guid.NewGuid().GetHashCode(); // 검증 시드 또는 새 게임의 난수 시드
                 Layout = DungeonGenerator.Generate(Seed); // 시드 기반 1층 구조 생성
+                ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
                 Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
+                AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
             } // 검사 끝
             catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
+                if (templateHolder != null) // 보관한 원형 존재 검사
+                { // 원형 정리 시작
+                    Destroy(templateHolder); // 실패한 방 원형 제거
+                } // 원형 정리 끝
                 Layout = null; // 실패한 방 구조 제거
                 Discovery = null; // 실패한 방문 기록 제거
                 Debug.LogError("Invalid dungeon layout: " + exception.Message); // 구성 오류 기록
@@ -192,6 +205,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
+            var currentRoom = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (currentRoom != null && currentRoom.Kind == RoomKind.Stairs && player.X == 0 && player.Y == 0) // 계단 칸의 상호작용 검사
+            { // 계단 상호작용 시작
+                TryNextFloor(); // 다음 층 생성과 이동 요청
+                return; // 문 상호작용 중복 방지
+            } // 계단 상호작용 끝
             var door = Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing); // 현재 접근 위치의 출구 조회
             if (door == null) // 정면 문 존재 검사
             { // 문 없음 조건 시작
@@ -228,6 +247,171 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
         } // 처리 끝
+        private void SaveTemplates() // 기존 씬 방을 변경 전 복제
+        { // 보관 시작
+            templateHolder = new GameObject("FloorTemplates"); // 숨긴 원형 보관 객체
+            templateHolder.transform.SetParent(transform, false); // 씬 종료 시 원형 정리
+            templateHolder.SetActive(false); // 원형 화면 표시 차단
+            templates = new RoomBinding[rooms.Length]; // 원형 방 연결 목록
+            templateDoors = doors; // 원본 문 정의 보관
+            for (var index = 0; index < rooms.Length; index++) // 기존 방 순회
+            { // 원형 복제 시작
+                var source = rooms[index]; // 기존 방 연결
+                var copy = Instantiate(source.Root, templateHolder.transform); // 변경 전 방 원형 복제
+                templates[index] = new RoomBinding(source.X, source.Y, source.IsSecret, copy); // 원형 좌표 연결
+            } // 원형 복제 끝
+        } // 보관 끝
+        private static void ValidateStairRoom(DungeonLayout layout, RoomBinding[] bindings) // 계단 방 원형의 중앙 칸 사전 검사
+        { // 검사 시작
+            DungeonRoom stair = null; // 생성된 계단 방 정의
+            GameObject origin = null; // 기본 시작 방 원형
+            GameObject exact = null; // 계단 좌표의 기존 방 원형
+            foreach (var room in layout.Rooms) // 생성된 방 정의 순회
+            { // 계단 방 조회 시작
+                if (room.Kind == RoomKind.Stairs) // 계단 방 역할 검사
+                { // 계단 조건 시작
+                    stair = room; // 계단 방 정의 보관
+                    break; // 계단 방 조회 종료
+                } // 계단 조건 끝
+            } // 계단 방 조회 끝
+            if (stair == null) // 계단 방 존재 검사
+            { // 계단 누락 조건 시작
+                throw new InvalidOperationException("A stair room binding is required."); // 계단 누락 거절
+            } // 계단 누락 조건 끝
+            foreach (var binding in bindings) // 원형 방 연결 순회
+            { // 원형 조회 시작
+                if (binding.X == 0 && binding.Y == 0) // 시작 방 좌표 검사
+                { // 시작 방 조건 시작
+                    origin = binding.Root; // 복제 원형 보관
+                } // 시작 방 조건 끝
+                if (binding.X == stair.X && binding.Y == stair.Y) // 기존 계단 좌표 검사
+                { // 일치 조건 시작
+                    exact = binding.Root; // 해당 좌표의 원형 보관
+                } // 일치 조건 끝
+            } // 원형 조회 끝
+            var root = exact != null ? exact : origin; // 기존 방 또는 시작 방 원형 선택
+            var floorObject = root == null ? null : root.transform.Find("Floor"); // 원형 바닥 객체
+            var obstacleObject = root == null ? null : root.transform.Find("Obstacles"); // 원형 장애물 객체
+            var floor = floorObject == null ? null : floorObject.GetComponent<Tilemap>(); // 원형 바닥 타일맵
+            var obstacles = obstacleObject == null ? null : obstacleObject.GetComponent<Tilemap>(); // 원형 장애물 타일맵
+            if (floor == null || obstacles == null || !floor.HasTile(Vector3Int.zero) || obstacles.HasTile(Vector3Int.zero)) // 계단 칸 통행 검사
+            { // 통행 불가 조건 시작
+                throw new InvalidOperationException("The stair cell must be walkable."); // 방 변경 전 충돌 거절
+            } // 통행 불가 조건 끝
+        } // 검사 끝
+        private void AddStairMarker(DungeonLayout layout, RoomBinding[] bindings) // 계단 방의 중앙 칸 표시
+        { // 표시 시작
+            foreach (var room in layout.Rooms) // 생성된 방 순회
+            { // 방 검사 시작
+                if (room.Kind != RoomKind.Stairs) // 계단 방 역할 검사
+                { // 다른 방 조건 시작
+                    continue; // 계단 표시 제외
+                } // 다른 방 조건 끝
+                foreach (var binding in bindings) // 실제 방 연결 순회
+                { // 연결 검사 시작
+                    if (binding.X != room.X || binding.Y != room.Y) // 좌표 일치 검사
+                    { // 다른 방 조건 시작
+                        continue; // 다른 방 제외
+                    } // 다른 방 조건 끝
+                    var root = binding.Root; // 계단 방 객체
+                    var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 바닥 타일맵
+                    var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 장애물 타일맵
+                    if (!floor.HasTile(Vector3Int.zero) || obstacles.HasTile(Vector3Int.zero)) // 계단 칸 통행 검사
+                    { // 충돌 조건 시작
+                        throw new InvalidOperationException("The stair cell must be walkable."); // 잘못된 계단 위치 거절
+                    } // 충돌 조건 끝
+                    var marker = new GameObject("StairMarker", typeof(SpriteRenderer)); // 계단 표시 객체
+                    marker.transform.SetParent(root.transform, false); // 계단 방 아래 배치
+                    var grid = root.GetComponent<Grid>(); // 방 격자 조회
+                    var anchor = floor.tileAnchor; // 바닥 칸 중심 기준
+                    var size = grid.cellSize; // 격자 칸 크기
+                    marker.transform.position = floor.transform.TransformPoint(new Vector3(anchor.x * size.x, anchor.y * size.y, anchor.z * size.z)); // 중앙 칸의 화면 위치
+                    marker.transform.localRotation = Quaternion.Euler(0f, 0f, 180f); // 아래층 방향 표시
+                    var sprite = marker.GetComponent<SpriteRenderer>(); // 계단 표시 렌더러
+                    sprite.sprite = player.transform.Find("DirectionIndicator").GetComponent<SpriteRenderer>().sprite; // 기존 화살표 이미지 사용
+                    sprite.color = new Color(0.2f, 0.8f, 1f); // 파란 계단 색상
+                    sprite.sortingOrder = 3; // 바닥 위 표시
+                    return; // 계단 표시 완료
+                } // 연결 검사 끝
+            } // 방 검사 끝
+            throw new InvalidOperationException("A stair room binding is required."); // 계단 방 누락 거절
+        } // 표시 끝
+        private void TryNextFloor() // 준비 성공 시에만 다음 층 확정
+        { // 전환 시작
+            if (Floor >= 2) // 합의된 마지막 층 검사
+            { // 추가 층 미정 조건 시작
+                return; // 확인되지 않은 층 이동 차단
+            } // 추가 층 미정 조건 끝
+            if (!floorProgress.TryBegin()) // 전환 잠금 검사
+            { // 전환 거절 조건 시작
+                return; // 중복 요청 무시
+            } // 전환 거절 조건 끝
+            lastTransitionFrame = Time.frameCount; // 같은 프레임 재요청 차단
+            GameObject stage = null; // 준비 중인 새 층 객체
+            try // 다음 층의 방과 시작 위치 준비
+            { // 준비 시작
+                var nextSeed = unchecked(Seed + floorProgress.Floor * 7919); // 층별 재현 가능한 새 시드
+                var nextLayout = DungeonGenerator.Generate(nextSeed); // 임시 1층 규칙으로 새 층 생성
+                var nextDiscovery = new DungeonDiscovery(nextLayout, 0, 0); // 새 층의 독립 방문 기록
+                stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
+                stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
+                stage.SetActive(false); // 준비 중 화면 노출 방지
+                var originals = new RoomBinding[templates.Length]; // 새 층의 원형 방 연결
+                for (var index = 0; index < templates.Length; index++) // 보관된 원형 순회
+                { // 복제 시작
+                    var template = templates[index]; // 원래 방 원형
+                    var copy = Instantiate(template.Root, stage.transform); // 새 층 전용 방 복제
+                    originals[index] = new RoomBinding(template.X, template.Y, template.IsSecret, copy); // 원형 좌표 연결
+                } // 복제 끝
+                ValidateStairRoom(nextLayout, originals); // 방을 변경하기 전 계단 칸 검사
+                var nextRooms = GeneratedRoomFactory.Create(nextLayout, originals, templateDoors, player); // 검증된 새 층 방과 출구 생성
+                foreach (var room in nextRooms) // 새 층의 방 순회
+                { // 상위 객체 연결 시작
+                    room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
+                } // 상위 객체 연결 끝
+                AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
+                var start = Array.Find(nextRooms, room => room.X == 0 && room.Y == 0); // 새 층 시작 방 조회
+                var floor = start.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 시작 방 바닥
+                var obstacles = start.Root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 시작 방 장애물
+                if (!player.CanArrive(floor, obstacles, 0, 0)) // 시작 칸 안전 검사
+                { // 도착 불가 조건 시작
+                    throw new InvalidOperationException("The next floor start is blocked."); // 기존 층 유지
+                } // 도착 불가 조건 끝
+                stage.SetActive(true); // 새 층 시작 방 활성화
+                if (!player.ChangeRoom(floor, obstacles, 0, 0)) // 활성화 후 도착 칸 재검사
+                { // 도착 실패 조건 시작
+                    throw new InvalidOperationException("The next floor start changed during activation."); // 기존 층 유지
+                } // 도착 실패 조건 끝
+                foreach (var room in rooms) // 이전 층의 방 순회
+                { // 이전 방 정리 시작
+                    room.Root.SetActive(false); // 이전 층 즉시 숨김
+                    Destroy(room.Root); // 이전 층 방 제거
+                } // 이전 방 정리 끝
+                if (currentFloorHolder != null) // 이전 층 상위 객체 검사
+                { // 상위 객체 정리 시작
+                    Destroy(currentFloorHolder); // 이전 층 상위 객체 제거
+                } // 상위 객체 정리 끝
+                currentFloorHolder = stage; // 새 층 객체 보관
+                stage = null; // 성공한 층의 실패 정리 방지
+                rooms = nextRooms; // 새 층의 실제 방 연결
+                Layout = nextLayout; // 새 층의 방 구조 확정
+                Discovery = nextDiscovery; // 새 층의 방문 기록 확정
+                state = new RoomTransitionState(0, 0); // 새 층 시작 방 좌표
+                floorProgress.Complete(true); // 다음 층 번호 확정
+            } // 준비 끝
+            catch (Exception exception) // 새 층 준비 실패 처리
+            { // 실패 처리 시작
+                if (stage != null) // 준비 중인 층 존재 검사
+                { // 실패한 층 정리 시작
+                    stage.SetActive(false); // 실패한 방 즉시 숨김
+                    Destroy(stage); // 준비 중인 방 제거
+                } // 실패한 층 정리 끝
+                floorProgress.Complete(false); // 기존 층 번호 유지와 잠금 해제
+                Debug.LogWarning("Floor transition failed: " + exception.Message); // 실패 원인 기록
+                return; // 실패한 전환의 화면 갱신 제외
+            } // 실패 처리 끝
+            RoomChanged?.Invoke(); // 확정된 층의 지도와 표시 갱신
+        } // 전환 끝
         private GameObject FindRoom(int x, int y) // 방 좌표의 실제 씬 객체 조회
         { // 조회 시작
             foreach (var room in rooms) // 저장된 방 연결 순회
