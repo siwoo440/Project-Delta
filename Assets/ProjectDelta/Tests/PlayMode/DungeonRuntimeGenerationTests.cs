@@ -51,6 +51,100 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView; // 게임 화면에 검증 입력 전달
 #endif // 편집기 입력 설정 끝
         } // 준비 끝
+        [UnityTest] // 타이틀 미관찰 도감과 실제 입력 검증
+        public IEnumerator Journal_Empty_OpensAndClosesWithKeyboardAndGamepad() // 미관찰 정보와 선택 복원 확인
+        { // 검증 시작
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 진입
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 타이틀 화면 준비 대기
+            var journalButton = GameObject.Find("JournalButton"); // 실제 도감 버튼
+            Assert.That(journalButton, Is.Not.Null); // 도감 진입 제공 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.DownArrow)); // 도감 버튼으로 이동
+            yield return null; // 키 입력 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            yield return null; // 선택 반영 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(journalButton)); // 도감 버튼의 키보드 선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 도감 열기
+            yield return null; // 도감 화면 준비 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 선택 해제 반영 대기
+            var contents = GameObject.Find("JournalContents").GetComponent<UnityEngine.UI.Text>(); // 도감 내용
+            Assert.That(contents.text, Does.Contain("관찰 기록이 없습니다")); // 미관찰 안내
+            Assert.That(contents.text, Does.Not.Contain("체력 70")); // 미관찰 정보 비공개
+            Assert.That(GameObject.Find("JournalPortrait"), Is.Null); // 미관찰 대상 이미지 비공개
+            Assert.That(GameObject.Find("NewGameButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 도감 열기 중 새 게임 차단
+            var close = GameObject.Find("CloseJournalButton"); // 실제 닫기 버튼
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(close)); // 닫기 버튼의 기본 선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 키보드 도감 닫기
+            yield return null; // 닫기 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 선택 해제 반영 대기
+            Assert.That(GameObject.Find("JournalContents"), Is.Null); // 도감 화면 닫기 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(journalButton)); // 도감 버튼 선택 복원
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 도감 열기
+            yield return null; // 열기 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(GameObject.Find("JournalContents"), Is.Not.Null); // 게임패드 도감 열기 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 도감 닫기
+            yield return null; // 닫기 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(GameObject.Find("JournalContents"), Is.Null); // 게임패드 도감 닫기 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(journalButton)); // 게임패드 선택 복원
+        } // 검증 끝
+        [UnityTest] // 손상된 저장의 도감 경고와 원본 보호 검증
+        public IEnumerator Journal_DamagedSave_ShowsWarningWithoutChangingFile() // 저장 오류 안내와 원본 유지
+        { // 검증 시작
+            var path = ObservationStorage.TestDirectoryOverride; // 현재 시험 전용 저장 경로
+            System.IO.Directory.CreateDirectory(path); // 시험 저장 폴더 준비
+            var current = System.IO.Path.Combine(path, "observation-v1.json"); // 시험 저장 파일
+            System.IO.File.WriteAllText(current, "damaged test data"); // 손상된 시험 원본
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 진입
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            var journalButton = GameObject.Find("JournalButton"); // 실제 도감 버튼
+            Assert.That(journalButton, Is.Not.Null); // 도감 진입 제공 확인
+            journalButton.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 손상 상태의 도감 열기
+            yield return null; // 경고 표시 대기
+            var warning = GameObject.Find("JournalSaveWarning"); // 도감 저장 오류 안내
+            Assert.That(warning, Is.Not.Null); // 저장 오류 안내 제공 확인
+            Assert.That(warning.GetComponent<UnityEngine.UI.Text>().text, Does.Contain("보존")); // 원본 보존 안내 확인
+            Assert.That(GameObject.Find("JournalContents").GetComponent<UnityEngine.UI.Text>().text, Does.Not.Contain("체력 70")); // 확인되지 않은 정보 비공개
+            GameObject.Find("CloseJournalButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 도감 닫기
+            Assert.That(System.IO.File.ReadAllText(current), Is.EqualTo("damaged test data")); // 손상된 원본 그대로 보존
+        } // 검증 끝
+        [UnityTest] // 저장한 관찰 기록의 도감 표시 검증
+        public IEnumerator Journal_Observed_ReloadsAndShowsSavedInfo() // 재초기화 후 저장 정보 표시
+        { // 검증 시작
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 진입
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(AppRoot.Instance.TryRecordObservation("trial-elite"), Is.True); // 시험 대상의 관찰 기록 저장
+            var current = System.IO.Path.Combine(ObservationStorage.TestDirectoryOverride, "observation-v1.json"); // 시험 저장 파일
+            var saved = System.IO.File.ReadAllBytes(current); // 도감 열기 전 저장 내용 보관
+            Object.Destroy(AppRoot.Instance.gameObject); // 현재 공통 실행 객체 종료
+            yield return null; // 객체 종료 반영 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행과 같은 초기화
+            yield return WaitForPhase(GamePhase.Title); // 새 타이틀 도착 대기
+            var journalButton = GameObject.Find("JournalButton"); // 실제 도감 버튼
+            Assert.That(journalButton, Is.Not.Null); // 도감 진입 제공 확인
+            journalButton.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 저장된 도감 열기
+            yield return null; // 도감 화면 배치 대기
+            var contents = GameObject.Find("JournalContents").GetComponent<UnityEngine.UI.Text>(); // 실제 도감 내용
+            Assert.That(contents.text, Does.Contain("체력 70")); // 저장된 시험 체력 표시
+            Assert.That(contents.text, Does.Contain("기본 공격")); // 저장된 공격 성향 표시
+            Assert.That(GameObject.Find("JournalPortrait"), Is.Not.Null); // 관찰한 시험 대상 이미지 표시
+            Assert.That(System.IO.File.ReadAllBytes(current), Is.EqualTo(saved)); // 도감 열람 시 저장 파일 변경 없음
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("TitleCanvas"); // 실제 관찰 도감 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+        } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
         public IEnumerator GeneratedRooms_HaveUsableDoorsAndCorrectMiniMap() // 생성된 모든 방과 문 연결 검증
         { // 검증 시작
@@ -582,19 +676,20 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         { // 캡처 시작
             var camera = Camera.main; // 실제 게임 카메라
             var canvas = GameObject.Find(canvasName).GetComponent<Canvas>(); // 캡처할 실제 화면
-            var dungeon = GameObject.Find("DungeonCanvas").GetComponent<Canvas>(); // 기존 탐험 화면
+            var dungeonObject = GameObject.Find("DungeonCanvas"); // 기존 탐험 화면 객체
+            var dungeon = dungeonObject == null ? null : dungeonObject.GetComponent<Canvas>(); // 선택적인 탐험 화면
             var target = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32); // 화면 밖 렌더링 영역
             var oldActive = RenderTexture.active; // 기존 렌더링 대상
             var oldTarget = camera.targetTexture; // 기존 카메라 대상
             var oldMode = canvas.renderMode; // 기존 화면 렌더링 방식
             var oldCamera = canvas.worldCamera; // 기존 화면 카메라
             var oldDistance = canvas.planeDistance; // 기존 화면 거리
-            var oldEnabled = dungeon.enabled; // 기존 탐험 화면 표시 상태
+            var oldEnabled = dungeon != null && dungeon.enabled; // 기존 탐험 화면 표시 상태
             try // 실제 화면 렌더링
             { // 렌더링 시작
                 target.Create(); // 별도 영역 생성
                 camera.targetTexture = target; // 별도 영역 연결
-                if (dungeon != canvas) // 다른 화면을 캡처하는지 검사
+                if (dungeon != null && dungeon != canvas) // 다른 화면을 캡처하는지 검사
                 { // 탐험 화면 가림 시작
                     dungeon.enabled = false; // 다른 화면의 탐험 안내 가림
                 } // 탐험 화면 가림 끝
@@ -614,7 +709,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 canvas.renderMode = oldMode; // 기존 화면 방식 복구
                 canvas.worldCamera = oldCamera; // 기존 화면 카메라 복구
                 canvas.planeDistance = oldDistance; // 기존 화면 거리 복구
-                dungeon.enabled = oldEnabled; // 탐험 화면 표시 복구
+                if (dungeon != null) // 탐험 화면 존재 검사
+                { // 탐험 화면 복구 시작
+                    dungeon.enabled = oldEnabled; // 탐험 화면 표시 복구
+                } // 탐험 화면 복구 끝
                 camera.targetTexture = oldTarget; // 기존 카메라 대상 복구
                 RenderTexture.active = oldActive; // 기존 활성 대상 복구
                 target.Release(); // 임시 렌더링 메모리 해제
