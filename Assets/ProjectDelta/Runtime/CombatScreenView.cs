@@ -264,13 +264,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button attack; // 공격 버튼
         private Button flee; // 도주 버튼
         private Button defend; // 방어 버튼
+        private Button fourth; // 선택적인 네 번째 행동 버튼
         private float lastWidth = -1f; // 이전에 적용한 화면 너비
-        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton) // 화면과 행동 버튼 연결
+        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton, Button fourthButton = null) // 화면과 행동 버튼 연결
         { // 연결 시작
             canvasRect = canvas; // 화면 크기 연결
             attack = attackButton; // 공격 버튼 연결
             flee = fleeButton; // 도주 버튼 연결
             defend = defendButton; // 방어 버튼 연결
+            fourth = fourthButton; // 선택적인 네 번째 버튼 연결
             Refresh(canvasRect.rect.width); // 최초 화면 크기 반영
         } // 연결 끝
         private void LateUpdate() // 화면 너비 변경 감지
@@ -283,11 +285,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public void Refresh(float canvasWidth) // 주어진 화면 너비의 버튼 크기와 위치
         { // 배치 시작
             lastWidth = canvasWidth; // 적용한 화면 너비 기록
-            var width = Mathf.Min(320f, Mathf.Max(0f, (canvasWidth - 112f) / 3f)); // 양쪽 여백과 버튼 간격 확보
+            var count = fourth == null ? 3 : 4; // 실제 행동 버튼 개수
+            var width = Mathf.Min(320f, Mathf.Max(0f, (canvasWidth - 64f - 24f * (count - 1)) / count)); // 양쪽 여백과 버튼 간격 확보
             var offset = width + 24f; // 버튼 사이 간격을 포함한 위치
-            Place(attack, -offset, width); // 왼쪽 공격 버튼 배치
-            Place(flee, 0f, width); // 중앙 도주 버튼 배치
-            Place(defend, offset, width); // 오른쪽 방어 버튼 배치
+            var left = -(count - 1) * offset / 2f; // 전체 버튼의 왼쪽 시작 위치
+            Place(attack, left, width); // 첫 번째 행동 버튼 배치
+            Place(flee, left + offset, width); // 두 번째 행동 버튼 배치
+            Place(defend, left + 2f * offset, width); // 세 번째 행동 버튼 배치
+            if (fourth != null) // 네 번째 행동 제공 검사
+            { // 추가 행동 조건 시작
+                Place(fourth, left + 3f * offset, width); // 네 번째 행동 버튼 배치
+            } // 추가 행동 조건 끝
         } // 배치 끝
         private static void Place(Button button, float x, float width) // 한 행동 버튼의 위치와 글자 영역
         { // 배치 시작

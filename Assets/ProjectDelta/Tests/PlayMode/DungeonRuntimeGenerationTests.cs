@@ -884,6 +884,149 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 대상이 없는 시험 조우의 회유 차단 검증
+        public IEnumerator EncounterPersuade_WithoutElite_DisablesPersuasion() // 완료할 대상이 없을 때 조우 조작 유지
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 시작 방 진입
+            Assert.That(AppRoot.Instance.StartEncounter(), Is.True); // 대상 없는 시험 조우 화면 진입
+            yield return null; // 조우 화면 준비 대기
+            var persuade = GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>(); // 실제 회유 버튼
+            Assert.That(persuade.interactable, Is.False); // 회유할 대상이 없을 때 선택 차단
+            Assert.That(GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 다른 조우 선택 유지
+        } // 검증 끝
+        [UnityTest] // 회유 성공의 평화적 조우 완료 검증
+        public IEnumerator EncounterPersuade_Success_CompletesWithoutReward() // 실제 회유와 대상 제거 확인
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 회유 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 대상 주사위
+            var property = typeof(EncounterScreenView).GetProperty("PersuadeRollOverride"); // 회유 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 회유 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 동점 성공 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var persuade = GameObject.Find("EncounterPersuadeButton"); // 실제 회유 선택 버튼
+            Assert.That(persuade, Is.Not.Null); // 회유 선택 제공 확인
+            var layout = GameObject.Find("EncounterCanvas").GetComponent<CombatActionLayout>(); // 실제 네 행동 배치
+            layout.Refresh(900f); // 좁은 화면 너비 적용
+            var firstRect = GameObject.Find("EncounterFightButton").GetComponent<RectTransform>(); // 첫 행동 버튼 위치
+            var lastRect = persuade.GetComponent<RectTransform>(); // 마지막 행동 버튼 위치
+            Assert.That(-firstRect.anchoredPosition.x + firstRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(418.01f)); // 왼쪽 버튼의 화면 안쪽 여백
+            Assert.That(lastRect.anchoredPosition.x + lastRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(418.01f)); // 오른쪽 버튼의 화면 안쪽 여백
+            layout.Refresh(1920f); // 기준 화면 버튼 배치 복구
+            var health = AppRoot.Instance.PlayerHealth; // 기존 플레이어 체력
+            var keys = AppRoot.Instance.Keys.Count; // 기존 열쇠 수
+            for (var index = 0; index < 3; index++) // 전투 선택에서 회유까지 이동
+            { // 키보드 선택 이동 시작
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 반영 대기
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 키보드 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(persuade)); // 키보드 회유 선택 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("EncounterCanvas"); // 실제 조우 선택 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 실제 회유 선택
+            yield return null; // 조우 종료 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 입력 해제 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 평화적 탐험 복귀
+            Assert.That(GameObject.Find("EncounterMarker"), Is.Null); // 시험 대상 조우 완료
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(health)); // 체력 보존 확인
+            Assert.That(AppRoot.Instance.Keys.Count, Is.EqualTo(keys)); // 추가 보상 없는 종료
+            Assert.That(rolls.Count, Is.Zero); // 두 주사위만 사용
+        } // 검증 끝
+        [UnityTest] // 회유 성공 후 조우 완료 오류 검증
+        public IEnumerator EncounterPersuade_FailedCompletion_RetriesWithoutReroll() // 성공 판정 보존과 조우 완료 재시도
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 회유 주사위
+            rolls.Enqueue(10); // 플레이어 주사위
+            rolls.Enqueue(10); // 대상 주사위
+            var property = typeof(EncounterScreenView).GetProperty("PersuadeRollOverride"); // 회유 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 회유 주사위 제공 확인
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+            var field = typeof(RoomTravelController).GetField("player", BindingFlags.Instance | BindingFlags.NonPublic); // 시험 플레이어 연결 조회
+            var player = field.GetValue(travel); // 원래 플레이어 연결 보관
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => // 판정 직후 완료 실패 모사
+            { // 시험 주사위 시작
+                var value = rolls.Dequeue(); // 지정한 주사위 사용
+                if (rolls.Count == 0) // 두 번째 주사위 검사
+                { // 완료 실패 조건 시작
+                    field.SetValue(travel, null); // 판정 직후 플레이어 연결 해제
+                } // 완료 실패 조건 끝
+                return value; // 지정한 주사위 전달
+            })); // 시험 주사위 끝
+            var persuade = GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>(); // 실제 회유 버튼
+            persuade.onClick.Invoke(); // 성공한 회유와 완료 실패 요청
+            field.SetValue(travel, player); // 검증 중 원래 플레이어 연결 복구
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 실패 후 조우 화면 유지
+            Assert.That(GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 성공 후 전투 선택 차단
+            Assert.That(rolls.Count, Is.Zero); // 성공 판정의 주사위 보존
+            yield return null; // 중복 선택 방지 프레임 대기
+            persuade.onClick.Invoke(); // 성공 판정의 조우 완료 재시도
+            yield return null; // 탐험 화면 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 평화적 조우 완료 재시도
+            Assert.That(rolls.Count, Is.Zero); // 추가 주사위 없이 완료
+        } // 검증 끝
+        [UnityTest] // 회유 실패의 일반 전투 검증
+        public IEnumerator EncounterPersuade_Failure_StartsCombat() // 실패 시 실제 전투 진입
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 회유 주사위
+            rolls.Enqueue(1); // 플레이어 주사위
+            rolls.Enqueue(20); // 대상 주사위
+            var property = typeof(EncounterScreenView).GetProperty("PersuadeRollOverride"); // 회유 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 회유 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 판정 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var persuade = GameObject.Find("EncounterPersuadeButton"); // 실제 회유 버튼
+            Assert.That(persuade, Is.Not.Null); // 회유 선택 제공 확인
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            for (var index = 0; index < 3; index++) // 전투 선택에서 회유까지 이동
+            { // 게임패드 선택 이동 시작
+                InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 오른쪽 선택 입력
+                yield return null; // 방향 입력 반영 대기
+                InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 게임패드 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(persuade)); // 게임패드 회유 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 실제 회유 선택
+            yield return null; // 실제 전투 화면 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 입력 해제 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 후 일반 전투 확인
+            Assert.That(rolls.Count, Is.Zero); // 두 주사위만 사용
+        } // 검증 끝
+        [UnityTest] // 회유 실패 후 전투 생성 오류 검증
+        public IEnumerator EncounterPersuade_FailedCombatCreation_DoesNotReroll() // 실패 판정 보존과 전투 재시도
+        { // 검증 시작
+            var rolls = new Queue<int>(); // 결정 가능한 회유 주사위
+            rolls.Enqueue(1); // 플레이어 주사위
+            rolls.Enqueue(20); // 대상 주사위
+            var property = typeof(EncounterScreenView).GetProperty("PersuadeRollOverride"); // 회유 주사위 연결 조회
+            Assert.That(property, Is.Not.Null); // 회유 주사위 제공 확인
+            property.SetValue(null, (System.Func<int, int, int>)((minimum, maximum) => rolls.Dequeue())); // 실패 판정 지정
+            yield return EnterEliteEncounter(); // 실제 상위 개체 조우 진입
+            var persuade = GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>(); // 회유 버튼
+            var eventSystem = UnityEngine.EventSystems.EventSystem.current; // 실제 화면 입력 관리자
+            eventSystem.gameObject.SetActive(false); // 전투 화면 생성 실패 모사
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("^Combat screen failed:")); // 예상한 전투 화면 오류
+            persuade.onClick.Invoke(); // 실패한 회유와 전투 요청
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 오류 후 조우 복구
+            Assert.That(persuade.interactable, Is.False); // 회유 재판정 차단
+            Assert.That(rolls.Count, Is.Zero); // 실패한 판정 주사위 보존
+            eventSystem.gameObject.SetActive(true); // 화면 입력 관리자 복구
+            yield return null; // 기본 전투 선택 복구 대기
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 전투 생성 재시도
+            yield return null; // 전투 화면 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 판정의 전투 재시도
+        } // 검증 끝
         [UnityTest] // 조우 관찰 성공과 회차 기록 검증
         public IEnumerator EncounterObserve_Success_PersistsAcrossNewGameAndRestart() // 실제 관찰 선택과 정보 재확인
         { // 검증 시작
@@ -1831,6 +1974,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
             typeof(EncounterScreenView).GetProperty("EscapeRollOverride")?.SetValue(null, null); // 검증용 도망 주사위 해제
             typeof(EncounterScreenView).GetProperty("ObserveRollOverride")?.SetValue(null, null); // 검증용 관찰 주사위 해제
+            typeof(EncounterScreenView).GetProperty("PersuadeRollOverride")?.SetValue(null, null); // 검증용 회유 주사위 해제
             if (testController != null) // 검증용 제어 객체 존재 검사
             { // 제어 객체 정리 시작
                 Object.Destroy(testController); // 검증용 제어 객체 제거

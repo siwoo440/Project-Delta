@@ -290,7 +290,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 조우 선택 화면과 대기 이동 취소
             } // 자동 조우 조건 끝
         } // 검사 끝
-        public bool CompleteCurrentEncounter() // 승리한 방의 시험 조우 완료
+        public bool CanCompleteCurrentEncounter() // 현재 방에서 시험 조우 완료 가능 여부
+        { // 검사 시작
+            if (!IsReady) // 방 준비 상태 검사
+            { // 준비 안 됨 조건 시작
+                return false; // 완료할 수 없는 조우 차단
+            } // 준비 안 됨 조건 끝
+            var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            return room != null && room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()); // 미완료 상위 개체 방 검사
+        } // 검사 끝
+        public bool CompleteCurrentEncounter() // 현재 방의 시험 조우 완료
         { // 완료 시작
             if (!IsReady) // 현재 방 준비 상태 검사
             { // 준비 안 됨 조건 시작
