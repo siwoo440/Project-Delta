@@ -862,6 +862,50 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 탐험 복귀 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 새 입력의 닫기 확인
         } // 검증 끝
+        [UnityTest] // 전투 초상화와 입력 검증
+        public IEnumerator Combat_Portraits_AreLoadedWithoutBlockingInput() // 실제 화면의 이미지와 버튼 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            Assert.That(AppRoot.Instance.StartCombat(), Is.True); // 전투 화면 진입
+            yield return null; // 실제 화면 준비 대기
+            var playerPortrait = GameObject.Find("PlayerPortrait"); // 주인공 초상화 조회
+            var enemyPortrait = GameObject.Find("EnemyPortrait"); // 상위 개체 초상화 조회
+            Assert.That(playerPortrait, Is.Not.Null); // 주인공 초상화 존재 확인
+            Assert.That(enemyPortrait, Is.Not.Null); // 상위 개체 초상화 존재 확인
+            var playerImage = playerPortrait.GetComponent<UnityEngine.UI.RawImage>(); // 주인공 실제 이미지
+            var enemyImage = enemyPortrait.GetComponent<UnityEngine.UI.RawImage>(); // 상대 실제 이미지
+            Assert.That(playerImage.texture, Is.Not.Null); // 주인공 리소스 연결 확인
+            Assert.That(enemyImage.texture, Is.Not.Null); // 상대 리소스 연결 확인
+            Assert.That(playerImage.raycastTarget, Is.False); // 초상화의 입력 가로채기 차단
+            Assert.That(enemyImage.raycastTarget, Is.False); // 상대 이미지의 입력 가로채기 차단
+            var playerLayout = playerPortrait.GetComponent<CombatPortraitLayout>(); // 주인공의 화면 배치
+            var enemyLayout = enemyPortrait.GetComponent<CombatPortraitLayout>(); // 상대의 화면 배치
+            Assert.That(playerLayout, Is.Not.Null); // 주인공 크기 조절 제공 확인
+            Assert.That(enemyLayout, Is.Not.Null); // 상대 크기 조절 제공 확인
+            playerLayout.Refresh(1440f); // 좁은 정사각형 창의 가상 화면 적용
+            enemyLayout.Refresh(1440f); // 상대 초상화의 좁은 화면 적용
+            var playerRect = playerPortrait.GetComponent<RectTransform>(); // 주인공 표시 위치
+            var enemyRect = enemyPortrait.GetComponent<RectTransform>(); // 상대 표시 위치
+            Assert.That(-playerRect.anchoredPosition.x + playerRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(704f)); // 왼쪽 화면 안쪽 여백 확인
+            Assert.That(enemyRect.anchoredPosition.x + enemyRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(704f)); // 오른쪽 화면 안쪽 여백 확인
+            Assert.That(-playerRect.anchoredPosition.x - playerRect.sizeDelta.x * 0.5f, Is.GreaterThanOrEqualTo(420f)); // 주인공 글자 영역 분리
+            Assert.That(enemyRect.anchoredPosition.x - enemyRect.sizeDelta.x * 0.5f, Is.GreaterThanOrEqualTo(420f)); // 상대 글자 영역 분리
+            playerLayout.Refresh(800f); // 초상화 공간이 없는 좁은 화면 적용
+            Assert.That(playerImage.enabled, Is.False); // 공간 부족 시 초상화 숨김
+            playerLayout.Refresh(1920f); // 일반 화면의 초상화 복구
+            Assert.That(playerImage.enabled, Is.True); // 화면 복귀 시 초상화 표시
+            var addPortrait = typeof(CombatScreenView).GetMethod("AddPortrait", BindingFlags.Static | BindingFlags.NonPublic); // 선택적 초상화 생성 조회
+            Assert.That(addPortrait, Is.Not.Null); // 초상화 연결 제공 확인
+            var missingArguments = new object[] // 없는 이미지의 생성 인수
+            { // 인수 목록 시작
+                GameObject.Find("BattleCanvas").transform, "MissingPortrait", "BattlePortraits/Missing", Vector2.zero // 존재하지 않는 초상화 정보
+            }; // 인수 목록 끝
+            Assert.DoesNotThrow(() => addPortrait.Invoke(null, missingArguments)); // 이미지 누락 시 안전한 처리
+            Assert.That(GameObject.Find("MissingPortrait"), Is.Null); // 없는 이미지 객체 생성 방지
+            Assert.That(GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 공격 버튼 사용 가능 확인
+            Assert.That(GameObject.Find("FleeBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 도주 버튼 사용 가능 확인
+        } // 검증 끝
         [UnityTest] // 도주 실패 시 행동 소모 검증
         public IEnumerator Combat_FleeFailure_ConsumesTurnAndShowsResult() // 실제 선택과 적 행동 확인
         { // 검증 시작

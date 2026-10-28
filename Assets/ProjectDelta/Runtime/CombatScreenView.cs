@@ -46,13 +46,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 배경색
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 전투 안내 강조 색상
+                AddPortrait(canvas.transform, "PlayerPortrait", "BattlePortraits/PlayerPrototype", new Vector2(-600f, 45f)); // 주인공 임시 초상화
+                AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 상위 개체 임시 초상화
                 UiFactory.CreateText(canvas.transform, "Header", "전투", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 전투 화면 제목
                 UiFactory.CreateText(canvas.transform, "Status", "조우 · 기본 공격과 도주", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
-                UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-390f, 70f), new Vector2(560f, 100f), accent); // 플레이어 영역
-                UiFactory.CreateText(canvas.transform, "Opponent", "상위 개체", 38, new Vector2(390f, 70f), new Vector2(560f, 100f), new Color(1f, 0.62f, 0.58f)); // 상대 영역
-                view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-390f, -20f), new Vector2(560f, 65f), Color.white); // 플레이어 체력
-                view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(390f, -20f), new Vector2(560f, 65f), Color.white); // 상대 체력
+                UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
+                UiFactory.CreateText(canvas.transform, "Opponent", "상위 개체", 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 상대 영역
+                view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-260f, -20f), new Vector2(300f, 65f), Color.white); // 플레이어 체력
+                view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
                 view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 25, new Vector2(0f, -175f), new Vector2(1200f, 70f), Color.white); // 최근 행동 결과
                 view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-235f, -275f)); // 기본 공격 버튼
@@ -70,6 +72,23 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Destroy(screen); // 불완전한 화면 제거
                 throw; // 원래 오류 전달
             } // 실패 정리 끝
+        } // 생성 끝
+        private static void AddPortrait(Transform parent, string name, string resourcePath, Vector2 position) // 선택적인 전투 초상화 생성
+        { // 생성 시작
+            var texture = Resources.Load<Texture2D>(resourcePath); // 전투 이미지 리소스 조회
+            if (texture == null) // 이미지 누락 검사
+            { // 리소스 누락 조건 시작
+                return; // 기존 전투 화면 유지
+            } // 리소스 누락 조건 끝
+            var portrait = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage)); // 전투 초상화 객체
+            portrait.transform.SetParent(parent, false); // 전투 화면 아래 배치
+            var rect = portrait.GetComponent<RectTransform>(); // 화면 위치 조회
+            rect.anchorMin = new Vector2(0.5f, 0.5f); // 화면 중심 기준점
+            rect.anchorMax = new Vector2(0.5f, 0.5f); // 화면 중심 기준점 고정
+            var image = portrait.GetComponent<RawImage>(); // 초상화 이미지 표시
+            image.texture = texture; // 실제 그림 연결
+            image.raycastTarget = false; // 버튼 입력 가로채기 방지
+            portrait.AddComponent<CombatPortraitLayout>().Initialize(parent.GetComponent<RectTransform>(), position.x < 0f, position.y); // 화면 너비에 맞는 초상화 배치
         } // 생성 끝
         private void StartTrialRound() // 시험 참가자의 첫 행동 준비
         { // 준비 시작
@@ -207,5 +226,46 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             playerHealth.text = "체력 " + player.Health + "/" + player.MaxHealth; // 플레이어 체력 표시
             enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
         } // 표시 끝
+    } // 클래스 끝
+    public sealed class CombatPortraitLayout : MonoBehaviour // 화면 너비에 맞는 초상화 배치
+    { // 클래스 시작
+        private RectTransform canvasRect; // 전투 화면의 실제 크기
+        private RectTransform portraitRect; // 초상화의 위치와 크기
+        private RawImage portraitImage; // 초상화 이미지
+        private float lastWidth = -1f; // 이전에 적용한 화면 너비
+        private float sign; // 왼쪽 또는 오른쪽 방향
+        private float vertical; // 초상화의 세로 위치
+        public void Initialize(RectTransform canvas, bool left, float y) // 초상화와 기준 화면 연결
+        { // 연결 시작
+            canvasRect = canvas; // 전투 화면 연결
+            portraitRect = GetComponent<RectTransform>(); // 초상화 위치 연결
+            portraitImage = GetComponent<RawImage>(); // 초상화 이미지 연결
+            sign = left ? -1f : 1f; // 참가자별 화면 방향
+            vertical = y; // 초상화 세로 위치 보관
+            Refresh(canvasRect.rect.width); // 최초 화면 크기 반영
+        } // 연결 끝
+        private void LateUpdate() // 창 크기 변경 감지
+        { // 검사 시작
+            if (canvasRect != null && !Mathf.Approximately(lastWidth, canvasRect.rect.width)) // 실제 화면 너비 변경 검사
+            { // 크기 변경 조건 시작
+                Refresh(canvasRect.rect.width); // 현재 너비에 맞게 재배치
+            } // 크기 변경 조건 끝
+        } // 검사 끝
+        public void Refresh(float canvasWidth) // 주어진 화면 너비에 맞는 배치
+        { // 배치 시작
+            lastWidth = canvasWidth; // 적용한 화면 너비 기록
+            var available = Mathf.Max(0f, canvasWidth * 0.5f - 436f); // 글자와 가장자리 사이 여유 너비
+            var limit = Mathf.Min(360f, available); // 기준 크기와 실제 공간 중 작은 값
+            portraitImage.enabled = limit > 0f; // 공간이 없을 때 이미지 숨김
+            if (limit <= 0f) // 초상화 공간 부족 검사
+            { // 공간 부족 조건 시작
+                return; // 글자와 버튼 표시 보존
+            } // 공간 부족 조건 끝
+            var texture = portraitImage.texture; // 원본 초상화 조회
+            var ratio = (float)texture.width / texture.height; // 원본 가로세로 비율
+            var size = ratio >= 1f ? new Vector2(limit, limit / ratio) : new Vector2(limit * ratio, limit); // 비율을 유지한 표시 크기
+            portraitRect.sizeDelta = size; // 초상화 표시 크기 반영
+            portraitRect.anchoredPosition = new Vector2(sign * (420f + size.x * 0.5f), vertical); // 글자와 겹치지 않는 위치
+        } // 배치 끝
     } // 클래스 끝
 } // 이름 공간 끝
