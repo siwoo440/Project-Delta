@@ -80,6 +80,47 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 새 수량 확인
             Assert.That(inventory.Slots[0].StackLimit, Is.EqualTo(1)); // 새 중첩 한도 확인
         } // 검증 끝
+        [TestCase(50, 100, 75)] // 일반 체력 회복
+        [TestCase(90, 100, 100)] // 최대 체력 제한
+        public void PotionRecovery_RestoresHealthUpToMaximum(int current, int maximum, int expected) // 회복량과 상한 확인
+        { // 검증 시작
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.PotionRecoveryRules"); // 순수 회복 규칙 조회
+            Assert.That(type, Is.Not.Null); // 회복 규칙 제공 확인
+            var method = type.GetMethod("TryRecover"); // 회복 판정 조회
+            var args = new object[] // 회복 판정 인수
+            { // 인수 목록 시작
+                current, maximum, 25, 0 // 현재 체력과 최대 체력 및 시험 회복량
+            }; // 인수 목록 끝
+            Assert.That(method.Invoke(null, args), Is.True); // 유효한 회복 확인
+            Assert.That(args[3], Is.EqualTo(expected)); // 회복 결과 확인
+        } // 검증 끝
+        [TestCase(100, 100, 25)] // 최대 체력에서 사용 차단
+        [TestCase(0, 100, 25)] // 체력 소진 상태 차단
+        [TestCase(50, 100, 0)] // 회복량 없는 사용 차단
+        [TestCase(101, 100, 25)] // 잘못된 현재 체력 차단
+        public void PotionRecovery_NoEffectOrInvalidInputIsRejected(int current, int maximum, int amount) // 효과 없는 소비 방지
+        { // 검증 시작
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.PotionRecoveryRules"); // 순수 회복 규칙 조회
+            Assert.That(type, Is.Not.Null); // 회복 규칙 제공 확인
+            var args = new object[] // 회복 판정 인수
+            { // 인수 목록 시작
+                current, maximum, amount, 0 // 체력과 회복량
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryRecover").Invoke(null, args), Is.False); // 효과 없는 회복 거절
+            Assert.That(args[3], Is.EqualTo(current)); // 원래 체력 보존
+        } // 검증 끝
+        [Test] // 큰 체력과 회복량의 정수 범위 검증
+        public void PotionRecovery_LargeValuesDoNotOverflow() // 최대 정수 체력 제한 확인
+        { // 검증 시작
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.PotionRecoveryRules"); // 순수 회복 규칙 조회
+            Assert.That(type, Is.Not.Null); // 회복 규칙 제공 확인
+            var args = new object[] // 큰 회복 판정 인수
+            { // 인수 목록 시작
+                int.MaxValue - 1, int.MaxValue, int.MaxValue, 0 // 최대 정수 체력과 회복량
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryRecover").Invoke(null, args), Is.True); // 유효한 회복 확인
+            Assert.That(args[3], Is.EqualTo(int.MaxValue)); // 넘침 없는 최대 체력 확인
+        } // 검증 끝
         [Test] // 기본 슬롯 검증
         public void NewInventory_HasTenEmptySlots() // 새 게임의 빈 슬롯 확인
         { // 검증 시작

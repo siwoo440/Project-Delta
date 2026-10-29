@@ -22,6 +22,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button pickupButton; // 시험 아이템 획득 버튼
         private Button keyButton; // 시험 열쇠 지급 버튼
         private Button closeButton; // 인벤토리 닫기 버튼
+        private Button potionButton; // 시험 회복약 지급 버튼
+        private Button usePotionButton; // 시험 회복약 사용 버튼
+        private Text healthText; // 현재 플레이어 체력 표시
+        private string offeredId; // 공간 부족으로 대기 중인 아이템 식별자
+        private string offeredName; // 대기 중인 아이템 이름
+        private int offeredLimit; // 대기 중인 아이템 최대 중첩
+        private int lastPotionFrame = -1; // 같은 프레임 회복약 중복 지급 차단
+        private int lastUseFrame = -1; // 같은 프레임 회복약 중복 사용 차단
         private Button cancelTargetButton; // 교체 대상 선택 취소 버튼
         private int replaceIndex = -1; // 교체 확인 대상 슬롯
         private InventorySlot expectedSlot; // 교체 선택 당시의 기존 슬롯
@@ -57,6 +65,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 인벤토리 강조 색상
                 UiFactory.CreateText(canvas.transform, "Header", "인벤토리", 58, new Vector2(0f, 420f), new Vector2(1000f, 90f), Color.white); // 인벤토리 제목
                 view.status = UiFactory.CreateText(canvas.transform, "InventoryStatus", "", 25, new Vector2(0f, 345f), new Vector2(1200f, 60f), accent); // 슬롯과 획득 상태
+                view.healthText = UiFactory.CreateText(canvas.transform, "InventoryHealth", "", 22, new Vector2(0f, 300f), new Vector2(800f, 50f), Color.white); // 현재 체력 표시
                 for (var index = 0; index < view.slots.Length; index++) // 기본 슬롯 수만큼 반복
                 { // 슬롯 화면 생성 시작
                     var x = index < 5 ? -450f : 450f; // 두 열의 가로 위치
@@ -75,18 +84,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     slotButton.gameObject.AddComponent<InventorySlotDragHandler>().Initialize(view, slotIndex); // 마우스 드래그 연결
                 } // 슬롯 화면 생성 끝
                 UiFactory.CreateText(canvas.transform, "Notice", "슬롯 선택 후 이동 · 마우스 드래그 지원", 22, new Vector2(0f, -255f), new Vector2(1200f, 55f), accent); // 시험 기능 안내
-                var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-500f, -365f)); // 시험 획득 버튼
+                var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-700f, -365f)); // 시험 획득 버튼
                 view.pickupButton = pickup; // 시험 획득 버튼 보관
                 pickup.onClick.AddListener(view.AddTrialItem); // 시험 아이템 획득 연결
                 pickup.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
-                var key = UiFactory.CreateButton(canvas.transform, "TrialKeyButton", "시험 열쇠 지급", new Vector2(0f, -365f)); // 시험 열쇠 지급 버튼
+                var key = UiFactory.CreateButton(canvas.transform, "TrialKeyButton", "시험 열쇠 지급", new Vector2(-350f, -365f)); // 시험 열쇠 지급 버튼
                 view.keyButton = key; // 시험 열쇠 버튼 보관
                 key.onClick.AddListener(view.AddTrialKey); // 시험 열쇠 지급 연결
                 key.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
-                var close = UiFactory.CreateButton(canvas.transform, "CloseInventoryButton", "닫기", new Vector2(500f, -365f)); // 탐험 복귀 버튼
+                var close = UiFactory.CreateButton(canvas.transform, "CloseInventoryButton", "닫기", new Vector2(700f, -365f)); // 탐험 복귀 버튼
                 view.closeButton = close; // 닫기 버튼 보관
                 close.onClick.AddListener(owner.CloseInventory); // 인벤토리 닫기 연결
                 close.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 선택 버튼의 취소 입력 연결
+                view.potionButton = UiFactory.CreateButton(canvas.transform, "TrialPotionButton", "시험 회복약 지급", new Vector2(0f, -365f)); // 시험 회복약 지급 버튼
+                view.potionButton.onClick.AddListener(view.AddTrialPotion); // 시험 회복약 지급 연결
+                view.potionButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 회복약 버튼 취소 입력 연결
+                view.usePotionButton = UiFactory.CreateButton(canvas.transform, "UsePotionButton", "소형 회복약 사용", new Vector2(350f, -365f)); // 시험 회복약 사용 버튼
+                view.usePotionButton.onClick.AddListener(view.UseTrialPotion); // 시험 회복약 사용 연결
+                view.usePotionButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 사용 버튼 취소 입력 연결
+                ResizeFooter(pickup); // 시험 획득 버튼 크기 조정
+                ResizeFooter(key); // 시험 열쇠 버튼 크기 조정
+                ResizeFooter(view.potionButton); // 시험 회복약 버튼 크기 조정
+                ResizeFooter(view.usePotionButton); // 회복약 사용 버튼 크기 조정
+                ResizeFooter(close); // 닫기 버튼 크기 조정
                 view.cancelTargetButton = UiFactory.CreateButton(canvas.transform, "CancelTargetButton", "교체 취소", new Vector2(0f, -365f)); // 교체 대상 선택 취소 버튼
                 view.cancelTargetButton.onClick.AddListener(view.ShowOfferChoice); // 획득 선택으로 복귀
                 view.cancelTargetButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 취소 입력 연결
@@ -198,6 +218,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             pickupButton.interactable = footerEnabled; // 시험 획득 가능 여부
             keyButton.interactable = footerEnabled; // 시험 열쇠 가능 여부
             closeButton.interactable = footerEnabled; // 인벤토리 닫기 가능 여부
+            potionButton.interactable = footerEnabled; // 시험 회복약 지급 가능 여부
+            usePotionButton.interactable = footerEnabled; // 시험 회복약 사용 가능 여부
         } // 설정 끝
         private void RemoveOfferPanel() // 기존 획득 선택 화면 제거
         { // 제거 시작
@@ -230,7 +252,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             cancelTargetButton.gameObject.SetActive(false); // 대상 취소 버튼 숨김
             SetBaseButtons(false, false); // 선택 화면 아래 입력 잠금
             offerPanel = CreateOfferPanel(); // 획득 선택 화면 생성
-            UiFactory.CreateText(offerPanel.transform, "FullOfferMessage", "가방이 가득 찼습니다\n시험 아이템을 어떻게 할까요?", 36, new Vector2(0f, 100f), new Vector2(1400f, 160f), Color.white); // 획득 선택 안내
+            UiFactory.CreateText(offerPanel.transform, "FullOfferMessage", "가방이 가득 찼습니다\n" + offeredName + "을 어떻게 할까요?", 36, new Vector2(0f, 100f), new Vector2(1400f, 160f), Color.white); // 획득 선택 안내
             var leave = UiFactory.CreateButton(offerPanel.transform, "LeaveItemButton", "두고 가기", new Vector2(-250f, -180f)); // 새 아이템 포기 버튼
             leave.onClick.AddListener(LeaveOffer); // 기존 아이템 유지 연결
             leave.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 취소 입력 연결
@@ -268,7 +290,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             cancelTargetButton.gameObject.SetActive(false); // 대상 취소 버튼 숨김
             SetBaseButtons(false, false); // 확인 화면 아래 입력 잠금
             offerPanel = CreateOfferPanel(); // 교체 확인 화면 생성
-            UiFactory.CreateText(offerPanel.transform, "ReplaceConfirmMessage", expectedName + " × " + expectedQuantity + " 버리기\n시험 아이템으로 교체할까요?", 36, new Vector2(0f, 100f), new Vector2(1400f, 180f), Color.white); // 버릴 묶음과 교체 확인 안내
+            UiFactory.CreateText(offerPanel.transform, "ReplaceConfirmMessage", expectedName + " × " + expectedQuantity + " 버리기\n" + offeredName + "으로 교체할까요?", 36, new Vector2(0f, 100f), new Vector2(1400f, 180f), Color.white); // 버릴 묶음과 교체 확인 안내
             var cancel = UiFactory.CreateButton(offerPanel.transform, "CancelReplaceButton", "취소", new Vector2(-250f, -180f)); // 교체 취소 버튼
             cancel.onClick.AddListener(ShowOfferChoice); // 원래 획득 선택으로 복귀
             cancel.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 취소 입력 연결
@@ -290,14 +312,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 offerPanel.transform.Find("FullOfferMessage").GetComponent<Text>().text = "기존 아이템이 변경되어 교체를 취소했습니다"; // 표시 중인 화면에 변경 안내
                 return; // 예상하지 못한 기존 묶음 삭제 차단
             } // 대상 변경 조건 끝
-            if (!owner.Inventory.TryReplace(replaceIndex, "ITEM_DAY80_TEST_DROP", "전투 드롭 시험 아이템", 1, 1)) // 새 시험 아이템 교체 검사
+            if (!owner.Inventory.TryReplace(replaceIndex, offeredId, offeredName, 1, offeredLimit)) // 새 시험 아이템 교체 검사
             { // 교체 실패 조건 시작
                 ShowOfferChoice(); // 원래 획득 선택 복구
                 offerPanel.transform.Find("FullOfferMessage").GetComponent<Text>().text = "아이템을 교체하지 못했습니다"; // 표시 중인 화면에 실패 안내
                 return; // 기존 아이템 보존
             } // 교체 실패 조건 끝
+            var acquiredName = offeredName; // 획득한 아이템 이름 보관
             LeaveOffer(); // 교체 완료 후 인벤토리 복귀
-            status.text = "시험 아이템을 획득했습니다"; // 실제 획득 결과 안내
+            status.text = acquiredName + "을 획득했습니다"; // 실제 획득 결과 안내
         } // 교체 끝
         private void LeaveOffer() // 새 아이템 포기 또는 획득 선택 종료
         { // 종료 시작
@@ -307,6 +330,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 선택 없음 조건 끝
             RemoveOfferPanel(); // 획득 선택 화면 제거
             offerStage = OfferStage.None; // 일반 인벤토리 단계 복구
+            offeredId = null; // 완료된 획득 아이템 식별자 해제
+            offeredName = null; // 완료된 획득 아이템 이름 해제
+            offeredLimit = 0; // 완료된 획득 중첩 한도 해제
             cancelTargetButton.gameObject.SetActive(false); // 대상 취소 버튼 숨김
             SetBaseButtons(true, true); // 기존 인벤토리 버튼 복구
             Refresh(); // 실제 슬롯과 보유 상태 갱신
@@ -326,9 +352,49 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             Refresh(); // 실제 슬롯 상태 표시
             if (result.Remaining > 0) // 빈 슬롯 부족 검사
             { // 공간 부족 조건 시작
+                offeredId = "ITEM_DAY80_TEST_DROP"; // 대기할 시험 아이템 식별자
+                offeredName = "전투 드롭 시험 아이템"; // 대기할 시험 아이템 이름
+                offeredLimit = 1; // 시험 아이템 최대 중첩
                 ShowOfferChoice(); // 가득 찬 인벤토리의 획득 선택
             } // 공간 부족 조건 끝
         } // 획득 끝
+        private static void ResizeFooter(Button button) // 다섯 행동 버튼의 크기 조정
+        { // 크기 조정 시작
+            var size = new Vector2(300f, 84f); // 행동 버튼의 공통 크기
+            button.GetComponent<RectTransform>().sizeDelta = size; // 실제 버튼 크기 적용
+            var label = button.transform.Find("Label"); // 버튼 글자 객체
+            label.GetComponent<RectTransform>().sizeDelta = size; // 글자 표시 영역 적용
+            label.GetComponent<Text>().fontSize = 24; // 긴 버튼 이름의 글자 크기
+        } // 크기 조정 끝
+        private void AddTrialPotion() // 개발 확인용 소형 회복약 지급
+        { // 지급 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || lastPotionFrame == Time.frameCount) // 획득 선택과 드래그 및 중복 지급 검사
+            { // 지급 거절 조건 시작
+                return; // 잘못된 회복약 지급 차단
+            } // 지급 거절 조건 끝
+            lastPotionFrame = Time.frameCount; // 회복약 지급 프레임 보관
+            var result = owner.Inventory.Add(AppRoot.TrialPotionId, "시험 소형 회복약", 1, AppRoot.TrialPotionStackLimit); // 기획 수치의 시험 회복약 지급
+            Refresh(); // 현재 슬롯과 체력 표시
+            if (result.Remaining > 0) // 가방 공간 부족 검사
+            { // 공간 부족 조건 시작
+                offeredId = AppRoot.TrialPotionId; // 대기할 회복약 식별자
+                offeredName = "시험 소형 회복약"; // 대기할 회복약 이름
+                offeredLimit = AppRoot.TrialPotionStackLimit; // 회복약 최대 중첩
+                ShowOfferChoice(); // 기존 획득 선택과 교체 확인
+            } // 공간 부족 조건 끝
+        } // 지급 끝
+        private void UseTrialPotion() // 탐험 인벤토리의 소형 회복약 사용
+        { // 사용 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || lastUseFrame == Time.frameCount) // 획득 선택과 드래그 및 중복 사용 검사
+            { // 사용 거절 조건 시작
+                return; // 잘못된 회복약 사용 차단
+            } // 사용 거절 조건 끝
+            lastUseFrame = Time.frameCount; // 회복약 사용 프레임 보관
+            selectedSlot = -1; // 회복약 사용 전 대기 중인 슬롯 이동 해제
+            owner.TryUseTrialPotion(out var message); // 실제 체력 회복과 조건부 소비
+            Refresh(); // 변경된 슬롯과 체력 갱신
+            status.text = message; // 사용 결과 또는 불가 이유 안내
+        } // 사용 끝
         private void AddTrialKey() // 개발 확인용 열쇠 지급
         { // 지급 시작
             if (offerStage != OfferStage.None || draggedSlot >= 0 || lastKeyFrame == Time.frameCount) // 획득 화면과 드래그 및 중복 검사
@@ -355,6 +421,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 사용 중 조건 끝
                 slots[index].text = (selectedSlot == index ? "▶ " : "") + (index + 1) + ". " + (slot.IsEmpty ? "비어 있음" : slot.Name + " × " + slot.Quantity); // 선택 상태와 아이템 표시
             } // 슬롯 표시 끝
+            healthText.text = "체력 " + owner.PlayerHealth + " / 100"; // 현재 체력 표시 갱신
             status.text = selectedSlot >= 0 ? "이동할 칸을 선택하세요 · 취소로 선택 해제" : "가방 " + occupied + " / " + slots.Length + " · 열쇠 " + owner.Keys.Count; // 이동 안내 또는 현재 슬롯 표시
         } // 갱신 끝
     } // 클래스 끝

@@ -6,6 +6,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     [RequireComponent(typeof(GameInputRouter), typeof(SceneLoader))] // 필수 실행 구성
     public sealed class AppRoot : MonoBehaviour // 공통 실행 객체
     { // 클래스 시작
+        public const string TrialPotionId = "trial-small-potion"; // 시험 소형 회복약 식별자
+        public const int TrialPotionRecovery = 25; // 기획 기준 시험 체력 회복량
+        public const int TrialPotionStackLimit = 5; // 기획 기준 시험 최대 중첩
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
         private CombatScreenView combatScreen; // 시험 전투 화면
@@ -169,6 +172,42 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             ObservationSaveMessage = string.Empty; // 이전 저장 오류 안내 해제
             return true; // 실제 영구 기록 성공
         } // 저장 끝
+        public bool TryUseTrialPotion(out string message) // 탐험 인벤토리의 시험 회복약 사용
+        { // 사용 시작
+            message = "사용할 소형 회복약이 없습니다"; // 회복약 부재 안내
+            if (Flow.Phase != GamePhase.Inventory) // 실제 인벤토리 상태 검사
+            { // 잘못된 상태 조건 시작
+                message = "지금은 회복약을 사용할 수 없습니다"; // 사용 불가 상태 안내
+                return false; // 탐험 인벤토리 외 사용 차단
+            } // 잘못된 상태 조건 끝
+            var index = -1; // 사용 가능한 첫 회복약 슬롯
+            for (var slot = 0; slot < Inventory.Slots.Count; slot++) // 현재 슬롯 순회
+            { // 슬롯 검사 시작
+                if (Inventory.Slots[slot].ItemId == TrialPotionId && Inventory.Slots[slot].Quantity > 0) // 실제 회복약 묶음 검사
+                { // 회복약 조건 시작
+                    index = slot; // 첫 회복약 슬롯 보관
+                    break; // 추가 슬롯 검사 종료
+                } // 회복약 조건 끝
+            } // 슬롯 검사 끝
+            if (index < 0) // 회복약 부재 검사
+            { // 부재 조건 시작
+                return false; // 아이템 수량과 체력 보존
+            } // 부재 조건 끝
+            if (!PotionRecoveryRules.TryRecover(PlayerHealth, 100, TrialPotionRecovery, out var recovered)) // 실제 회복 가능 여부 검사
+            { // 회복 불가 조건 시작
+                message = "회복할 체력이 없습니다"; // 효과 없는 사용 안내
+                return false; // 효과 없는 회복약 소비 차단
+            } // 회복 불가 조건 끝
+            if (!Inventory.Remove(index, 1, out var removed) || removed != 1) // 실제 회복약 한 개 소비 검사
+            { // 소비 실패 조건 시작
+                message = "회복약을 사용할 수 없습니다"; // 소비 실패 안내
+                return false; // 소비 없이 체력 변경 차단
+            } // 소비 실패 조건 끝
+            var amount = recovered - PlayerHealth; // 실제 회복한 체력
+            UpdatePlayerHealth(recovered); // 최대 체력 안에서 회복 적용
+            message = "체력 " + amount + " 회복 · 소형 회복약 1개 사용"; // 실제 회복과 소비 안내
+            return true; // 체력 회복과 아이템 소비 완료
+        } // 사용 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
         { // 반영 시작
             PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지

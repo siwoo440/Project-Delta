@@ -818,6 +818,81 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             attack.onClick.Invoke(); // 다음 프레임의 새 공격 요청
             Assert.That(health.text, Does.Contain("0/70")); // 새 공격과 승리 처리 확인
         } // 검증 끝
+        [UnityTest] // 시험 회복약 지급과 탐험 중 사용 검증
+        public IEnumerator Inventory_Potion_HealsAndConsumesOnlyWhenEffective() // 실제 인벤토리 체력 회복 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            AppRoot.Instance.UpdatePlayerHealth(80); // 피해를 받은 시험 체력
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var give = GameObject.Find("TrialPotionButton"); // 회복약 시험 지급 버튼
+            var use = GameObject.Find("UsePotionButton"); // 회복약 사용 버튼
+            Assert.That(give, Is.Not.Null); // 회복약 지급 제공 확인
+            Assert.That(use, Is.Not.Null); // 회복약 사용 제공 확인
+            give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 회복약 지급
+            yield return null; // 중복 입력 방지 프레임 대기
+            give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 회복약 지급
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(2)); // 동일 회복약 중첩 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].StackLimit, Is.EqualTo(5)); // 시험 회복약 최대 중첩
+            use.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 회복약 사용
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(100)); // 최대 체력까지만 회복
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(1)); // 실제 회복 후 한 개 소비
+            yield return null; // 중복 입력 방지 프레임 대기
+            use.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 최대 체력에서 다시 사용
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(1)); // 효과 없는 회복약 소비 차단
+            Assert.That(GameObject.Find("InventoryHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("100")); // 현재 체력 화면 반영
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("InventoryCanvas"); // 실제 회복약 사용 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+        } // 검증 끝
+        [UnityTest] // 게임패드 회복약 사용과 상태 제한 검증
+        public IEnumerator Inventory_Potion_GamepadAndPhaseRestrictions() // 실제 입력과 잘못된 상태 소비 차단
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            AppRoot.Instance.UpdatePlayerHealth(50); // 피해를 받은 시험 체력
+            AppRoot.Instance.Inventory.Add("trial-small-potion", "시험 소형 회복약", 1, 5); // 시험 회복약 보관
+            Assert.That(AppRoot.Instance.TryUseTrialPotion(out _), Is.False); // 탐험 화면에서 직접 사용 차단
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(50)); // 잘못된 상태의 체력 보존
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(1)); // 잘못된 상태의 아이템 보존
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var use = GameObject.Find("UsePotionButton"); // 실제 회복약 사용 버튼
+            Assert.That(use, Is.Not.Null); // 회복약 사용 제공 확인
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(use); // 회복약 사용 선택
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 실제 게임패드 사용
+            yield return null; // 사용 결과 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(75)); // 기획 기준 체력 25 회복
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 마지막 회복약 소비와 슬롯 비움
+        } // 검증 끝
+        [UnityTest] // 가득 찬 상태의 회복약 교체 검증
+        public IEnumerator Inventory_Potion_FullInventoryReplacesConfirmedStack() // 회복약 지급의 기존 획득 선택 재사용
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var give = GameObject.Find("TrialPotionButton"); // 회복약 시험 지급 버튼
+            Assert.That(give, Is.Not.Null); // 회복약 지급 제공 확인
+            give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 없는 회복약 지급
+            GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 아이템 교체 선택
+            GameObject.Find("InventorySlotButton_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 슬롯 선택
+            Assert.That(GameObject.Find("ReplaceConfirmMessage").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("회복약")); // 실제 새 아이템 표시
+            GameObject.Find("ConfirmReplaceButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 최종 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("trial-small-potion")); // 확인된 회복약 획득
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].StackLimit, Is.EqualTo(5)); // 회복약 중첩 한도 보존
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].ItemId, Is.EqualTo("old-1")); // 다른 기존 슬롯 보존
+        } // 검증 끝
         [UnityTest] // 인벤토리 가득 참의 두고 가기 검증
         public IEnumerator Inventory_FullOffer_LeavePreservesAllItems() // 새 아이템 포기 시 기존 인벤토리 보존
         { // 검증 시작
