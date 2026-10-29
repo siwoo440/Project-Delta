@@ -2400,6 +2400,94 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return WaitForPhase(GamePhase.Exploration); // 탐험 복원 대기
             Assert.That(app.Inventory.Slots[0].IsEmpty, Is.True); // 버린 아이템 재등장 차단
         } // 검증 끝
+        [UnityTest] // 장비와 확장 가방 저장 복원 검증
+        public IEnumerator Equipment_EquipReplaceAndRestore() // 실제 장비 교체와 자동 저장 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.Inventory.Add(EquipmentCatalog.BasicSwordId, "기본 검", 1, 1); // 첫 무기 지급
+            app.Inventory.Add(EquipmentCatalog.BasicAxeId, "기본 도끼", 1, 1); // 교체 무기 지급
+            app.Inventory.Add(EquipmentCatalog.OldBagId, "낡은 주머니", 1, 1); // 확장 가방 지급
+            app.OpenInventory(); // 실제 장비 화면 열기
+            yield return null; // 화면 생성 대기
+            Assert.That(app.TryEquipInventoryItem(0, out var error), Is.True, error); // 검 장착과 자동 저장
+            Assert.That(app.Equipment.Get(EquipmentSlot.Weapon).Id, Is.EqualTo(EquipmentCatalog.BasicSwordId)); // 검 장착 상태 확인
+            Assert.That(app.TryEquipInventoryItem(1, out error), Is.True, error); // 도끼 교체와 자동 저장
+            Assert.That(app.Equipment.Get(EquipmentSlot.Weapon).Id, Is.EqualTo(EquipmentCatalog.BasicAxeId)); // 도끼 교체 확인
+            Assert.That(app.Inventory.Slots[0].ItemId, Is.EqualTo(EquipmentCatalog.BasicSwordId)); // 벗은 검 보관 확인
+            Assert.That(app.TryEquipInventoryItem(2, out error), Is.True, error); // 가방 장착과 자동 저장
+            Assert.That(app.Inventory.Slots.Count, Is.EqualTo(12)); // 가방의 추가 두 칸 확인
+            app.CloseInventory(); // 탐험으로 복귀
+            app.ReturnToTitle(); // 자동 저장 복원 준비
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 자동 저장 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 복원 대기
+            Assert.That(app.Equipment.Get(EquipmentSlot.Weapon).Id, Is.EqualTo(EquipmentCatalog.BasicAxeId)); // 무기 복원 확인
+            Assert.That(app.Equipment.Get(EquipmentSlot.Bag).Id, Is.EqualTo(EquipmentCatalog.OldBagId)); // 가방 복원 확인
+            Assert.That(app.Inventory.Slots.Count, Is.EqualTo(12)); // 확장 인벤토리 복원 확인
+            Assert.That(app.Inventory.Slots[0].ItemId, Is.EqualTo(EquipmentCatalog.BasicSwordId)); // 보관한 검 복원 확인
+            Assert.That(app.StartCombat(), Is.True); // 확장 가방을 가진 실제 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            GameObject.Find("BattleItemListButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 확장된 전투 아이템 목록 열기
+            var lastSlot = GameObject.Find("BattleItemSlot_11").GetComponent<RectTransform>(); // 확장된 마지막 슬롯 위치
+            var itemNotice = GameObject.Find("BattleItemNotice").GetComponent<RectTransform>(); // 전투 아이템 안내 위치
+            Assert.That(lastSlot.anchoredPosition.y - lastSlot.sizeDelta.y / 2, Is.GreaterThan(itemNotice.anchoredPosition.y + itemNotice.sizeDelta.y / 2)); // 슬롯과 안내문 겹침 차단
+        } // 검증 끝
+        [UnityTest] // 가방 축소와 저장 충돌의 장비 보존 검증
+        public IEnumerator Equipment_RejectsOverflowAndStorageConflict() // 실패 시 보유품과 장착 상태 보존
+        { // 검증 시작
+            var root = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            RunStorage.TestDirectoryOverride = root; // 시험 저장 경로 연결
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.Inventory.Add(EquipmentCatalog.OldBagId, "낡은 주머니", 1, 1); // 시험 가방 지급
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            Assert.That(app.TryEquipInventoryItem(0, out var error), Is.True, error); // 가방 장착과 자동 저장
+            for (var index = 0; index < 11; index++) // 축소 불가 수량 준비
+            { // 아이템 지급 시작
+                app.Inventory.Add("test-" + index, "시험 물건", 1, 1); // 서로 다른 아이템 묶음
+            } // 아이템 지급 끝
+            Assert.That(app.TryUnequipItem(EquipmentSlot.Bag, out error), Is.False); // 가방 해제에 따른 공간 부족 차단
+            Assert.That(app.Inventory.Slots.Count, Is.EqualTo(12)); // 기존 가방 용량 보존
+            Assert.That(app.Equipment.Get(EquipmentSlot.Bag).Id, Is.EqualTo(EquipmentCatalog.OldBagId)); // 기존 장비 보존
+            Assert.That(app.Inventory.Slots[10].ItemId, Is.EqualTo("test-10")); // 초과 아이템 보존
+            Assert.That(app.Inventory.Remove(0, 1, out _), Is.True); // 새로운 무기 자리 준비
+            app.Inventory.Add(EquipmentCatalog.BasicSwordId, "기본 검", 1, 1); // 장착할 시험 무기
+            System.IO.File.WriteAllText(System.IO.Path.Combine(root, "run-v1.json"), "changed"); // 외부 저장 파일 충돌 모사
+            Assert.That(app.TryEquipInventoryItem(0, out error), Is.False); // 충돌한 저장의 장착 거절
+            Assert.That(app.Equipment.Get(EquipmentSlot.Weapon), Is.Null); // 저장 실패 시 무기 장착 차단
+            Assert.That(app.Inventory.Slots[0].ItemId, Is.EqualTo(EquipmentCatalog.BasicSwordId)); // 저장 실패 시 원래 아이템 보존
+        } // 검증 끝
+        [UnityTest] // 장비 UI와 실제 전투 능력치 검증
+        public IEnumerator Equipment_UiAndCombatUseEquippedStats() // 시험 무기 장착과 전투 피해 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("TrialEquipmentButton_1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 기본 도끼 지급 버튼
+            yield return null; // 입력 중복 방지 프레임
+            GameObject.Find("InventorySlotButton_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 무기 슬롯 선택
+            GameObject.Find("EquipSelectedButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 장비 장착 버튼
+            Assert.That(app.Equipment.Get(EquipmentSlot.Weapon).Id, Is.EqualTo(EquipmentCatalog.BasicAxeId)); // UI의 실제 도끼 장착
+            Assert.That(GameObject.Find("EquipmentStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("기본 도끼")); // 장착 상태 화면 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 캡처 환경 확인
+            { // 화면 저장 시작
+                var image = CaptureScreen("InventoryCanvas"); // 장비가 장착된 실제 화면 캡처
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 화면 저장 끝
+            app.CloseInventory(); // 탐험으로 복귀
+            CombatScreenView.RandomOverride = (minimum, maximum) => 50; // 명중과 비치명타를 재현하는 난수
+            Assert.That(app.StartCombat(), Is.True); // 실제 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 기본 공격
+            Assert.That(GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("17/70")); // 도끼 공격력 60과 적 방어력 7 반영
+        } // 검증 끝
         [UnityTest] // 전투 중 선택한 소비품 사용 검증
         public IEnumerator Combat_SelectedManaPotionConsumesOnlyOnRecovery() // 실패와 성공의 행동 소비 확인
         { // 검증 시작

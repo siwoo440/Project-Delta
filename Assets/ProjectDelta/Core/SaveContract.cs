@@ -59,7 +59,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 10; // 보상 소비품 종류를 포함한 저장 버전
+        public const int CurrentVersion = 11; // 장비와 확장 인벤토리를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -99,12 +99,20 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public SavedDoorLock doorLock; // 현재 층 시험 문 상태
         public string[] history; // 현재 회차 탐험 기록
         public SaveItemSlot[] slots; // 인벤토리 슬롯 목록
+        public string weaponId; // 장착한 무기 식별자
+        public string armorId; // 장착한 방어구 식별자
+        public string accessoryId; // 장착한 장신구 식별자
+        public string bagId; // 장착한 가방 식별자
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
-            if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > 10) // 기존과 새 버전 및 진행 상태 범위
+            if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
+            if (version >= 11 && (!EquipmentState.TryRestore(weaponId, armorId, accessoryId, bagId, out var equipment) || !equipment.TryCalculate(50, 40, 10, 0, 150, 10, out var equipmentStats) || slots.Length != equipmentStats.InventoryCapacity)) // 장비 부위와 가방 용량 일치 검사
+            { // 장비 저장 오류 시작
+                return false; // 알 수 없는 장비와 잘못된 용량 차단
+            } // 장비 저장 오류 끝
             if (version >= 5 && (maxMana < 1 || mana < 0 || mana > maxMana)) // 새 저장의 마나 범위 검사
             { // 마나 오류 시작
                 return false; // 잘못된 마나 저장 거절

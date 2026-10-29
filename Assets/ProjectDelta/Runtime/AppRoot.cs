@@ -28,6 +28,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private HistoryScreenView historyScreen; // 현재 회차 기록 화면
         private PauseScreenView pauseScreen; // 탐험 일시정지 메뉴
         private InventoryState loadRollbackInventory; // 불러오기 실패 시 이전 인벤토리
+        private EquipmentState loadRollbackEquipment; // 불러오기 실패 시 이전 장비
         private DoorKeyRing loadRollbackKeys; // 불러오기 실패 시 이전 열쇠
         private ExplorationHistory loadRollbackHistory; // 불러오기 실패 시 이전 기록
         private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
@@ -54,6 +55,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 인벤토리 조회
             private set; // 새 게임 인벤토리 변경
         } = new InventoryState(); // 기본 빈 인벤토리 생성
+        public EquipmentState Equipment { get; private set; } = EquipmentState.Empty; // 현재 회차의 장착 장비
         public ObservationJournal Observations // 현재 회차의 시험 관찰 기록
         { // 속성 시작
             get; // 관찰 기록 조회
@@ -169,6 +171,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 PlayerMana = 50; // 새 회차 기본 마나 초기화
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
+                Equipment = EquipmentState.Empty; // 새 회차 시작 장비 없음
                 Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
@@ -201,6 +204,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 재개 차단
             } // 재개 거절 조건 끝
             var restoredInventory = InventoryState.FromSavedSlots(savedRun.slots); // 독립 인벤토리 복원
+            var restoredEquipment = EquipmentState.Empty; // 이전 저장의 빈 장비
+            if (savedRun.version >= 11 && !EquipmentState.TryRestore(savedRun.weaponId, savedRun.armorId, savedRun.accessoryId, savedRun.bagId, out restoredEquipment)) // 저장 장비와 부위 검사
+            { // 장비 복원 오류 시작
+                return false; // 잘못된 장비 복원 차단
+            } // 장비 복원 오류 끝
             var restoredKeys = new DoorKeyRing(); // 독립 열쇠 보관소
             if (savedRun.keys > 0 && !restoredKeys.Add(savedRun.keys)) // 열쇠 수량 복원 검사
             { // 복원 오류 시작
@@ -214,6 +222,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Flow.Phase == GamePhase.Pause) // 기존 회차에서 불러오기 검사
             { // 실패 복구 준비 시작
                 loadRollbackInventory = Inventory; // 기존 인벤토리 보관
+                loadRollbackEquipment = Equipment; // 기존 장비 보관
                 loadRollbackKeys = Keys; // 기존 열쇠 보관
                 loadRollbackHistory = ExplorationHistory; // 기존 기록 보관
                 loadRollbackHealth = PlayerHealth; // 기존 체력 보관
@@ -226,6 +235,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 loadRollbackRewards = RewardReceipts; // 기존 보상 거래 보관
             } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
+            Equipment = restoredEquipment; // 복원한 장비 적용
             Keys = restoredKeys; // 복원한 열쇠 적용
             ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
             PlayerHealth = savedRun.health; // 저장된 체력 적용
@@ -782,6 +792,81 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             RecordExplorationEvent(message); // 성공한 아이템 사용 기록
             return true; // 확인된 소비와 회복 성공
         } // 사용 끝
+        public bool TryEquipInventoryItem(int index, out string message) // 보유 장비의 원자적 장착
+        { // 장착 시작
+            message = "장착할 장비를 선택하세요."; // 기본 선택 안내
+            if (Flow.Phase != GamePhase.Inventory || index < 0 || index >= Inventory.Slots.Count) // 실제 화면과 선택 범위 검사
+            { // 선택 오류 시작
+                return false; // 잘못된 장착 차단
+            } // 선택 오류 끝
+            var item = Inventory.Slots[index]; // 선택한 보유 묶음
+            var definition = EquipmentCatalog.Find(item.ItemId); // 확인된 장비 정의
+            if (definition == null || item.Quantity != 1 || item.StackLimit != 1 || !Equipment.TryEquip(definition.Slot, definition.Id, out var next)) // 실제 단일 장비와 부위 검사
+            { // 장비 오류 시작
+                return false; // 등록되지 않은 장비 차단
+            } // 장비 오류 끝
+            var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 실패 시 원본을 보존하는 독립 인벤토리
+            var previous = Equipment.Get(definition.Slot); // 기존 장착 장비
+            if (inventory == null || !inventory.Remove(index, 1, out _) || (previous != null && inventory.Add(previous.Id, previous.Name, 1, 1).Remaining != 0) || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 교체품 보관과 새 가방 용량 검사
+            { // 공간 부족 시작
+                message = "장비를 보관할 공간이 부족합니다."; // 변경 없이 공간 부족 안내
+                return false; // 기존 장비와 아이템 보존
+            } // 공간 부족 끝
+            return TryPersistEquipment(inventory, next, definition.Name + " 장착", out message); // 저장 성공 후에만 장착 반영
+        } // 장착 끝
+        public bool TryUnequipItem(EquipmentSlot slot, out string message) // 장착 장비의 원자적 해제
+        { // 해제 시작
+            message = "해제할 장비가 없습니다."; // 기본 해제 안내
+            var previous = Equipment.Get(slot); // 기존 장착 장비
+            if (Flow.Phase != GamePhase.Inventory || previous == null || !Equipment.TryUnequip(slot, out var next)) // 실제 화면과 장착 상태 검사
+            { // 해제 오류 시작
+                return false; // 잘못된 해제 차단
+            } // 해제 오류 끝
+            var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 실패 시 원본을 보존하는 독립 인벤토리
+            if (inventory == null || inventory.Add(previous.Id, previous.Name, 1, 1).Remaining != 0 || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 장비 보관과 축소 용량 검사
+            { // 공간 부족 시작
+                message = "장비를 보관할 공간이 부족합니다."; // 변경 없이 공간 부족 안내
+                return false; // 기존 장비와 아이템 보존
+            } // 공간 부족 끝
+            return TryPersistEquipment(inventory, next, previous.Name + " 해제", out message); // 저장 성공 후에만 해제 반영
+        } // 해제 끝
+        private bool TryPersistEquipment(InventoryState inventory, EquipmentState equipment, string success, out string message) // 장비와 소지품의 단일 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 안내 초기화
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 다른 회차 저장 식별자
+            if (runStorage == null || (savedId != null && savedId != CurrentRunId)) // 저장 기능과 다른 회차 보호 검사
+            { // 저장 거절 시작
+                message = "다른 회차 저장을 확인한 뒤 장비를 변경하세요."; // 기존 회차 보호 안내
+                return false; // 다른 회차 덮어쓰기 차단
+            } // 저장 거절 끝
+            var room = GameObject.Find("RoomTravel"); // 실제 방 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 안정된 던전 상태
+            var data = travel == null ? null : travel.CaptureInventoryRun(); // 현재 인벤토리의 독립 저장본
+            if (data == null) // 저장 가능한 위치 검사
+            { // 위치 오류 시작
+                message = "현재 장비를 저장할 수 없습니다."; // 저장 불가 안내
+                return false; // 이동 중 장착 차단
+            } // 위치 오류 끝
+            data.slots = inventory.SaveSlots(); // 변경할 독립 인벤토리 저장
+            data.weaponId = equipment.Get(EquipmentSlot.Weapon)?.Id; // 변경할 무기 식별자
+            data.armorId = equipment.Get(EquipmentSlot.Armor)?.Id; // 변경할 방어구 식별자
+            data.accessoryId = equipment.Get(EquipmentSlot.Accessory)?.Id; // 변경할 장신구 식별자
+            data.bagId = equipment.Get(EquipmentSlot.Bag)?.Id; // 변경할 가방 식별자
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 복원 가능성과 안전한 저장 검사
+            { // 저장 실패 시작
+                if (string.IsNullOrEmpty(message)) // 세부 오류 누락 검사
+                { // 기본 오류 시작
+                    message = "장비 변경을 저장할 수 없습니다."; // 사용자 저장 오류 안내
+                } // 기본 오류 끝
+                return false; // 저장 실패 시 기존 장비와 아이템 보존
+            } // 저장 실패 끝
+            Inventory = inventory; // 검증된 인벤토리 적용
+            Equipment = equipment; // 저장된 장비 적용
+            savedRun = data; // 마지막 정상 저장 반영
+            savedRunValid = true; // 저장 회차 재개 허용
+            message = success + " · 저장 완료"; // 실제 장착과 저장 안내
+            return true; // 안전한 장비 변경 완료
+        } // 저장 끝
         public void UpdatePlayerMana(int mana) // 전투 후 현재 마나 반영
         { // 갱신 시작
             PlayerMana = Mathf.Clamp(mana, 0, 50); // 기획 기본 마나 범위 유지
@@ -952,6 +1037,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 if (loadRollbackInventory != null) // 메뉴 불러오기 실패 검사
                 { // 기존 회차 복구 시작
                     Inventory = loadRollbackInventory; // 이전 인벤토리 복원
+                    Equipment = loadRollbackEquipment; // 이전 장비 복원
                     Keys = loadRollbackKeys; // 이전 열쇠 복원
                     ExplorationHistory = loadRollbackHistory; // 이전 회차 기록 복원
                     PlayerHealth = loadRollbackHealth; // 이전 체력 복원
@@ -971,6 +1057,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void ClearLoadRollback() // 불러오기 전 상태 보관 해제
         { // 해제 시작
             loadRollbackInventory = null; // 이전 인벤토리 참조 해제
+            loadRollbackEquipment = null; // 이전 장비 참조 해제
             loadRollbackKeys = null; // 이전 열쇠 참조 해제
             loadRollbackHistory = null; // 이전 기록 참조 해제
             loadRollbackRunId = null; // 이전 회차 식별자 참조 해제

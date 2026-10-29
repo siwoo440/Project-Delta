@@ -223,8 +223,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
             var grouped = travel != null && travel.IsGroupEncounter; // 현재 시험 다수 조우 여부
             var groupName = grouped && travel.CurrentMonsterId == "MON_GOBLIN" ? "고블린" : "슬라임"; // 현재 저장의 실제 다수 적 이름
-            participants = grouped ? new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(groupName + " 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor(groupName + " 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수에 맞는 참가자 목록
-            player = new CombatFighter(participants[0], 100, 50, 40, 0, 40, owner.PlayerHealth); // 시험 플레이어와 명중 보정 0
+            if (!owner.Equipment.TryCalculate(50, 40, TrialPlayerSpeed, 0, 150, 10, out var stats)) // 장비 보정을 적용한 능력치 검사
+            { // 능력치 오류 시작
+                throw new System.InvalidOperationException("Invalid equipment stats."); // 잘못된 장비의 전투 진입 차단
+            } // 능력치 오류 끝
+            participants = grouped ? new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(groupName + " 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor(groupName + " 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수와 장비 속도를 적용한 참가자
+            player = new CombatFighter(participants[0], 100, stats.Attack, stats.Defense, 0, 40, owner.PlayerHealth); // 장비 공격력과 방어력 적용
             if (grouped) // 실제 시험 다수 조우 검사
             { // 다수 전투 준비 시작
                 var health = travel.CurrentGroupEnemyHealth(); // 후퇴한 개별 적 체력 조회
@@ -316,7 +320,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 명중 처리 시작
                 var damage = CombatRules.Damage(player, enemy, 10); // 기획 시험 공격 보정 10
                 var criticalRoll = Roll(0, 100); // 기술 치명타 난수
-                CriticalHitRules.TryApply(damage, 40, criticalRoll, 150, out var finalDamage, out var critical); // 시험 확률과 맨손 배율 적용
+                var multiplier = owner.Equipment.Get(EquipmentSlot.Weapon)?.CriticalMultiplierPercent ?? 150; // 무기 또는 맨손 치명타 배율
+                CriticalHitRules.TryApply(damage, 40, criticalRoll, multiplier, out var finalDamage, out var critical); // 기술 확률과 현재 무기 배율 적용
                 var applied = enemy.ApplyDamage(finalDamage); // 실제 상대 체력 감소
                 notice.text = "강한 일격" + (critical ? " · 치명타" : "") + " · " + applied + " 피해"; // 실제 기술 결과 표시
             } // 명중 처리 끝
@@ -365,9 +370,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 슬롯 생성 시작
                 var slotIndex = index; // 선택할 슬롯 번호
                 var slot = owner.Inventory.Slots[index]; // 실제 소지품 묶음
-                var button = UiFactory.CreateButton(itemDialog.transform, "BattleItemSlot_" + index, slot.IsEmpty ? "빈 슬롯" : slot.Name + " × " + slot.Quantity, new Vector2(index < 5 ? -400f : 400f, 270f - (index % 5) * 85f)); // 개별 아이템 선택 버튼
-                button.GetComponent<RectTransform>().sizeDelta = new Vector2(700f, 65f); // 실제 슬롯 버튼 크기
-                button.transform.Find("Label").GetComponent<RectTransform>().sizeDelta = new Vector2(700f, 65f); // 아이템 이름 표시 영역
+                var rows = (owner.Inventory.Slots.Count + 1) / 2; // 실제 소지품의 두 열 행 수
+                var spacing = Mathf.Min(85f, 370f / Mathf.Max(1, rows - 1)); // 안내문을 가리지 않는 슬롯 간격
+                var button = UiFactory.CreateButton(itemDialog.transform, "BattleItemSlot_" + index, slot.IsEmpty ? "빈 슬롯" : slot.Name + " × " + slot.Quantity, new Vector2(index < rows ? -400f : 400f, 270f - (index % rows) * spacing)); // 개별 아이템 선택 버튼
+                button.GetComponent<RectTransform>().sizeDelta = new Vector2(700f, Mathf.Min(65f, spacing - 3f)); // 실제 슬롯 버튼 크기
+                button.transform.Find("Label").GetComponent<RectTransform>().sizeDelta = new Vector2(700f, Mathf.Min(65f, spacing - 3f)); // 아이템 이름 표시 영역
                 button.transform.Find("Label").GetComponent<Text>().fontSize = 24; // 아이템 이름 글자 크기
                 button.interactable = TrialConsumableRules.Find(slot.ItemId) != null; // 지원하는 소비품만 선택 허용
                 button.onClick.AddListener(() => UseBattleItem(slotIndex)); // 선택한 실제 슬롯 사용
@@ -532,12 +539,32 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private bool ResolveAttack(CombatFighter attacker, CombatFighter defender) // 한 참가자의 기본 공격 처리
         { // 공격 시작
             var hitRoll = Roll(0, 100); // 기존 명중 난수
-            if (!CombatRules.TryAttack(attacker, defender, hitRoll, out var applied)) // 편차 없는 기본 공격 검사
-            { // 공격 거절 조건 시작
+            var weapon = attacker.Actor.IsPlayer ? owner.Equipment.Get(EquipmentSlot.Weapon) : null; // 플레이어의 실제 장착 무기
+            var applied = 0; // 실제 피해량 초기화
+            var critical = false; // 치명타 결과 초기화
+            if (weapon == null) // 무기가 없는 기존 기본 공격 검사
+            { // 기존 공격 시작
+                if (!CombatRules.TryAttack(attacker, defender, hitRoll, out applied)) // 기존 명중과 생존 검사
+                { // 공격 거절 조건 시작
+                    notice.text = "공격할 수 없습니다"; // 잘못된 행동 안내
+                    return false; // 잘못된 공격 차단
+                } // 공격 거절 조건 끝
+            } // 기존 공격 끝
+            else if (attacker.Actor.IsAlive && defender != null && defender.Actor.IsAlive && attacker.Actor.IsPlayer != defender.Actor.IsPlayer) // 무기 공격의 생존과 대상 검사
+            { // 무기 공격 시작
+                if (hitRoll < CombatRules.HitChance(attacker, defender)) // 실제 명중 판정
+                { // 명중 시작
+                    var damage = CombatRules.Damage(attacker, defender); // 장비 능력치를 반영한 피해
+                    CriticalHitRules.TryApply(damage, weapon.CriticalChance, Roll(0, 100), weapon.CriticalMultiplierPercent, out var finalDamage, out critical); // 무기별 확률과 배율 적용
+                    applied = defender.ApplyDamage(finalDamage); // 최종 피해 적용
+                } // 명중 끝
+            } // 무기 공격 끝
+            else // 잘못된 무기 공격 분기
+            { // 공격 거절 시작
                 notice.text = "공격할 수 없습니다"; // 잘못된 행동 안내
                 return false; // 잘못된 공격 차단
-            } // 공격 거절 조건 끝
-            var message = applied > 0 ? attacker.Actor.Name + " 공격 · " + applied + " 피해" : attacker.Actor.Name + " 공격 · 빗나감"; // 실제 공격 결과 문구
+            } // 공격 거절 끝
+            var message = applied > 0 ? attacker.Actor.Name + " 공격" + (critical ? " · 치명타" : "") + " · " + applied + " 피해" : attacker.Actor.Name + " 공격 · 빗나감"; // 실제 공격 결과 문구
             if (!attacker.Actor.IsPlayer && applied > 0) // 상대의 실제 피해 검사
             { // 피해 원인 기록 시작
                 lastDamageSource = attacker.Actor; // 마지막 직접 피해 상대

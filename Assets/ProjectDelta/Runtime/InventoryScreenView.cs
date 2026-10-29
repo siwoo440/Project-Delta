@@ -7,8 +7,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class InventoryScreenView : MonoBehaviour, ICancelHandler // 탐험 중 인벤토리 화면
     { // 클래스 시작
         private AppRoot owner; // 현재 게임의 인벤토리 관리자
-        private readonly Text[] slots = new Text[10]; // 실제 슬롯 표시 목록
-        private readonly Button[] slotButtons = new Button[10]; // 슬롯 선택 버튼 목록
+        private readonly Text[] slots = new Text[23]; // 최대 슬롯 표시 목록
+        private readonly Button[] slotButtons = new Button[23]; // 최대 슬롯 선택 버튼 목록
+        private readonly Button[] equipmentButtons = new Button[10]; // 장비 지급과 장착 및 해제 버튼
+        private Text equipmentText; // 현재 장착 장비 표시
         private enum OfferStage // 가득 찬 인벤토리 획득 단계
         { // 단계 시작
             None, // 일반 인벤토리
@@ -71,16 +73,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UiFactory.CreateText(canvas.transform, "Header", "인벤토리", 58, new Vector2(0f, 420f), new Vector2(1000f, 90f), Color.white); // 인벤토리 제목
                 view.status = UiFactory.CreateText(canvas.transform, "InventoryStatus", "", 25, new Vector2(0f, 345f), new Vector2(1200f, 60f), accent); // 슬롯과 획득 상태
                 view.healthText = UiFactory.CreateText(canvas.transform, "InventoryHealth", "", 22, new Vector2(0f, 300f), new Vector2(800f, 50f), Color.white); // 현재 체력 표시
-                for (var index = 0; index < view.slots.Length; index++) // 기본 슬롯 수만큼 반복
+                for (var index = 0; index < view.slots.Length; index++) // 최대 슬롯 수만큼 반복
                 { // 슬롯 화면 생성 시작
-                    var x = index < 5 ? -450f : 450f; // 두 열의 가로 위치
-                    var y = 240f - (index % 5) * 85f; // 각 슬롯의 세로 위치
+                    var x = -744f + (index / 5) * 372f; // 세로 순서로 배치한 다섯 열의 가로 위치
+                    var y = 240f - (index % 5) * 65f; // 인접 번호를 아래로 배치한 세로 위치
                     var slotIndex = index; // 버튼별 슬롯 번호 보관
                     var slotButton = UiFactory.CreateButton(canvas.transform, "InventorySlotButton_" + index, "", new Vector2(x, y)); // 선택 가능한 아이템 슬롯
-                    slotButton.GetComponent<RectTransform>().sizeDelta = new Vector2(720f, 65f); // 실제 슬롯 버튼 크기
+                    slotButton.GetComponent<RectTransform>().sizeDelta = new Vector2(350f, 56f); // 실제 슬롯 버튼 크기
                     var label = slotButton.transform.Find("Label"); // 슬롯 글자 객체
                     label.name = "InventorySlot_" + index; // 기존 슬롯 글자 이름 유지
-                    label.GetComponent<RectTransform>().sizeDelta = new Vector2(720f, 65f); // 슬롯 글자 표시 영역
+                    label.GetComponent<RectTransform>().sizeDelta = new Vector2(350f, 56f); // 슬롯 글자 표시 영역
                     view.slots[index] = label.GetComponent<Text>(); // 실제 슬롯 글자 연결
                     view.slots[index].fontSize = 24; // 슬롯 글자 크기
                     view.slotButtons[index] = slotButton; // 슬롯 버튼 참조 보관
@@ -88,7 +90,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     slotButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 슬롯 취소 입력 연결
                     slotButton.gameObject.AddComponent<InventorySlotDragHandler>().Initialize(view, slotIndex); // 마우스 드래그 연결
                 } // 슬롯 화면 생성 끝
-                UiFactory.CreateText(canvas.transform, "Notice", "슬롯 선택 후 이동 · 마우스 드래그 지원", 22, new Vector2(0f, -255f), new Vector2(1200f, 55f), accent); // 시험 기능 안내
+                UiFactory.CreateText(canvas.transform, "Notice", "슬롯 선택 후 이동 · 마우스 드래그 지원", 20, new Vector2(0f, -205f), new Vector2(1200f, 36f), accent); // 시험 기능 안내
                 var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-700f, -365f)); // 시험 획득 버튼
                 view.pickupButton = pickup; // 시험 획득 버튼 보관
                 pickup.onClick.AddListener(view.AddTrialItem); // 시험 아이템 획득 연결
@@ -129,6 +131,24 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.cancelTargetButton.onClick.AddListener(view.ShowOfferChoice); // 획득 선택으로 복귀
                 view.cancelTargetButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 취소 입력 연결
                 view.cancelTargetButton.gameObject.SetActive(false); // 일반 인벤토리에서 숨김
+                view.equipmentText = UiFactory.CreateText(canvas.transform, "EquipmentStatus", "", 20, new Vector2(0f, -155f), new Vector2(1800f, 48f), Color.white); // 장착 부위와 현재 장비 안내
+                view.AddEquipmentButton(0, EquipmentCatalog.BasicSwordId, "시험 기본 검"); // 시험 기본 검 지급 버튼
+                view.AddEquipmentButton(1, EquipmentCatalog.BasicAxeId, "시험 기본 도끼"); // 시험 기본 도끼 지급 버튼
+                view.AddEquipmentButton(2, EquipmentCatalog.LightArmorId, "시험 경갑"); // 시험 경갑 지급 버튼
+                view.AddEquipmentButton(3, EquipmentCatalog.OldBagId, "시험 낡은 주머니"); // 시험 가방 지급 버튼
+                view.AddEquipmentButton(9, EquipmentCatalog.CombatAccessoryId, "시험 전투 장신구"); // 시험 장신구 지급 버튼
+                view.equipmentButtons[4] = view.CreateEquipmentAction("EquipSelectedButton", "선택 장비 장착", view.EquipSelected); // 선택 장비 장착 버튼
+                view.equipmentButtons[5] = view.CreateEquipmentAction("UnequipWeaponButton", "무기 해제", () => view.Unequip(EquipmentSlot.Weapon)); // 무기 해제 버튼
+                view.equipmentButtons[6] = view.CreateEquipmentAction("UnequipArmorButton", "방어구 해제", () => view.Unequip(EquipmentSlot.Armor)); // 방어구 해제 버튼
+                view.equipmentButtons[7] = view.CreateEquipmentAction("UnequipAccessoryButton", "장신구 해제", () => view.Unequip(EquipmentSlot.Accessory)); // 장신구 해제 버튼
+                view.equipmentButtons[8] = view.CreateEquipmentAction("UnequipBagButton", "가방 해제", () => view.Unequip(EquipmentSlot.Bag)); // 가방 해제 버튼
+                var controls = new[] { pickup, key, view.potionButton, view.usePotionButton, close, view.largePotionButton, view.manaPotionButton, view.useSelectedButton, view.discardButton, view.equipmentButtons[4], view.equipmentButtons[0], view.equipmentButtons[1], view.equipmentButtons[2], view.equipmentButtons[3], view.equipmentButtons[9], view.equipmentButtons[5], view.equipmentButtons[6], view.equipmentButtons[7], view.equipmentButtons[8] }; // 네 줄의 모든 행동 버튼
+                for (var index = 0; index < controls.Length; index++) // 행동 버튼 순회
+                { // 행동 버튼 배치 시작
+                    controls[index].GetComponent<RectTransform>().anchoredPosition = new Vector2(-760f + (index % 5) * 380f, -255f - (index / 5) * 72f); // 다섯 열 행동 버튼 배치
+                    ResizeFooter(controls[index]); // 공통 버튼 크기 적용
+                } // 행동 버튼 배치 끝
+                view.cancelTargetButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -470f); // 교체 대상 선택 취소 위치
                 view.Refresh(); // 현재 게임의 슬롯 표시
                 EventSystem.current.SetSelectedGameObject(pickup.gameObject); // 키보드와 게임패드 선택 지정
                 return view; // 준비된 화면 전달
@@ -182,7 +202,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 획득 화면 조건 시작
                 return; // 확인 중 일반 슬롯 이동 차단
             } // 획득 화면 조건 끝
-            if (draggedSlot >= 0 || lastSlotFrame == Time.frameCount || index < 0 || index >= slots.Length) // 드래그와 중복 선택 및 슬롯 범위 검사
+            if (draggedSlot >= 0 || lastSlotFrame == Time.frameCount || index < 0 || index >= owner.Inventory.Slots.Count) // 드래그와 중복 선택 및 슬롯 범위 검사
             { // 선택 거절 조건 시작
                 return; // 잘못된 슬롯 선택 차단
             } // 선택 거절 조건 끝
@@ -206,7 +226,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public void BeginSlotDrag(int index) // 마우스 슬롯 드래그 준비
         { // 드래그 시작
             draggedSlot = -1; // 이전 드래그 초기화
-            if (offerStage != OfferStage.None || index < 0 || index >= slots.Length || owner.Inventory.Slots[index].IsEmpty) // 획득 단계와 출발 슬롯 검사
+            if (offerStage != OfferStage.None || index < 0 || index >= owner.Inventory.Slots.Count || owner.Inventory.Slots[index].IsEmpty) // 획득 단계와 출발 슬롯 검사
             { // 잘못된 출발 조건 시작
                 return; // 빈 슬롯의 드래그 차단
             } // 잘못된 출발 조건 끝
@@ -216,7 +236,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 드래그 시작 끝
         public void DropSlot(int source, int destination) // 마우스 드래그 슬롯 교환
         { // 놓기 시작
-            if (draggedSlot != source || source < 0 || destination < 0 || destination >= slots.Length) // 현재 드래그와 도착 범위 검사
+            if (draggedSlot != source || source < 0 || source >= owner.Inventory.Slots.Count || destination < 0 || destination >= owner.Inventory.Slots.Count) // 현재 드래그와 도착 범위 검사
             { // 잘못된 놓기 조건 시작
                 return; // 다른 화면과 잘못된 드래그 차단
             } // 잘못된 놓기 조건 끝
@@ -247,6 +267,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             manaPotionButton.interactable = footerEnabled; // 마나 회복약 지급 가능 여부
             useSelectedButton.interactable = footerEnabled; // 선택 소비품 사용 가능 여부
             discardButton.interactable = footerEnabled; // 선택 아이템 버리기 가능 여부
+            foreach (var button in equipmentButtons) // 장비 버튼 순회
+            { // 장비 버튼 설정 시작
+                button.interactable = footerEnabled; // 모달 중 장비 행동 잠금
+            } // 장비 버튼 설정 끝
         } // 설정 끝
         private void RemoveOfferPanel() // 기존 획득 선택 화면 제거
         { // 제거 시작
@@ -303,7 +327,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 대상 선택 끝
         private void SelectReplacement(int index) // 기존 아이템의 교체 확인 준비
         { // 확인 준비 시작
-            if (offerStage != OfferStage.Select || index < 0 || index >= slots.Length || owner.Inventory.Slots[index].IsEmpty) // 선택 단계와 기존 아이템 검사
+            if (offerStage != OfferStage.Select || index < 0 || index >= owner.Inventory.Slots.Count || owner.Inventory.Slots[index].IsEmpty) // 선택 단계와 기존 아이템 검사
             { // 잘못된 대상 조건 시작
                 return; // 빈 슬롯과 잘못된 교체 차단
             } // 잘못된 대상 조건 끝
@@ -328,7 +352,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 확인 준비 끝
         private void ConfirmReplacement() // 확인한 기존 묶음의 최종 교체
         { // 교체 시작
-            if (offerStage != OfferStage.Confirm || replaceIndex < 0 || replaceIndex >= slots.Length) // 현재 확인과 대상 범위 검사
+            if (offerStage != OfferStage.Confirm || replaceIndex < 0 || replaceIndex >= owner.Inventory.Slots.Count) // 현재 확인과 대상 범위 검사
             { // 잘못된 단계 조건 시작
                 return; // 잘못된 교체 차단
             } // 잘못된 단계 조건 끝
@@ -395,12 +419,77 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 획득 끝
         private static void ResizeFooter(Button button) // 다섯 행동 버튼의 크기 조정
         { // 크기 조정 시작
-            var size = new Vector2(300f, 84f); // 행동 버튼의 공통 크기
+            var size = new Vector2(340f, 62f); // 행동 버튼의 공통 크기
             button.GetComponent<RectTransform>().sizeDelta = size; // 실제 버튼 크기 적용
             var label = button.transform.Find("Label"); // 버튼 글자 객체
             label.GetComponent<RectTransform>().sizeDelta = size; // 글자 표시 영역 적용
             label.GetComponent<Text>().fontSize = 24; // 긴 버튼 이름의 글자 크기
         } // 크기 조정 끝
+        private Button CreateEquipmentAction(string id, string label, UnityEngine.Events.UnityAction action) // 장비 행동 버튼 생성
+        { // 생성 시작
+            var button = UiFactory.CreateButton(canvasRoot, id, label, Vector2.zero); // 실제 장비 행동 버튼
+            button.onClick.AddListener(action); // 장비 행동 연결
+            button.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 취소 입력 연결
+            return button; // 준비된 버튼 전달
+        } // 생성 끝
+        private void AddEquipmentButton(int index, string id, string label) // 시험 장비 획득 버튼 생성
+        { // 생성 시작
+            equipmentButtons[index] = CreateEquipmentAction("TrialEquipmentButton_" + index, label, () => AddTrialEquipment(id)); // 실제 장비 정의 획득 연결
+        } // 생성 끝
+        private void AddTrialEquipment(string id) // 등록된 시험 장비 획득
+        { // 획득 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || lastPickupFrame == Time.frameCount) // 모달과 중복 획득 검사
+            { // 획득 거절 시작
+                return; // 중복 요청 차단
+            } // 획득 거절 끝
+            var item = EquipmentCatalog.Find(id); // 시험 장비 정의 조회
+            if (item == null) // 미등록 장비 검사
+            { // 정의 오류 시작
+                status.text = "시험 장비를 찾을 수 없습니다"; // 정의 오류 안내
+                return; // 잘못된 장비 지급 차단
+            } // 정의 오류 끝
+            lastPickupFrame = Time.frameCount; // 현재 프레임 중복 지급 차단
+            var result = owner.Inventory.Add(item.Id, item.Name, 1, 1); // 중첩 없는 시험 장비 지급
+            Refresh(); // 보유 상태 갱신
+            if (result.Remaining == 0) // 실제 획득 성공 검사
+            { // 획득 성공 시작
+                owner.RecordExplorationEvent(item.Name + " 1개 획득"); // 실제 장비 획득 기록
+                status.text = item.Name + "을 획득했습니다"; // 획득 성공 안내
+                return; // 공간 부족 처리 제외
+            } // 획득 성공 끝
+            offeredId = item.Id; // 공간 부족 장비 식별자
+            offeredName = item.Name; // 공간 부족 장비 이름
+            offeredLimit = 1; // 장비 묶음 한도
+            ShowOfferChoice(); // 기존 교체 또는 포기 선택
+        } // 획득 끝
+        private void EquipSelected() // 선택 슬롯의 장비 장착
+        { // 장착 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0) // 모달과 드래그 검사
+            { // 입력 거절 시작
+                return; // 다른 입력 중 장착 차단
+            } // 입력 거절 끝
+            var success = owner.TryEquipInventoryItem(selectedSlot, out var message); // 실제 장착 및 용량 변경
+            if (success) // 실제 장착 성공 검사
+            { // 선택 정리 시작
+                selectedSlot = -1; // 이전 인벤토리 선택 해제
+            } // 선택 정리 끝
+            Refresh(); // 장비와 슬롯 상태 갱신
+            status.text = message; // 실제 장착 결과 안내
+        } // 장착 끝
+        private void Unequip(EquipmentSlot slot) // 선택 부위의 장비 해제
+        { // 해제 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0) // 모달과 드래그 검사
+            { // 입력 거절 시작
+                return; // 다른 입력 중 해제 차단
+            } // 입력 거절 끝
+            var success = owner.TryUnequipItem(slot, out var message); // 실제 해제와 인벤토리 반환
+            if (success) // 실제 장비 해제 성공 검사
+            { // 선택 정리 시작
+                selectedSlot = -1; // 변경 전 슬롯 선택 해제
+            } // 선택 정리 끝
+            Refresh(); // 장비와 가방 상태 갱신
+            status.text = message; // 실제 해제 결과 안내
+        } // 해제 끝
         private void AddTrialPotion() // 개발 확인용 소형 회복약 지급
         { // 지급 시작
             if (offerStage != OfferStage.None || draggedSlot >= 0 || lastPotionFrame == Time.frameCount) // 획득 선택과 드래그 및 중복 지급 검사
@@ -553,8 +642,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void Refresh() // 현재 게임의 인벤토리 표시
         { // 갱신 시작
             var occupied = 0; // 사용 중인 슬롯 수
+            var capacity = owner.Inventory.Slots.Count; // 실제 가방 용량
+            if (selectedSlot >= capacity) // 축소된 슬롯 선택 검사
+            { // 선택 복구 시작
+                selectedSlot = -1; // 존재하지 않는 선택 해제
+            } // 선택 복구 끝
             for (var index = 0; index < slots.Length; index++) // 실제 슬롯 순회
             { // 슬롯 표시 시작
+                var available = index < capacity; // 현재 가방 슬롯 사용 여부
+                slotButtons[index].gameObject.SetActive(available); // 현재 용량에 맞춘 슬롯 표시
+                if (!available) // 미사용 슬롯 검사
+                { // 숨김 슬롯 처리 시작
+                    continue; // 없는 슬롯 접근 차단
+                } // 숨김 슬롯 처리 끝
                 var slot = owner.Inventory.Slots[index]; // 현재 슬롯 상태
                 if (!slot.IsEmpty) // 아이템 존재 검사
                 { // 사용 중 조건 시작
@@ -563,7 +663,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 slots[index].text = (selectedSlot == index ? "▶ " : "") + (index + 1) + ". " + (slot.IsEmpty ? "비어 있음" : slot.Name + " × " + slot.Quantity); // 선택 상태와 아이템 표시
             } // 슬롯 표시 끝
             healthText.text = "체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50"; // 현재 체력과 마나 표시 갱신
-            status.text = selectedSlot >= 0 ? "이동할 칸을 선택하세요 · 취소로 선택 해제" : "가방 " + occupied + " / " + slots.Length + " · 열쇠 " + owner.Keys.Count; // 이동 안내 또는 현재 슬롯 표시
+            equipmentText.text = "무기 " + (owner.Equipment.Get(EquipmentSlot.Weapon)?.Name ?? "없음") + " · 방어구 " + (owner.Equipment.Get(EquipmentSlot.Armor)?.Name ?? "없음") + " · 장신구 " + (owner.Equipment.Get(EquipmentSlot.Accessory)?.Name ?? "없음") + " · 가방 " + (owner.Equipment.Get(EquipmentSlot.Bag)?.Name ?? "없음"); // 실제 장착 장비 표시
+            status.text = selectedSlot >= 0 ? "아이템 선택됨 · 다른 칸으로 이동 또는 행동 선택" : "가방 " + occupied + " / " + capacity + " · 열쇠 " + owner.Keys.Count; // 이동 안내 또는 현재 슬롯 표시
         } // 갱신 끝
     } // 클래스 끝
     public sealed class InventorySlotDragHandler : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IDropHandler // 마우스 슬롯 드래그 중계

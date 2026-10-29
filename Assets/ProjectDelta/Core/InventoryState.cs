@@ -5,6 +5,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     public sealed class InventoryState // 현재 게임의 인벤토리
     { // 클래스 시작
         private const int BaseSlots = 10; // 기존 기본 슬롯 수
+        private const int MaxSlots = 23; // 기본 슬롯과 영구 강화 및 최대 가방 합계
         private readonly List<InventorySlot> slots = new List<InventorySlot>(); // 실제 슬롯 목록
         private readonly IReadOnlyList<InventorySlot> view; // 외부 수정이 불가능한 슬롯 목록
         public IReadOnlyList<InventorySlot> Slots => view; // 슬롯 조회
@@ -20,11 +21,15 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         } // 저장 끝
         public static InventoryState FromSavedSlots(SaveItemSlot[] saved) // 검증된 저장 슬롯 복원
         { // 복원 시작
-            if (saved == null || saved.Length != BaseSlots) // 기본 슬롯 수 검사
+            if (saved == null || saved.Length < BaseSlots || saved.Length > MaxSlots) // 지원 저장 슬롯 수 검사
             { // 수량 오류 시작
                 return null; // 잘못된 목록 거절
             } // 수량 오류 끝
             var result = new InventoryState(); // 독립 인벤토리 생성
+            if (!result.TryResize(saved.Length)) // 저장 용량 확장 검사
+            { // 확장 실패 시작
+                return null; // 잘못된 목록 거절
+            } // 확장 실패 끝
             for (var index = 0; index < saved.Length; index++) // 저장된 순서 순회
             { // 복원 순회 시작
                 var slot = saved[index]; // 저장된 슬롯 조회
@@ -47,6 +52,50 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 슬롯 생성 끝
             view = slots.AsReadOnly(); // 외부에서 목록 변경 차단
         } // 생성 끝
+        public bool TryResize(int capacity) // 보유 아이템을 보존하는 용량 변경
+        { // 변경 시작
+            if (capacity < BaseSlots || capacity > MaxSlots) // 지원 용량 범위 검사
+            { // 범위 오류 시작
+                return false; // 기존 인벤토리 보존
+            } // 범위 오류 끝
+            var occupied = 0; // 보유 아이템 묶음 수
+            foreach (var slot in slots) // 현재 슬롯 순회
+            { // 보유 수량 검사 시작
+                if (!slot.IsEmpty) // 사용 중인 슬롯 검사
+                { // 사용 슬롯 분기 시작
+                    occupied++; // 실제 묶음 수 증가
+                } // 사용 슬롯 분기 끝
+            } // 보유 수량 검사 끝
+            if (occupied > capacity) // 축소 후 공간 부족 검사
+            { // 공간 부족 시작
+                return false; // 슬롯 변경 없이 축소 거절
+            } // 공간 부족 끝
+            while (slots.Count < capacity) // 신규 슬롯 필요 검사
+            { // 확장 시작
+                slots.Add(new InventorySlot()); // 빈 슬롯 추가
+            } // 확장 끝
+            for (var index = capacity; index < slots.Count; index++) // 축소 범위 슬롯 순회
+            { // 후반 아이템 보존 시작
+                if (slots[index].IsEmpty) // 빈 후반 슬롯 검사
+                { // 빈 슬롯 분기 시작
+                    continue; // 이동 없는 다음 슬롯 검사
+                } // 빈 슬롯 분기 끝
+                for (var target = 0; target < capacity; target++) // 보존 범위 빈 슬롯 순회
+                { // 빈 슬롯 탐색 시작
+                    if (slots[target].IsEmpty) // 앞쪽 빈 슬롯 검사
+                    { // 이동 대상 발견 시작
+                        slots[target] = slots[index]; // 기존 묶음과 수량 보존 이동
+                        slots[index] = new InventorySlot(); // 이동한 후반 슬롯 비우기
+                        break; // 다음 후반 슬롯 검사
+                    } // 이동 대상 발견 끝
+                } // 빈 슬롯 탐색 끝
+            } // 후반 아이템 보존 끝
+            if (slots.Count > capacity) // 제거할 빈 후반 슬롯 검사
+            { // 축소 시작
+                slots.RemoveRange(capacity, slots.Count - capacity); // 보존 후 초과 슬롯 제거
+            } // 축소 끝
+            return true; // 용량 변경 성공
+        } // 변경 끝
         public InventoryAddResult Add(string itemId, string name, int quantity, int stackLimit) // 아이템 획득
         { // 획득 시작
             var requested = Math.Max(0, quantity); // 음수를 제외한 요청 수량

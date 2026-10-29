@@ -13,7 +13,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 회차 버전과 체력 검증
         public void Run_RejectsUnknownVersionAndInvalidHealth() // 버전과 체력 오류 거절
         { // 검증 시작
-            var run = new RunSaveData { version = 11, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
+            var run = new RunSaveData { version = 12, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
             Assert.That(run.IsValid(), Is.False); // 새 버전 거절 확인
             run.version = 1; // 지원 버전 설정
             run.health = 2; // 최대치 초과 체력
@@ -58,6 +58,21 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             run.version = 9; // 종류가 저장되지 않았던 이전 버전
             run.pendingReward.itemId = null; // 이전 저장의 누락된 아이템 종류
             Assert.That(run.IsValid(), Is.True); // 이전 소형 회복약 후보 호환
+        } // 검증 끝
+        [Test] // 장비 저장의 부위와 용량 검증
+        public void Run_ValidatesEquipmentAndBagCapacity() // 장비와 확장 인벤토리의 일관성 확인
+        { // 검증 시작
+            var inventory = new InventoryState(); // 기본 인벤토리
+            inventory.TryResize(12); // 낡은 주머니의 두 칸 확장
+            var run = new RunSaveData { version = 11, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, statPoints = 5, slots = inventory.SaveSlots(), bagId = EquipmentCatalog.OldBagId }; // 가방이 장착된 회차
+            Assert.That(run.IsValid(), Is.True); // 장비와 용량이 일치하는 저장 허용
+            run.bagId = EquipmentCatalog.BasicSwordId; // 가방 부위의 잘못된 무기
+            Assert.That(run.IsValid(), Is.False); // 다른 부위의 장비 거절
+            run.bagId = null; // 확장 없는 빈 가방
+            Assert.That(run.IsValid(), Is.False); // 장비와 불일치한 확장 슬롯 거절
+            run.version = 10; // 이전 장비 없는 저장
+            run.slots = new InventoryState().SaveSlots(); // 기존 기본 슬롯
+            Assert.That(run.IsValid(), Is.True); // 이전 버전 호환
         } // 검증 끝
         [Test] // 아이템 수량과 빈 칸 검증
         public void Run_RejectsInvalidSlots() // 잘못된 아이템 거절

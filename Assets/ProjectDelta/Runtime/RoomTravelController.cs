@@ -90,9 +90,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 보상 저장 시작
             return CaptureRun(true); // 실제 전투 중 안정된 위치 허용
         } // 보상 저장 끝
-        private RunSaveData CaptureRun(bool allowCombat) // 확정된 현재 위치의 저장본
+        public RunSaveData CaptureInventoryRun() // 장비 변경의 안정된 저장본
+        { // 인벤토리 저장 시작
+            return CaptureRun(false, true); // 실제 인벤토리 상태 허용
+        } // 인벤토리 저장 끝
+        private RunSaveData CaptureRun(bool allowCombat, bool allowInventory = false) // 확정된 현재 위치의 저장본
         { // 저장본 생성 시작
-            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Exploration && AppRoot.Instance.Flow.Phase != GamePhase.Pause && (!allowCombat || AppRoot.Instance.Flow.Phase != GamePhase.Combat))) // 안정된 탐험과 승리 전투 상태 검사
+            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Exploration && AppRoot.Instance.Flow.Phase != GamePhase.Pause && (!allowCombat || AppRoot.Instance.Flow.Phase != GamePhase.Combat) && (!allowInventory || AppRoot.Instance.Flow.Phase != GamePhase.Inventory))) // 안정된 탐험과 승리 전투 상태 검사
             { // 저장 불가 조건 시작
                 return null; // 이동이나 다른 화면의 저장 차단
             } // 저장 불가 조건 끝
@@ -139,6 +143,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 maxMana = 50, // 기획 기본 최대 마나
                 keys = AppRoot.Instance.Keys.Count, // 시험 열쇠 수량
                 slots = AppRoot.Instance.Inventory.SaveSlots(), // 아이템 칸과 수량
+                weaponId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Weapon)?.Id, // 장착한 무기 식별자
+                armorId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Armor)?.Id, // 장착한 방어구 식별자
+                accessoryId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Accessory)?.Id, // 장착한 장신구 식별자
+                bagId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Bag)?.Id, // 장착한 가방 식별자
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
                 doorLock = lockData, // 현재 층의 잠금 기록
                 hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부

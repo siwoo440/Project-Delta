@@ -10,7 +10,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text notice; // 저장 오류와 선택 안내
         private GameObject selectionPanel; // 교체할 보유 슬롯 선택 화면
         private GameObject confirmationPanel; // 교체 최종 확인 화면
-        private readonly Button[] slotButtons = new Button[10]; // 교체 대상 슬롯 버튼
+        private Button[] slotButtons; // 교체 대상 슬롯 버튼
         private Button replaceButton; // 보유 아이템 교체 선택 버튼
         private Button takeButton; // 기본 보상 획득 버튼
         private Button skipButton; // 아이템 포기 버튼
@@ -31,6 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 구성 시작
                 var view = screen.GetComponent<BattleRewardScreenView>(); // 실제 화면 제어
                 view.owner = owner; // 현재 회차 연결
+                view.slotButtons = new Button[owner.Inventory.Slots.Count]; // 실제 가방 용량의 교체 버튼
                 var definition = reward.potionCount > 0 ? TrialConsumableRules.Find(reward.itemId) : null; // 저장된 보상 소비품 정의
                 if (reward.potionCount > 0 && definition == null) // 미등록 보상 소비품 검사
                 { // 정의 오류 시작
@@ -84,12 +85,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             for (var index = 0; index < slotButtons.Length; index++) // 기본 인벤토리 슬롯 순회
             { // 슬롯 생성 시작
                 var slotIndex = index; // 버튼별 슬롯 번호 보관
-                var x = index < 5 ? -400f : 400f; // 두 열의 가로 위치
-                var y = 255f - (index % 5) * 90f; // 다섯 줄의 세로 위치
+                var rows = (slotButtons.Length + 1) / 2; // 두 열의 행 수
+                var spacing = Mathf.Min(90f, 480f / Mathf.Max(1, rows - 1)); // 전체 슬롯에 맞는 세로 간격
+                var x = index < rows ? -400f : 400f; // 두 열의 가로 위치
+                var y = 255f - (index % rows) * spacing; // 전체 행의 세로 위치
                 var button = UiFactory.CreateButton(selectionPanel.transform, "RewardReplacementSlot_" + index, "", new Vector2(x, y)); // 교체 대상 버튼
-                button.GetComponent<RectTransform>().sizeDelta = new Vector2(700f, 70f); // 슬롯 버튼 크기
+                button.GetComponent<RectTransform>().sizeDelta = new Vector2(700f, Mathf.Min(70f, spacing - 3f)); // 슬롯 버튼 크기
                 var label = button.transform.Find("Label").GetComponent<RectTransform>(); // 슬롯 글자 영역
-                label.sizeDelta = new Vector2(700f, 70f); // 버튼 안의 글자 영역
+                label.sizeDelta = new Vector2(700f, Mathf.Min(70f, spacing - 3f)); // 버튼 안의 글자 영역
                 label.GetComponent<Text>().fontSize = 24; // 슬롯 이름 글자 크기
                 button.onClick.AddListener(() => SelectReplacement(slotIndex)); // 명시적인 보유 슬롯 선택
                 button.gameObject.AddComponent<BattleRewardCancelRelay>().Initialize(this); // 슬롯 버튼 취소 입력 연결
