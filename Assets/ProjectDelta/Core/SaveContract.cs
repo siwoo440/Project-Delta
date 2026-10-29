@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 17; // 시험 이벤트 전투를 포함한 저장 버전
+        public const int CurrentVersion = 18; // 다섯 층 재현을 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -125,7 +125,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public TrialEventBattleSaveData trialEventBattle; // 마지막 완료 행동의 이벤트 전투
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
-            if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
+            if ((version < 1 || version > CurrentVersion) || floor < 1 || floor > (version >= 18 ? 5 : 2) || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
@@ -133,7 +133,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 장비 저장 오류 시작
                 return false; // 알 수 없는 장비와 잘못된 용량 차단
             } // 장비 저장 오류 끝
-            if (version >= 14 && (roomContents == null || roomContents.Length > 2 || !FloorRoomContent.HasUniqueFloors(roomContents) || !roomContentEnabled && roomContents.Length != 0)) // 층별 콘텐츠 목록과 활성 상태 검사
+            if (version >= 14 && (roomContents == null || roomContents.Length > (version >= 18 ? 5 : 2) || !FloorRoomContent.HasUniqueFloors(roomContents) || !roomContentEnabled && roomContents.Length != 0)) // 층별 콘텐츠 목록과 활성 상태 검사
             { // 방 콘텐츠 오류 시작
                 return false; // 누락 또는 중복된 층 상태 차단
             } // 방 콘텐츠 오류 끝
@@ -147,7 +147,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 오류 끝
             if (version >= 15) // 층별 시험 이벤트 검사
             { // 이벤트 검사 시작
-                if (trialEvents == null || trialEvents.Length > 2 || trialEventsEnabled && !roomContentEnabled || !trialEventsEnabled && trialEvents.Length != 0) // 이벤트 목록과 활성 상태 검사
+                if (trialEvents == null || trialEvents.Length > (version >= 18 ? 5 : 2) || trialEventsEnabled && !roomContentEnabled || !trialEventsEnabled && trialEvents.Length != 0) // 이벤트 목록과 활성 상태 검사
                 { // 오류 시작
                     return false; // 누락 또는 비활성 상태의 이벤트 차단
                 } // 오류 끝
@@ -169,7 +169,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 같은 회차의 중복 결과 차단
                 } // 오류 끝
             } // 이벤트 검사 끝
-            if (version >= 13 && (!RelicState.TryRestore(relicIds, out _) || shopStocks == null || shopStocks.Length > 2)) // 유물과 현재 시험 층의 상점 수 검사
+            if (version >= 13 && (!RelicState.TryRestore(relicIds, out _) || shopStocks == null || shopStocks.Length > (version >= 18 ? 5 : 2))) // 유물과 현재 시험 층의 상점 수 검사
             { // 경제 저장 오류 시작
                 return false; // 잘못된 유물과 상점 목록 차단
             } // 경제 저장 오류 끝

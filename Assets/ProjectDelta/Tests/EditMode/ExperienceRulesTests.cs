@@ -6,6 +6,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
     { // 클래스 시작
         [TestCase(1, 1, 0, 60)] // 1층 일반 적 경험치
         [TestCase(2, 1, 0, 80)] // 2층 일반 적 경험치
+        [TestCase(3, 1, 0, 100)] // 3층 일반 적 경험치
+        [TestCase(4, 1, 0, 120)] // 4층 일반 적 경험치
+        [TestCase(5, 1, 0, 140)] // 5층 일반 적 경험치
         [TestCase(1, 0, 1, 180)] // 1층 상위 개체 경험치
         [TestCase(2, 0, 1, 240)] // 2층 상위 개체 경험치
         [TestCase(1, 2, 1, 300)] // 일반 적과 상위 개체 합산
@@ -18,7 +21,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 미지원 층과 잘못된 적 수 검증
         public void VictoryExperience_RejectsInvalidFloorOrEnemyCount() // 시험 범위 외 전투 거절
         { // 검증 시작
-            Assert.That(ExperienceRules.TryCalculateVictory(3, 1, 0, out _), Is.False); // 아직 미지원인 층 거절
+            Assert.That(ExperienceRules.TryCalculateVictory(6, 1, 0, out _), Is.False); // 마지막 층 초과 거절
             Assert.That(ExperienceRules.TryCalculateVictory(1, -1, 0, out _), Is.False); // 음수 적 수 거절
             Assert.That(ExperienceRules.TryCalculateVictory(1, 0, 0, out _), Is.False); // 제거한 적 없는 전투 거절
             Assert.That(ExperienceRules.TryCalculateVictory(1, 3, 1, out _), Is.False); // 네 적의 전투 거절

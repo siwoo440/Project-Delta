@@ -6,7 +6,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public const int TrialEnemyMaxHealth = 70; // 현재 시험 상대의 최대 체력
         public static bool IsValid(RunSaveData data) // 재개 전 회차 상태 검사
         { // 검사 시작
-            if (data == null || !data.IsValid() || data.floor > 2 || data.health == 0 || data.maxHealth != 100 || data.keys < 0 || data.facing < 0 || data.facing > 4 || data.encounterHealth < 0 || data.encounterHealth > TrialEnemyMaxHealth || data.encounterCompleted && data.encounterHealth != 0 || data.history == null || data.history.Length > 10000 || InventoryState.FromSavedSlots(data.slots) == null) // 범위와 소지품 검사
+            if (data == null || !data.IsValid() || data.floor > 5 || data.health == 0 || data.maxHealth != 100 || data.keys < 0 || data.facing < 0 || data.facing > 4 || data.encounterHealth < 0 || data.encounterHealth > TrialEnemyMaxHealth || data.encounterCompleted && data.encounterHealth != 0 || data.history == null || data.history.Length > 10000 || InventoryState.FromSavedSlots(data.slots) == null) // 범위와 소지품 검사
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
@@ -70,12 +70,15 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 조우 오류 시작
                 return false; // 잘못된 첫 조우 상태 거절
             } // 조우 오류 끝
-            var floorSeed = data.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 현재 층의 재현 시드
-            var layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 층 구조
-            if (!DungeonGenerator.IsValidVersioned(layout, generationVersion)) // 재생성한 구조의 필수 경로 검사
+            var layout = FloorLayoutRules.Generate(data.seed, data.floor, generationVersion); // 저장된 생성 규칙의 층 구조
+            if (!FloorLayoutRules.IsValid(layout, data.seed, data.floor, generationVersion)) // 재생성한 구조의 필수 경로 검사
             { // 구조 오류 시작
                 return false; // 잘못된 던전 복원 차단
             } // 구조 오류 끝
+            if (data.floor == 5 && (data.encounterCompleted || data.encounterHealth != 0 || data.hasPendingReward && layout.GetRoom(data.roomX, data.roomY)?.Kind == RoomKind.Boss)) // 미지원 최종 보스와 이전 조우 상태 검사
+            { // 보스 조우 오류 시작
+                return false; // 존재하지 않는 상위 조우와 보스 보상 차단
+            } // 보스 조우 오류 끝
             if (data.version >= 2 && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 저장된 구조와 실제 지문 비교
             { // 지문 오류 시작
                 return false; // 변경되거나 누락된 구조 거절
@@ -85,12 +88,12 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 var currentFloorFound = false; // 현재 층 저장 존재 여부
                 foreach (var savedFloor in data.roomContents) // 모든 방문 층 콘텐츠 순회
                 { // 층별 배치 검사 시작
-                    if (savedFloor.floor > data.floor || savedFloor.floor > 2) // 진행하지 않은 층 검사
+                    if (savedFloor.floor > data.floor || savedFloor.floor > 5) // 진행하지 않은 층 검사
                     { // 층 오류 시작
                         return false; // 미래 층의 잘못된 콘텐츠 차단
                     } // 층 오류 끝
-                    var contentSeed = savedFloor.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 층별 재현 씨드
-                    var contentLayout = DungeonGenerator.GenerateVersioned(contentSeed, generationVersion); // 저장된 층의 던전 구조
+                    var contentSeed = FloorSeedRules.For(data.seed, savedFloor.floor); // 층별 재현 씨드
+                    var contentLayout = FloorLayoutRules.Generate(data.seed, savedFloor.floor, generationVersion); // 저장된 층의 던전 구조
                     var excluded = TrialRoomContentPlacement.Excluded(contentLayout, savedFloor.floor, generationVersion, data.groupEncounterEnabled); // 기존 조우 방의 안정적 제외
                     if (excluded == null || !FloorRoomContent.TryRestore(savedFloor, contentLayout, contentSeed, excluded, out _)) // 기존 조우와 결정적 배치 검사
                     { // 배치 오류 시작
@@ -117,8 +120,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                             break; // 추가 검색 종료
                         } // 일치 끝
                     } // 층 비교 끝
-                    var eventSeed = record.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 층별 재현 씨드
-                    var eventLayout = DungeonGenerator.GenerateVersioned(eventSeed, generationVersion); // 실제 층의 결정적 구조
+                    var eventSeed = FloorSeedRules.For(data.seed, record.floor); // 층별 재현 씨드
+                    var eventLayout = FloorLayoutRules.Generate(data.seed, record.floor, generationVersion); // 실제 층의 결정적 구조
                     var excluded = TrialRoomContentPlacement.Excluded(eventLayout, record.floor, generationVersion, data.groupEncounterEnabled); // 기존 조우 방 제외
                     if (content == null || excluded == null || !TrialEventPlacement.TrySelect(eventLayout, eventSeed, content, excluded, out var eventRoom) || eventRoom.X != record.x || eventRoom.Y != record.y || record.eventData.choices[0] != (data.seed & 1)) // 좌표와 회차 선택 순서 검사
                     { // 오류 시작
@@ -223,7 +226,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 수량 오류 시작
                 return false; // 원래 전투보다 많은 참가자 차단
             } // 수량 오류 끝
-            var baseExperience = data.floor == 1 ? 60 : 80; // 층별 기획 일반 경험치
+            var baseExperience = 40 + data.floor * 20; // 층별 기획 일반 경험치
             var unit = isElite ? baseExperience * 3 : baseExperience; // 상위 또는 일반 적별 경험치
             return saved.normalExperience == saved.initialEnemies.Length * unit && saved.priorExperience == (available - saved.initialEnemies.Length) * unit; // 생존 참가자와 이전 처치 경험치 일치
         } // 검사 끝

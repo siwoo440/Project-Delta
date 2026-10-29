@@ -233,6 +233,23 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             RunSaveMessage = "회차를 저장했습니다."; // 저장 성공 안내
             return true; // 저장 성공 전달
         } // 저장 끝
+        public bool TryPersistFloorTransition(RunSaveData data, out string message) // 다음 층의 검증된 상태 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 오류 없음
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 저장 회차 식별자
+            if (runStorage == null || data == null || data.runId != CurrentRunId || savedId != null && savedId != CurrentRunId || !RunRestoreRules.IsValid(data)) // 저장소와 현재 회차 및 복원 가능성 검사
+            { // 저장 거절 시작
+                message = "다음 층의 회차 상태를 저장할 수 없습니다. 기존 저장을 확인해 주세요."; // 상태와 회차 보호 안내
+                return false; // 다른 회차와 잘못된 데이터 보존
+            } // 저장 거절 끝
+            if (!runStorage.TrySave(data, out message)) // 안전한 파일 저장 검사
+            { // 저장 실패 시작
+                return false; // 기존 메모리와 저장 상태 유지
+            } // 저장 실패 끝
+            savedRun = data; // 검증된 층 이동 저장 보관
+            savedRunValid = true; // 저장된 회차 재개 허용
+            return true; // 안전한 저장 성공
+        } // 저장 끝
         public bool ContinueRun() // 타이틀에서 검증된 회차 재개
         { // 재개 시작
             if ((Flow.Phase != GamePhase.Title && Flow.Phase != GamePhase.Pause) || !CanContinueRun) // 타이틀과 메뉴의 회차 검사

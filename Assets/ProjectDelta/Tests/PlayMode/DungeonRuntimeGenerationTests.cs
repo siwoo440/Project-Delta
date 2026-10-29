@@ -1931,8 +1931,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
                 Object.Destroy(image); // 임시 이미지 정리
             } // 캡처 조건 끝
-            travel.SendMessage("TryNextFloor"); // 미정인 추가 층 전환 요청
-            Assert.That(travel.Floor, Is.EqualTo(2)); // 3층 전환 차단 확인
+            travel.SendMessage("TryNextFloor"); // 추가 층 전환 요청
+            Assert.That(travel.Floor, Is.EqualTo(3)); // 세 번째 층 이동 확인
         } // 검증 끝
         [UnityTest] // 새 층 준비 실패와 재시도 검증
         public IEnumerator Stairs_BlockedStart_PreservesFloorAndCanRetry() // 시작 칸 차단 시 이전 층 보존

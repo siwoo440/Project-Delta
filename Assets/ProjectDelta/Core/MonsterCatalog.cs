@@ -29,7 +29,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             new MonsterDefinition("MON_GOBLIN", "고블린", false, 1, 2), // 첫 층과 두 번째 층 고블린
             new MonsterDefinition("MON_SLIME_QUEEN", "슬라임 퀸", true, 1, 1), // 첫 층 상위 개체
             new MonsterDefinition("MON_GOBLIN_QUEEN", "고블린 퀸", true, 2, 2), // 두 번째 층 상위 개체
-            new MonsterDefinition("MON_MIMIC", "미믹", false, 1, 2) // 시험 상자의 미믹
+            new MonsterDefinition("MON_MIMIC", "미믹", false, 1, 5) // 시험 상자의 미믹
         }; // 목록 끝
         public static MonsterDefinition Find(string id) // 기존 식별자의 몬스터 조회
         { // 조회 시작

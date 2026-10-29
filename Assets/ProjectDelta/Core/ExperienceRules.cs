@@ -24,11 +24,11 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         { // 계산 시작
             experience = 0; // 기본 경험치 없음
             var totalEnemies = (long)normalEnemies + eliteEnemies; // 정수 범위 보호의 전체 적 수
-            if ((floor != 1 && floor != 2) || normalEnemies < 0 || eliteEnemies < 0 || totalEnemies < 1 || totalEnemies > 3) // 시험 층과 적 수 검사
+            if ((floor < 1 || floor > 5) || normalEnemies < 0 || eliteEnemies < 0 || totalEnemies < 1 || totalEnemies > 3) // 시험 층과 적 수 검사
             { // 입력 거절 시작
                 return false; // 잘못된 시험 전투 차단
             } // 입력 거절 끝
-            var baseExperience = floor == 1 ? 60 : 80; // 기획된 층별 일반 적 경험치
+            var baseExperience = 40 + floor * 20; // 기획된 층별 일반 적 경험치
             experience = normalEnemies * baseExperience + eliteEnemies * baseExperience * 3; // 일반과 상위 개체의 개별 경험치 합산
             return true; // 유효한 승리 경험치 계산 성공
         } // 계산 끝

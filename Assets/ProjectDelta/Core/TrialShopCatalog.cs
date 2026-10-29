@@ -5,7 +5,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     { // 클래스 시작
         public static ShopStockData Create(int floor, Random random) // 층의 최초 시험 상품과 가격 결정
         { // 생성 시작
-            if (floor < 1 || floor > 2 || random == null) // 시험 층과 난수 검사
+            if (floor < 1 || floor > 5 || random == null) // 시험 층과 난수 검사
             { // 입력 오류 시작
                 return null; // 잘못된 상점 생성 차단
             } // 입력 오류 끝

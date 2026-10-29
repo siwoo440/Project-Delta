@@ -378,8 +378,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 groupGoblin = groupEncounterEnabled && (saved == null ? GroupEncounterSpeciesRules.ForNewRun() : GroupEncounterSpeciesRules.FromSave(saved.version, saved.groupGoblin)); // 새 회차 고블린과 기존 슬라임 조우 구분
                 groupEncounterCompleted = saved != null && saved.version >= 6 && saved.groupEncounterCompleted; // 저장된 다수 조우 완료 상태
                 groupEnemyHealth = saved != null && saved.version >= 6 && saved.groupEnemyHealth != null && saved.groupEnemyHealth.Length > 0 ? (int[])saved.groupEnemyHealth.Clone() : null; // 저장된 개별 적 체력 복원
-                var floorSeed = saved != null && saved.floor == 2 ? unchecked(Seed + 7919) : Seed; // 저장 층의 생성 시드
-                Layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 현재 층 구조
+                var currentFloor = saved == null ? 1 : saved.floor; // 새 회차 또는 저장된 층
+                var floorSeed = FloorSeedRules.For(Seed, currentFloor); // 저장 층의 재현 시드
+                Layout = FloorLayoutRules.Generate(Seed, currentFloor, generationVersion); // 저장된 생성 규칙의 현재 층 구조
                 doorLocks = saved == null ? new DoorLockState(Layout) : DoorLockState.FromSaved(Layout, saved.doorLock); // 새 문 또는 저장된 문 상태
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
@@ -629,8 +630,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 복원 시작
                 foreach (var floor in saved.roomContents) // 이전에 생성한 층 순회
                 { // 층 복원 시작
-                    var seed = floor.floor == 1 ? Seed : unchecked(Seed + 7919); // 층별 재현 씨드
-                    var layout = DungeonGenerator.GenerateVersioned(seed, generationVersion); // 저장된 층의 던전 구조
+                    var seed = FloorSeedRules.For(Seed, floor.floor); // 저장 층의 재현 씨드
+                    var layout = FloorLayoutRules.Generate(Seed, floor.floor, generationVersion); // 저장된 층의 던전 구조
                     var excluded = TrialRoomContentPlacement.Excluded(layout, floor.floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
                     if (excluded == null || !FloorRoomContent.TryRestore(floor, layout, seed, excluded, out var restored)) // 배치와 상자 상태 검사
                     { // 복원 오류 시작
@@ -645,7 +646,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 복원 끝
             if (currentContent == null) // 새 회차 또는 이전 저장의 현재 층 검사
             { // 새 콘텐츠 생성 시작
-                var floorSeed = Floor == 1 ? Seed : unchecked(Seed + 7919); // 실제 현재 층 씨드
+                var floorSeed = FloorSeedRules.For(Seed, Floor); // 실제 현재 층 씨드
                 var excluded = TrialRoomContentPlacement.Excluded(Layout, Floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
                 if (excluded == null || !FloorRoomContent.TryCreate(Floor, Layout, floorSeed, excluded, out var created)) // 결정적 시험 콘텐츠 생성
                 { // 생성 오류 시작
@@ -728,7 +729,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 저장 복원 끝
             if (CurrentTrialEventRecord == null) // 이전 버전 또는 새 회차 검사
             { // 생성 시작
-                var seed = Floor == 1 ? Seed : unchecked(Seed + 7919); // 현재 층의 생성 씨드
+                var seed = FloorSeedRules.For(Seed, Floor); // 현재 층의 생성 씨드
                 if (!TryCreateTrialEvent(Floor, Layout, seed, currentContent, out var record)) // 현재 층의 이벤트 방 검사
                 { // 오류 시작
                     return false; // 다른 콘텐츠 침범 차단
@@ -934,6 +935,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 함정 처리 전 상호작용 차단
             } // 함정 재시도 끝
             var currentRoom = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (currentRoom != null && currentRoom.Kind == RoomKind.Boss && player.X == 0 && player.Y == 0) // 최종 마왕 방 중앙 검사
+            { // 최종 방 안내 시작
+                DoorNoticeChanged?.Invoke("마왕 방 · 보스 전투 준비 중"); // 아직 구현되지 않은 전투 안내
+                return; // 추가 층과 미완성 전투 차단
+            } // 최종 방 안내 끝
             if (currentRoom != null && currentRoom.Kind == RoomKind.Stairs && player.X == 0 && player.Y == 0) // 계단 칸의 상호작용 검사
             { // 계단 상호작용 시작
                 TryNextFloor(); // 다음 층 생성과 이동 요청
@@ -1145,7 +1151,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             GameObject exact = null; // 계단 좌표의 기존 방 원형
             foreach (var room in layout.Rooms) // 생성된 방 정의 순회
             { // 계단 방 조회 시작
-                if (room.Kind == RoomKind.Stairs) // 계단 방 역할 검사
+                if (room.Kind == RoomKind.Stairs || room.Kind == RoomKind.Boss) // 계단 또는 최종 방 역할 검사
                 { // 계단 조건 시작
                     stair = room; // 계단 방 정의 보관
                     break; // 계단 방 조회 종료
@@ -1180,7 +1186,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 표시 시작
             foreach (var room in layout.Rooms) // 생성된 방 순회
             { // 방 검사 시작
-                if (room.Kind != RoomKind.Stairs) // 계단 방 역할 검사
+                if (room.Kind != RoomKind.Stairs && room.Kind != RoomKind.Boss) // 계단 또는 최종 방 역할 검사
                 { // 다른 방 조건 시작
                     continue; // 계단 표시 제외
                 } // 다른 방 조건 끝
@@ -1197,16 +1203,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     { // 충돌 조건 시작
                         throw new InvalidOperationException("The stair cell must be walkable."); // 잘못된 계단 위치 거절
                     } // 충돌 조건 끝
-                    var marker = new GameObject("StairMarker", typeof(SpriteRenderer)); // 계단 표시 객체
+                    var marker = new GameObject(room.Kind == RoomKind.Boss ? "BossMarker" : "StairMarker", typeof(SpriteRenderer)); // 계단 또는 최종 방 표시 객체
                     marker.transform.SetParent(root.transform, false); // 계단 방 아래 배치
                     var grid = root.GetComponent<Grid>(); // 방 격자 조회
                     var anchor = floor.tileAnchor; // 바닥 칸 중심 기준
                     var size = grid.cellSize; // 격자 칸 크기
                     marker.transform.position = floor.transform.TransformPoint(new Vector3(anchor.x * size.x, anchor.y * size.y, anchor.z * size.z)); // 중앙 칸의 화면 위치
-                    marker.transform.localRotation = Quaternion.Euler(0f, 0f, 180f); // 아래층 방향 표시
+                    marker.transform.localRotation = Quaternion.Euler(0f, 0f, room.Kind == RoomKind.Boss ? 0f : 180f); // 최종 방 또는 아래층 방향 표시
                     var sprite = marker.GetComponent<SpriteRenderer>(); // 계단 표시 렌더러
                     sprite.sprite = player.transform.Find("DirectionIndicator").GetComponent<SpriteRenderer>().sprite; // 기존 화살표 이미지 사용
-                    sprite.color = new Color(0.2f, 0.8f, 1f); // 파란 계단 색상
+                    sprite.color = room.Kind == RoomKind.Boss ? new Color(1f, 0.32f, 0.32f) : new Color(0.2f, 0.8f, 1f); // 최종 방과 계단 구분 색상
                     sprite.sortingOrder = 3; // 바닥 위 표시
                     return; // 계단 표시 완료
                 } // 연결 검사 끝
@@ -1226,6 +1232,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     break; // 조우 방 조회 종료
                 } // 조우 조건 끝
             } // 조우 방 조회 끝
+            if (encounter == null && new List<DungeonRoom>(layout.Rooms).Exists(room => room.Kind == RoomKind.Boss)) // 최종 층의 미구현 마왕 방 검사
+            { // 최종 층 시작
+                return; // 상위 개체 없는 최종 층 허용
+            } // 최종 층 끝
             if (encounter == null) // 조우 방 존재 검사
             { // 조우 누락 조건 시작
                 throw new InvalidOperationException("An encounter room binding is required."); // 조우 누락 거절
@@ -1371,6 +1381,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     return; // 조우 표시 완료
                 } // 연결 검사 끝
             } // 방 검사 끝
+            if (new List<DungeonRoom>(layout.Rooms).Exists(room => room.Kind == RoomKind.Boss)) // 상위 개체가 없는 최종 층 검사
+            { // 최종 층 시작
+                return; // 마왕 전투 전 별도 상위 표시 없음
+            } // 최종 층 끝
             throw new InvalidOperationException("An encounter room binding is required."); // 조우 방 누락 거절
         } // 표시 끝
         private static void UpdateSecretMarkers(DungeonLayout layout, RoomBinding[] bindings, DungeonDiscovery discovery) // 발견된 비밀벽 표시 갱신
@@ -1442,20 +1456,31 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 표시 갱신 끝
         private void TryNextFloor() // 준비 성공 시에만 다음 층 확정
         { // 전환 시작
-            if (Floor >= 2) // 합의된 마지막 층 검사
+            if (Floor >= 5) // 최종 층 검사
             { // 추가 층 미정 조건 시작
                 return; // 확인되지 않은 층 이동 차단
             } // 추가 층 미정 조건 끝
+            var destination = CaptureRun(); // 이동 전 안정된 회차의 독립 저장본
+            if (destination == null) // 현재 상태 저장 가능 여부 검사
+            { // 저장 불가 시작
+                return; // 미확정 상태의 층 이동 차단
+            } // 저장 불가 끝
             if (!floorProgress.TryBegin()) // 전환 잠금 검사
             { // 전환 거절 조건 시작
                 return; // 중복 요청 무시
             } // 전환 거절 조건 끝
             lastTransitionFrame = Time.frameCount; // 같은 프레임 재요청 차단
             GameObject stage = null; // 준비 중인 새 층 객체
+            var previousRoom = FindRoom(state.RoomX, state.RoomY); // 실패 시 복원할 기존 방
+            var previousFloor = previousRoom.transform.Find("Floor").GetComponent<Tilemap>(); // 기존 방 바닥
+            var previousObstacles = previousRoom.transform.Find("Obstacles").GetComponent<Tilemap>(); // 기존 방 장애물
+            var previousX = player.X; // 기존 플레이어 가로 칸
+            var previousY = player.Y; // 기존 플레이어 세로 칸
+            var playerMoved = false; // 임시 도착 여부
             try // 다음 층의 방과 시작 위치 준비
             { // 준비 시작
-                var nextSeed = unchecked(Seed + floorProgress.Floor * 7919); // 층별 재현 가능한 새 시드
-                var nextLayout = DungeonGenerator.GenerateVersioned(nextSeed, generationVersion); // 현재 회차 규칙으로 새 층 생성
+                var nextSeed = FloorSeedRules.For(Seed, Floor + 1); // 층별 재현 가능한 새 시드
+                var nextLayout = FloorLayoutRules.Generate(Seed, Floor + 1, generationVersion); // 현재 회차 규칙으로 새 층 생성
                 var nextLocks = new DoorLockState(nextLayout); // 새 층의 독립 문 잠금
                 var nextDiscovery = new DungeonDiscovery(nextLayout, 0, 0); // 새 층의 독립 방문 기록
                 FloorRoomContent nextContent = null; // 다음 층의 시험 콘텐츠
@@ -1474,6 +1499,34 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 오류 끝
                 var nextEventRoom = nextEvent == null ? null : nextLayout.GetRoom(nextEvent.x, nextEvent.y); // 다음 층의 시험 이벤트 방
                 var nextNpcRoom = TrialNpcEnabled ? SelectTrialNpc(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom) : null; // 기존 콘텐츠와 분리된 다음 상인 방
+                destination.floor = Floor + 1; // 저장할 다음 층 번호
+                destination.layoutFingerprint = DungeonLayoutFingerprint.Compute(nextLayout); // 다음 층 구조 지문
+                destination.roomX = 0; // 시작 방 가로 좌표
+                destination.roomY = 0; // 시작 방 세로 좌표
+                destination.playerX = 0; // 시작 칸 가로 좌표
+                destination.playerY = 0; // 시작 칸 세로 좌표
+                destination.health = 100; // 기존 시험 규칙의 층 이동 체력 회복
+                destination.visitedRooms = nextDiscovery.SaveVisited(); // 새 층 방문 기록
+                destination.secretPassages = nextDiscovery.SaveSecrets(); // 새 층 비밀 통로 기록
+                destination.doorLock = nextLocks.Save(); // 새 층 문 잠금 기록
+                destination.hasPreviousRoom = false; // 이전 층 연결 제거
+                destination.previousRoomX = 0; // 이전 방 가로 좌표 초기화
+                destination.previousRoomY = 0; // 이전 방 세로 좌표 초기화
+                destination.encounterCompleted = false; // 새 층 조우 초기 상태
+                destination.encounterHealth = 0; // 새 층 적 체력 초기 상태
+                destination.groupEnemyHealth = new int[0]; // 이전 층 다수 적 체력 제외
+                if (nextContent != null) // 새 층 콘텐츠 존재 검사
+                { // 콘텐츠 기록 시작
+                    var contents = new List<SavedFloorRoomContent>(destination.roomContents); // 기존 층 콘텐츠 복사
+                    contents.Add(nextContent.Snapshot()); // 새 층 콘텐츠 추가
+                    destination.roomContents = contents.ToArray(); // 저장용 콘텐츠 확정
+                } // 콘텐츠 기록 끝
+                if (nextEvent != null) // 새 층 이벤트 존재 검사
+                { // 이벤트 기록 시작
+                    var events = new List<SavedFloorTrialEvent>(destination.trialEvents); // 기존 층 이벤트 복사
+                    events.Add(CopyTrialEvent(nextEvent)); // 새 층 이벤트 추가
+                    destination.trialEvents = events.ToArray(); // 저장용 이벤트 확정
+                } // 이벤트 기록 끝
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
                 stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
                 stage.SetActive(false); // 준비 중 화면 노출 방지
@@ -1510,6 +1563,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 도착 실패 조건 시작
                     throw new InvalidOperationException("The next floor start changed during activation."); // 기존 층 유지
                 } // 도착 실패 조건 끝
+                playerMoved = true; // 실패 시 기존 방 복원 필요
+                if (!AppRoot.Instance.TryPersistFloorTransition(destination, out var saveMessage)) // 다음 층 자동 저장 검사
+                { // 저장 실패 시작
+                    throw new InvalidOperationException(saveMessage); // 기존 층으로 복원
+                } // 저장 실패 끝
                 foreach (var room in rooms) // 이전 층의 방 순회
                 { // 이전 방 정리 시작
                     room.Root.SetActive(false); // 이전 층 즉시 숨김
@@ -1542,6 +1600,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 준비 끝
             catch (Exception exception) // 새 층 준비 실패 처리
             { // 실패 처리 시작
+                if (playerMoved) // 임시 도착 여부 검사
+                { // 기존 방 복원 시작
+                    player.ChangeRoom(previousFloor, previousObstacles, previousX, previousY); // 기존 플레이어 위치 복원
+                } // 기존 방 복원 끝
                 if (stage != null) // 준비 중인 층 존재 검사
                 { // 실패한 층 정리 시작
                     stage.SetActive(false); // 실패한 방 즉시 숨김
@@ -1549,6 +1611,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 실패한 층 정리 끝
                 floorProgress.Complete(false); // 기존 층 번호 유지와 잠금 해제
                 Debug.LogWarning("Floor transition failed: " + exception.Message); // 실패 원인 기록
+                DoorNoticeChanged?.Invoke("층 이동 실패 · " + exception.Message); // 실패 원인과 재시도 안내
                 return; // 실패한 전환의 화면 갱신 제외
             } // 실패 처리 끝
             RoomChanged?.Invoke(); // 확정된 층의 지도와 표시 갱신

@@ -9,7 +9,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         } = 1; // 첫 번째 층 초기화
         public bool TryRestore(int floor) // 검증된 현재 층 복원
         { // 복원 시작
-            if (IsTransitioning || floor < 1 || floor > 2) // 전환 중과 구현된 층 범위 검사
+            if (IsTransitioning || floor < 1 || floor > 5) // 전환 중과 구현된 층 범위 검사
             { // 복원 거절 시작
                 return false; // 잘못된 층 거절
             } // 복원 거절 끝
@@ -23,7 +23,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         } // 속성 끝
         public bool TryBegin() // 다음 층 전환 요청
         { // 요청 시작
-            if (IsTransitioning || Floor == int.MaxValue) // 중복 요청과 층 범위 검사
+            if (IsTransitioning || Floor >= 5) // 중복 요청과 층 범위 검사
             { // 거절 조건 시작
                 return false; // 전환 요청 거절
             } // 거절 조건 끝

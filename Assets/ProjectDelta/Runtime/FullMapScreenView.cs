@@ -153,6 +153,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 계단 표시 시작
                     UiFactory.CreateText(image.transform, "StairIndicator", "▲", Mathf.Max(12, Mathf.RoundToInt(spacing * 0.3f)), new Vector2(size * 0.3f, size * 0.3f), new Vector2(size * 0.5f, size * 0.5f), new Color(0.2f, 0.6f, 1f)); // 방문한 계단의 파란 표시
                 } // 계단 표시 끝
+                if (visibility == RoomVisibility.Visited && room.Kind == RoomKind.Boss) // 실제 방문한 마왕 방 검사
+                { // 마왕 방 표시 시작
+                    UiFactory.CreateText(image.transform, "BossIndicator", "◆", Mathf.Max(12, Mathf.RoundToInt(spacing * 0.3f)), new Vector2(size * 0.3f, size * 0.3f), new Vector2(size * 0.5f, size * 0.5f), new Color(1f, 0.35f, 0.35f)); // 방문한 마왕 방의 붉은 표시
+                } // 마왕 방 표시 끝
                 if (current) // 현재 플레이어 방 검사
                 { // 현재 방 표시 시작
                     UiFactory.CreateText(image.transform, "CurrentLocation", "현재", Mathf.Max(12, Mathf.RoundToInt(spacing * 0.2f)), Vector2.zero, new Vector2(size, size), new Color(0.03f, 0.15f, 0.13f)); // 현재 방 안내
