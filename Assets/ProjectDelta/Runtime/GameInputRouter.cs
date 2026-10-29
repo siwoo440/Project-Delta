@@ -12,6 +12,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private InputActionAsset actions; // 전용 입력 모음
         private InputActionMap uiMap; // 타이틀 화면 입력
         private InputActionMap explorationMap; // 던전 탐험 입력
+        private InputActionMap fullMapInput; // 전체 지도 닫기 입력
+        private bool mapToggleArmed; // 지도 단축키 해제 여부
         private InputAction moveUp; // 위쪽 버튼 입력
         private InputAction moveDown; // 아래쪽 버튼 입력
         private InputAction moveLeft; // 왼쪽 버튼 입력
@@ -27,6 +29,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action InteractionRequested; // 정면 상호작용 요청 알림
         public event Action ForceDoorRequested; // 잠긴 문 강제 개방 요청 알림
         public event Action InventoryRequested; // 인벤토리 열기 요청 알림
+        public event Action FullMapRequested; // 전체 지도 열기 요청 알림
+        public event Action FullMapCloseRequested; // 전체 지도 닫기 요청 알림
         public event Action ExplorationLocked; // 탐험 입력 잠금 알림
         public bool IsUiEnabled => uiMap != null && uiMap.enabled; // 실제 화면 입력 상태
         public bool IsExplorationEnabled => explorationMap != null && explorationMap.enabled; // 실제 탐험 입력 상태
@@ -36,8 +40,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             actions.name = "ProjectDeltaInput"; // 입력 모음 이름
             uiMap = new InputActionMap("UI"); // 화면 입력 묶음 생성
             explorationMap = new InputActionMap("Exploration"); // 탐험 입력 묶음 생성
+            fullMapInput = new InputActionMap("FullMap"); // 전체 지도 전용 입력 묶음
             actions.AddActionMap(uiMap); // 화면 입력 묶음 등록
             actions.AddActionMap(explorationMap); // 탐험 입력 묶음 등록
+            actions.AddActionMap(fullMapInput); // 전체 지도 입력 묶음 등록
             var navigate = AddDirectionAction(uiMap, "Navigate", InputActionType.PassThrough); // 화면 방향 입력 생성
             var submit = uiMap.AddAction("Submit", InputActionType.Button); // 화면 선택 입력 생성
             submit.AddBinding("<Keyboard>/enter"); // Enter 선택 연결
@@ -70,6 +76,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var inventory = explorationMap.AddAction("Inventory", InputActionType.Button, "<Keyboard>/i"); // 인벤토리 열기 입력
             inventory.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 열기 연결
             inventory.performed += OnInventory; // 인벤토리 열기 감지
+            var openMap = explorationMap.AddAction("OpenFullMap", InputActionType.Button, "<Keyboard>/m"); // 전체 지도 열기 단축키
+            openMap.performed += OnOpenFullMap; // 전체 지도 열기 감지
+            var closeMapToggle = fullMapInput.AddAction("ToggleFullMap", InputActionType.Button, "<Keyboard>/m"); // 같은 단축키로 지도 닫기
+            closeMapToggle.performed += OnToggleFullMap; // 단축키 닫기 감지
+            var closeMap = fullMapInput.AddAction("CloseFullMap", InputActionType.Button, "<Keyboard>/escape"); // 지도 취소 입력
+            closeMap.AddBinding("<Gamepad>/buttonEast"); // 게임패드 지도 닫기
+            closeMap.performed += OnCloseFullMap; // 취소 요청 감지
             var eventObject = new GameObject("EventSystem"); // 단일 화면 입력 객체
             eventObject.SetActive(false); // 연결 전 입력 활성화 방지
             eventObject.transform.SetParent(transform, false); // 공통 객체 아래 배치
@@ -113,6 +126,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 uiModule.enabled = true; // 화면 입력 전달 활성화
                 uiMap.Enable(); // 타이틀 입력만 활성화
             } // 화면 입력 조건 끝
+            else if (phase == GamePhase.FullMap) // 전체 지도 상태 검사
+            { // 지도 입력 시작
+                mapToggleArmed = false; // 열기에 사용한 키의 즉시 닫기 방지
+                fullMapInput.Enable(); // 지도 전용 닫기 입력 활성화
+            } // 지도 입력 끝
             else if (phase == GamePhase.Exploration) // 탐험 상태 검사
             { // 탐험 입력 조건 시작
                 foreach (var pad in Gamepad.all) // 현재 연결된 게임패드 순회
@@ -134,6 +152,31 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             action.AddBinding("<Gamepad>/dpad"); // 게임패드 방향 버튼 연결
             return action; // 구성된 방향 동작 전달
         } // 생성 끝
+        private void Update() // 지도 단축키 해제 확인
+        { // 갱신 시작
+            if (fullMapInput != null && fullMapInput.enabled && (Keyboard.current == null || !Keyboard.current.mKey.isPressed)) // 지도 화면과 키 해제 검사
+            { // 단축키 준비 시작
+                mapToggleArmed = true; // 다음 누름의 지도 닫기 허용
+            } // 단축키 준비 끝
+        } // 갱신 끝
+        private void OnOpenFullMap(InputAction.CallbackContext context) // 전체 지도 열기 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                FullMapRequested?.Invoke(); // 지도 열기 요청
+            } // 탐험 조건 끝
+        } // 전달 끝
+        private void OnToggleFullMap(InputAction.CallbackContext context) // 같은 단축키의 지도 닫기
+        { // 전달 시작
+            if (mapToggleArmed) // 열기 단축키 해제 여부 검사
+            { // 닫기 조건 시작
+                FullMapCloseRequested?.Invoke(); // 지도 닫기 요청
+            } // 닫기 조건 끝
+        } // 전달 끝
+        private void OnCloseFullMap(InputAction.CallbackContext context) // 취소 버튼의 지도 닫기
+        { // 전달 시작
+            FullMapCloseRequested?.Invoke(); // 지도 닫기 요청
+        } // 전달 끝
         private void OnBack(InputAction.CallbackContext context) // 복귀 입력 전달
         { // 전달 시작
             BackRequested?.Invoke(); // 화면 흐름에 복귀 요청

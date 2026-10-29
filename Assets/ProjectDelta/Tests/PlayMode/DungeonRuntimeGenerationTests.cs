@@ -177,6 +177,73 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(door.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonDoor")); // 생성한 문 이미지 적용
             Assert.That(Camera.main.GetComponent("DungeonCameraMotion"), Is.Not.Null); // 플레이어 추적 카메라 제공 확인
         } // 검증 끝
+        [UnityTest] // 전체 지도 실제 입력과 공개 범위 검증
+        public IEnumerator FullMap_OpensAndClosesWithoutRevealingHiddenRooms() // 지도 진입과 탐험 복귀 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 이동 제어
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.M)); // 지도 열기 단축키 입력
+            InputSystem.Update(); // 지도 열기 처리
+            yield return null; // 지도 화면 생성 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 전체 지도 상태 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 지도 중 탐험 입력 잠금
+            Assert.That(GameObject.Find("FullMapCanvas"), Is.Not.Null); // 실제 지도 화면 확인
+            foreach (var room in travel.Layout.Rooms) // 실제 층의 모든 방 순회
+            { // 방 검사 시작
+                var visible = travel.Discovery.GetVisibility(room.X, room.Y) != RoomVisibility.Hidden; // 실제 공개 여부
+                Assert.That(GameObject.Find("FullMapCanvas/Room_" + room.X + "_" + room.Y) != null, Is.EqualTo(visible)); // 공개된 방만 지도 표시
+            } // 방 검사 끝
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("FullMapCanvas"); // 실제 전체 지도 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 지도 단축키 해제
+            InputSystem.Update(); // 키 해제 처리
+            yield return null; // 단축키 해제 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.M)); // 지도 닫기 단축키 입력
+            InputSystem.Update(); // 지도 닫기 처리
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 상태 복구 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
+            Assert.That(GameObject.Find("FullMapCanvas"), Is.Null); // 지도 화면 제거 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 닫기 단축키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return null; // 해제 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.M)); // 지도 다시 열기
+            InputSystem.Update(); // 지도 열기 처리
+            yield return null; // 지도 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 지도 재진입 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 취소 키로 지도 닫기
+            InputSystem.Update(); // 취소 입력 반영
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소 후 탐험 복구 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 취소 키 해제
+            InputSystem.Update(); // 취소 키 해제 반영
+            yield return null; // 다음 입력 처리 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소가 타이틀 복귀로 전달되지 않음
+        } // 검증 끝
+        [UnityTest] // 게임패드의 전체 지도 취소 검증
+        public IEnumerator FullMap_ClosesWithGamepadCancel() // 게임패드 B로 탐험 복귀
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            AppRoot.Instance.OpenFullMap(); // 실제 전체 지도 진입
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 지도 상태 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.East)); // 게임패드 취소 입력
+            InputSystem.Update(); // 지도 닫기 처리
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 취소 후 탐험 복구
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 활성 확인
+        } // 검증 끝
         [UnityTest] // 탐험 체력 표시와 변경 반영 검증
         public IEnumerator DungeonHud_TracksPlayerHealth() // 실제 체력의 화면 표시 확인
         { // 검증 시작

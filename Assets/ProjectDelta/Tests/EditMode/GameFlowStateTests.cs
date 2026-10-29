@@ -88,6 +88,20 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 기존 탐험 복귀
             Assert.That(flow.TryCloseInventory(), Is.False); // 중복 닫기 차단
         } // 검증 끝
+        [Test] // 전체 지도 상태 전환 검증
+        public void FullMap_RequiresExploration_AndRestoresExploration() // 전체 지도 열기와 닫기
+        { // 검증 시작
+            var flow = CreateTitleState(); // 타이틀 상태 준비
+            Assert.That(flow.TryOpenFullMap(), Is.False); // 타이틀 지도 열기 차단
+            Assert.That(flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 탐험 전환 요청
+            flow.CompleteTransition(); // 탐험 전환 완료
+            Assert.That(flow.TryOpenFullMap(), Is.True); // 탐험에서 지도 열기
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 지도 화면 상태 확인
+            Assert.That(flow.TryOpenInventory(), Is.False); // 지도 중 인벤토리 차단
+            Assert.That(flow.TryCloseFullMap(), Is.True); // 지도 닫기 허용
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 상태 복구
+            Assert.That(flow.TryCloseFullMap(), Is.False); // 중복 닫기 차단
+        } // 검증 끝
         private static GameFlowState CreateTitleState() // 타이틀 검증 준비
         { // 준비 시작
             var flow = new GameFlowState(); // 초기 상태 생성
