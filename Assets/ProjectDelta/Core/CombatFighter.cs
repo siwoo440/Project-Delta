@@ -60,6 +60,17 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         { // 해제 시작
             IsDefending = false; // 이전 방어 상태 해제
         } // 해제 끝
+        public bool TryHeal(int amount, out int restored) // 생존 전투자의 실제 체력 회복
+        { // 회복 시작
+            restored = 0; // 기본 회복량 없음
+            if (!Actor.IsAlive || !PotionRecoveryRules.TryRecover(Health, MaxHealth, amount, out var recovered)) // 생존과 회복 가능 여부 검사
+            { // 회복 불가 조건 시작
+                return false; // 효과 없는 체력 변경 차단
+            } // 회복 불가 조건 끝
+            restored = recovered - Health; // 실제 회복한 체력
+            Health = recovered; // 최대 체력 이내로 회복
+            return true; // 실제 회복 성공
+        } // 회복 끝
         public int ApplyDamage(int amount) // 체력 피해 적용
         { // 적용 시작
             if (amount <= 0 || Health <= 0) // 유효한 피해와 생존 상태 검사

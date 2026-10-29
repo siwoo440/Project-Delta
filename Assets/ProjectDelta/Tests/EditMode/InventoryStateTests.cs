@@ -121,6 +121,45 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(type.GetMethod("TryRecover").Invoke(null, args), Is.True); // 유효한 회복 확인
             Assert.That(args[3], Is.EqualTo(int.MaxValue)); // 넘침 없는 최대 체력 확인
         } // 검증 끝
+        [Test] // 전투 회복약 성공과 아이템 소비 검증
+        public void BattlePotion_HealsAndConsumesOnePotion() // 전투 체력과 회복약 수량 변경
+        { // 검증 시작
+            var inventory = new InventoryState(); // 시험 인벤토리
+            inventory.Add("potion", "물약", 2, 5); // 회복약 두 개 보관
+            var actor = new BattleActor("플레이어", 10, true, 0); // 시험 플레이어
+            var fighter = new CombatFighter(actor, 100, 50, 40, 90, 40, 50); // 피해를 받은 시험 전투자
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.BattlePotionRules"); // 전투 회복약 규칙 조회
+            Assert.That(type, Is.Not.Null); // 전투 회복약 규칙 제공 확인
+            var args = new object[] // 사용 판정 인수
+            { // 인수 목록 시작
+                inventory, fighter, "potion", 25, 0 // 인벤토리와 전투자 및 회복량
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryUse").Invoke(null, args), Is.True); // 유효한 전투 회복약 사용
+            Assert.That(args[4], Is.EqualTo(25)); // 실제 회복량 확인
+            Assert.That(fighter.Health, Is.EqualTo(75)); // 전투 체력 회복 확인
+            Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 회복약 한 개 소비 확인
+        } // 검증 끝
+        [Test] // 전투 회복약 사용 불가의 데이터 보존 검증
+        public void BattlePotion_RejectsNoEffectAndMissingPotion() // 최대 체력과 없는 아이템 처리
+        { // 검증 시작
+            var inventory = new InventoryState(); // 시험 인벤토리
+            inventory.Add("potion", "물약", 1, 5); // 시험 회복약 보관
+            var actor = new BattleActor("플레이어", 10, true, 0); // 시험 플레이어
+            var fighter = new CombatFighter(actor, 100, 50, 40, 90, 40); // 최대 체력의 시험 전투자
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.BattlePotionRules"); // 전투 회복약 규칙 조회
+            Assert.That(type, Is.Not.Null); // 전투 회복약 규칙 제공 확인
+            var args = new object[] // 최대 체력 판정 인수
+            { // 인수 목록 시작
+                inventory, fighter, "potion", 25, 0 // 인벤토리와 전투자 및 회복량
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryUse").Invoke(null, args), Is.False); // 효과 없는 사용 차단
+            Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 회복약 수량 보존
+            fighter.ApplyDamage(20); // 시험 체력 감소
+            args[2] = "missing"; // 없는 아이템 식별자
+            Assert.That(type.GetMethod("TryUse").Invoke(null, args), Is.False); // 없는 회복약 사용 차단
+            Assert.That(fighter.Health, Is.EqualTo(80)); // 실패 후 전투 체력 보존
+            Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 다른 회복약 수량 보존
+        } // 검증 끝
         [Test] // 기본 슬롯 검증
         public void NewInventory_HasTenEmptySlots() // 새 게임의 빈 슬롯 확인
         { // 검증 시작
