@@ -1,0 +1,73 @@
+using System; // 직렬화 표시
+using System.Collections.Generic; // 관찰 식별자 중복 검사
+namespace ProjectDelta.Core // 게임 규칙 이름 공간
+{ // 이름 공간 시작
+    [Serializable] // 저장 형식 직렬화
+    public sealed class SaveItemSlot // 저장할 아이템 한 칸
+    { // 클래스 시작
+        public string itemId; // 아이템 식별자
+        public string name; // 아이템 표시 이름
+        public int quantity; // 아이템 수량
+        public int stackLimit; // 최대 중첩 수량
+        public bool IsValid() // 아이템 저장 범위 검사
+        { // 검사 시작
+            if (string.IsNullOrEmpty(itemId)) // 빈 슬롯 검사
+            { // 빈 슬롯 시작
+                return quantity == 0 && stackLimit == 1; // 빈 슬롯 기본값 확인
+            } // 빈 슬롯 끝
+            return !string.IsNullOrWhiteSpace(itemId) && itemId.Length <= 128 && quantity > 0 && stackLimit > 0 && quantity <= stackLimit; // 유효한 아이템과 수량
+        } // 검사 끝
+    } // 클래스 끝
+    [Serializable] // 저장 형식 직렬화
+    public sealed class RunSaveData // 현재 회차 저장 범위
+    { // 클래스 시작
+        public const int CurrentVersion = 1; // 지원하는 저장 버전
+        public int version; // 회차 저장 버전
+        public int floor; // 현재 층 번호
+        public int roomX; // 현재 방 가로 좌표
+        public int roomY; // 현재 방 세로 좌표
+        public int playerX; // 플레이어 가로 칸
+        public int playerY; // 플레이어 세로 칸
+        public int health; // 현재 체력
+        public int maxHealth; // 최대 체력
+        public SaveItemSlot[] slots; // 인벤토리 슬롯 목록
+        public bool IsValid() // 복원 전 기본 형식 검사
+        { // 검사 시작
+            if (version != CurrentVersion || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > 10) // 버전과 진행 상태 범위
+            { // 오류 조건 시작
+                return false; // 잘못된 회차 거절
+            } // 오류 조건 끝
+            foreach (var slot in slots) // 저장 슬롯 순회
+            { // 순회 시작
+                if (slot == null || !slot.IsValid()) // 누락 또는 잘못된 슬롯 검사
+                { // 오류 조건 시작
+                    return false; // 잘못된 슬롯 거절
+                } // 오류 조건 끝
+            } // 순회 끝
+            return true; // 기본 형식 검사 통과
+        } // 검사 끝
+    } // 클래스 끝
+    [Serializable] // 저장 형식 직렬화
+    public sealed class ProfileSaveData // 회차 간 영구 기록 범위
+    { // 클래스 시작
+        public const int CurrentVersion = 1; // 지원하는 저장 버전
+        public int version; // 프로필 저장 버전
+        public string[] observationIds; // 관찰 대상 식별자 목록
+        public bool IsValid() // 복원 전 영구 기록 검사
+        { // 검사 시작
+            if (version != CurrentVersion || observationIds == null || observationIds.Length > 1024) // 버전과 목록 크기 검사
+            { // 오류 조건 시작
+                return false; // 잘못된 프로필 거절
+            } // 오류 조건 끝
+            var seen = new HashSet<string>(StringComparer.Ordinal); // 중복 식별자 검사 집합
+            foreach (var id in observationIds) // 저장된 관찰 기록 순회
+            { // 순회 시작
+                if (string.IsNullOrWhiteSpace(id) || id.Length > 128 || !seen.Add(id)) // 빈 값과 중복 및 길이 검사
+                { // 오류 조건 시작
+                    return false; // 잘못된 관찰 기록 거절
+                } // 오류 조건 끝
+            } // 순회 끝
+            return true; // 영구 기록 검사 통과
+        } // 검사 끝
+    } // 클래스 끝
+} // 이름 공간 끝
