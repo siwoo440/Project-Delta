@@ -517,14 +517,30 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
             InputSystem.Update(); // 해제 반영
             Assert.That(floorProperty.GetValue(travel), Is.EqualTo(1)); // 일반 방의 층 이동 차단
+            var stairsRoom = oldLayout.Rooms[6]; // 실제 계단 방 좌표
+            var stairsIconPath = "DungeonMiniMap/MapContent/Room_" + stairsRoom.X + "_" + stairsRoom.Y + "/StairIndicator"; // 실제 지도 계단 표시 경로
+            Assert.That(GameObject.Find(stairsIconPath), Is.Null); // 방문 전 계단 정보 비공개 확인
             for (var index = 1; index <= 6; index++) // 시작부터 계단 방까지 주 경로 순회
             { // 경로 이동 시작
+                if (index == 6) // 계단 방 방문 직전 검사
+                { // 계단 정보 비공개 확인 시작
+                    Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_" + stairsRoom.X + "_" + stairsRoom.Y), Is.Not.Null); // 연결만 확인한 방 표시
+                    Assert.That(GameObject.Find(stairsIconPath), Is.Null); // 방문 전 계단 종류 비공개
+                } // 계단 정보 비공개 확인 끝
                 var target = oldLayout.Rooms[index]; // 다음 주 경로 방
                 var door = oldLayout.GetConnection(travel.RoomX, travel.RoomY, target.X, target.Y); // 다음 방 연결
                 Assert.That(door, Is.Not.Null); // 주 경로 연결 확인
                 yield return UseDoor(travel, player, door); // 실제 키 입력으로 방 이동
             } // 경로 이동 끝
             Assert.That(oldLayout.GetRoom(travel.RoomX, travel.RoomY).Kind, Is.EqualTo(RoomKind.Stairs)); // 계단 방 도착 확인
+            Assert.That(GameObject.Find(stairsIconPath), Is.Not.Null); // 방문한 계단 방의 지도 표시 확인
+            var stairCapturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 플레이 화면 저장 경로
+            if (!string.IsNullOrEmpty(stairCapturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 방문한 계단과 지도 표시 화면
+                System.IO.File.WriteAllBytes(stairCapturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
             var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 현재 방 조회
             var roomArguments = new object[] // 현재 방 좌표 인수
             { // 인수 목록 시작
@@ -579,7 +595,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var status = GameObject.Find("DungeonCanvas/Status").GetComponent<UnityEngine.UI.Text>(); // 실제 상태 안내 조회
             Assert.That(status.text, Does.Contain("2층")); // 현재 층 표시 확인
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 화면 캡처 경로 조회
-            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 검증 캡처 검사
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode && !System.IO.File.Exists(capturePath)) // 아직 캡처하지 않은 화면 검사
             { // 캡처 조건 시작
                 var capture = typeof(RoomTravelTests).GetMethod("CaptureOffscreen", BindingFlags.Static | BindingFlags.NonPublic); // 실제 카메라 캡처 도구 조회
                 var image = (Texture2D)capture.Invoke(null, null); // 실제 새 층 화면 렌더링
