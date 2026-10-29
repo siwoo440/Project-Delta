@@ -25,7 +25,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 화면 강조 색상
                 UiFactory.CreateText(panel.transform, "JournalHeader", "관찰 기록", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 도감 화면 제목
                 var observed = owner.Observations.Contains("trial-elite"); // 저장된 시험 대상 기록 검사
-                var content = observed ? "시험 상위 개체 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)" : "관찰 기록이 없습니다"; // 기록에 따른 공개 정보
+                var slimeObserved = owner.Observations.Contains("MON_SLIME"); // 저장된 첫 슬라임 기록 검사
+                var content = observed ? "시험 상위 개체 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)" : string.Empty; // 상위 개체의 공개 정보
+                if (slimeObserved) // 슬라임 관찰 기록 검사
+                { // 슬라임 정보 시작
+                    content += (content.Length > 0 ? "\n\n" : string.Empty) + "슬라임 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)"; // 관찰한 슬라임 정보 추가
+                } // 슬라임 정보 끝
+                if (content.Length == 0) // 공개할 기록 존재 검사
+                { // 기록 없음 시작
+                    content = "관찰 기록이 없습니다"; // 빈 도감 안내
+                } // 기록 없음 끝
                 UiFactory.CreateText(panel.transform, "JournalContents", content, 32, new Vector2(-160f, 45f), new Vector2(800f, 160f), Color.white); // 읽기 전용 관찰 정보
                 if (observed) // 관찰한 시험 대상 검사
                 { // 관찰 정보 조건 시작

@@ -90,11 +90,70 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 새 버전 시작
                 return GenerateWithSecret(seed); // 시험 비밀방 포함 구조
             } // 새 버전 끝
+            if (version == 3) // 첫 조우 생성 버전 검사
+            { // 첫 조우 버전 시작
+                return GenerateWithTutorial(seed); // 첫 일반 방을 보장하는 구조
+            } // 첫 조우 버전 끝
             throw new ArgumentOutOfRangeException(nameof(version)); // 알 수 없는 생성 규칙 거절
+        } // 생성 끝
+        private static DungeonLayout GenerateWithTutorial(int seed) // 첫 연결 방의 일반 역할 보장
+        { // 생성 시작
+            var layout = GenerateWithSecret(seed); // 기존 비밀방 포함 던전
+            RoomDoor first = null; // 시작 방에서 나가는 첫 출구
+            RoomDoor secretEntrance = null; // 일반 방에서 비밀방으로 가는 출구
+            foreach (var door in layout.Doors) // 실제 연결 순회
+            { // 연결 검사 시작
+                if (door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret) // 시작 방의 일반 출구 검사
+                { // 시작 출구 조건 시작
+                    first = door; // 첫 연결 보관
+                } // 시작 출구 조건 끝
+                if (door.IsSecret && !layout.GetRoom(door.RoomX, door.RoomY).IsSecret) // 일반 방의 비밀벽 검사
+                { // 비밀 출구 조건 시작
+                    secretEntrance = door; // 비밀벽 출발 방 보관
+                } // 비밀 출구 조건 끝
+            } // 연결 검사 끝
+            if (first == null || secretEntrance == null) // 필수 연결 누락 검사
+            { // 누락 조건 시작
+                throw new InvalidOperationException("Missing tutorial or secret entrance."); // 잘못된 구조 생성 중단
+            } // 누락 조건 끝
+            var firstRoom = layout.GetRoom(first.TargetRoomX, first.TargetRoomY); // 실제 첫 연결 방
+            if (firstRoom.Kind == RoomKind.Normal) // 이미 일반 방인 경우 검사
+            { // 일반 방 조건 시작
+                return layout; // 기존 구조 그대로 사용
+            } // 일반 방 조건 끝
+            if (firstRoom.Kind != RoomKind.Elite) // 이동 가능한 상위 방 검사
+            { // 역할 오류 시작
+                throw new InvalidOperationException("First room cannot host the tutorial encounter."); // 예상하지 못한 필수 방 거절
+            } // 역할 오류 끝
+            DungeonRoom replacement = null; // 상위 개체를 옮길 일반 방
+            foreach (var room in layout.Rooms) // 대체 방 순회
+            { // 대체 방 검사 시작
+                if (!room.IsSecret && room.Kind == RoomKind.Normal && (room.X != secretEntrance.RoomX || room.Y != secretEntrance.RoomY)) // 비밀벽 출발 방을 제외한 일반 방 검사
+                { // 대체 방 조건 시작
+                    replacement = room; // 상위 역할 대체 방 보관
+                    break; // 첫 후보 선택 완료
+                } // 대체 방 조건 끝
+            } // 대체 방 검사 끝
+            if (replacement == null) // 상위 방 대체 후보 검사
+            { // 후보 누락 시작
+                throw new InvalidOperationException("No room can host the elite encounter."); // 잘못된 구조 차단
+            } // 후보 누락 끝
+            var rooms = new List<DungeonRoom>(); // 역할을 조정한 방 목록
+            foreach (var room in layout.Rooms) // 기존 방 순회
+            { // 역할 조정 시작
+                var kind = room == firstRoom ? RoomKind.Normal : room == replacement ? RoomKind.Elite : room.Kind; // 첫 방과 상위 방 역할 교환
+                rooms.Add(new DungeonRoom(room.X, room.Y, room.IsSecret, kind)); // 좌표와 비밀 여부 보존
+            } // 역할 조정 끝
+            var result = new DungeonLayout(rooms.ToArray(), new List<RoomDoor>(layout.Doors).ToArray()); // 기존 연결을 유지한 새 구조
+            if (!IsValidVersioned(result, 3)) // 필수 경로와 첫 방 검사
+            { // 구조 오류 시작
+                throw new InvalidOperationException("Invalid tutorial dungeon layout."); // 잘못된 구조 차단
+            } // 구조 오류 끝
+            return result; // 검증된 첫 조우 구조
         } // 생성 끝
         public static bool IsValidVersioned(DungeonLayout layout, int version) // 생성 규칙별 전체 연결 검사
         { // 검사 시작
-            if (layout == null || (version != 1 && version != 2)) // 던전과 생성 버전 검사
+            if (layout == null || (version != 1 && version != 2 && version != 3)) // 던전과 생성 버전 검사
             { // 입력 오류 시작
                 return false; // 잘못된 구조 거절
             } // 입력 오류 끝
@@ -157,7 +216,22 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 출발 방 오류 끝
             try // 비밀방을 제외한 기존 구조 재검사
             { // 기존 구조 검사 시작
-                return IsValid(new DungeonLayout(normalRooms.ToArray(), normalDoors.ToArray())); // 기존 필수 방과 경로 보존 확인
+                if (!IsValid(new DungeonLayout(normalRooms.ToArray(), normalDoors.ToArray()))) // 기존 필수 방과 경로 검사
+                { // 기존 구조 오류 시작
+                    return false; // 잘못된 기본 구조 거절
+                } // 기존 구조 오류 끝
+                if (version == 3) // 첫 조우 생성 버전 검사
+                { // 첫 조우 검사 시작
+                    foreach (var door in normalDoors) // 일반 출구 순회
+                    { // 시작 연결 검사 시작
+                        if (door.RoomX == 0 && door.RoomY == 0) // 시작 방 출구 검사
+                        { // 첫 출구 조건 시작
+                            return layout.GetRoom(door.TargetRoomX, door.TargetRoomY).Kind == RoomKind.Normal; // 첫 연결 방의 일반 역할 확인
+                        } // 첫 출구 조건 끝
+                    } // 시작 연결 검사 끝
+                    return false; // 시작 방의 출구 누락
+                } // 첫 조우 검사 끝
+                return true; // 비밀방 포함 기본 구조 확인
             } // 기존 구조 검사 끝
             catch (ArgumentException) // 잘못된 기존 방 연결
             { // 연결 오류 시작

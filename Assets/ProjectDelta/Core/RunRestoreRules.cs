@@ -18,10 +18,14 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 } // 기록 오류 끝
             } // 기록 검사 끝
             var generationVersion = data.version < 3 ? 1 : data.generationVersion; // 기존 저장과 새 생성 버전 구분
-            if (generationVersion < 1 || generationVersion > 2 || (data.version >= 3 && data.secretPassages == null)) // 생성 버전과 비밀 상태 검사
+            if (generationVersion < 1 || generationVersion > 3 || (data.version < 4 && generationVersion > 2) || (data.version >= 3 && data.secretPassages == null)) // 생성 버전과 비밀 상태 검사
             { // 생성 오류 시작
                 return false; // 알 수 없는 생성 규칙 거절
             } // 생성 오류 끝
+            if (data.version >= 4 && (data.tutorialHealth < 0 || data.tutorialHealth > TrialEnemyMaxHealth || (data.tutorialCompleted && data.tutorialHealth != 0) || (generationVersion != 3 && data.tutorialHealth != 0))) // 첫 조우 완료와 시험 체력 검사
+            { // 조우 오류 시작
+                return false; // 잘못된 첫 조우 상태 거절
+            } // 조우 오류 끝
             var floorSeed = data.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 현재 층의 재현 시드
             var layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 층 구조
             if (!DungeonGenerator.IsValidVersioned(layout, generationVersion)) // 재생성한 구조의 필수 경로 검사

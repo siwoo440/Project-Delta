@@ -72,5 +72,22 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             data.generationVersion = 2; // 잘못된 새 생성 규칙
             Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 구조로 재생성 거절
         } // 검증 끝
+        [Test] // 첫 조우 상태와 새 저장 버전 검증
+        public void Validate_TutorialEncounterStateMatchesGeneratedLayout() // 첫 조우의 저장 상태 확인
+        { // 검증 시작
+            var data = ValidSnapshot(); // 이전 형식의 정상 데이터
+            var layout = DungeonGenerator.GenerateVersioned(data.seed, 3); // 첫 일반 방이 보장된 구조
+            data.version = 4; // 첫 조우 저장 버전
+            data.generationVersion = 3; // 첫 조우 생성 버전
+            data.secretPassages = new SavedSecretPassage[0]; // 비밀 연결의 초기 상태
+            data.doorLock = new DoorLockState(layout).Save(); // 현재 구조의 시험 문
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(layout); // 현재 구조 지문
+            data.tutorialHealth = 40; // 도망 후 남은 상대 체력
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 미완료 조우의 유효 체력 허용
+            data.tutorialCompleted = true; // 첫 조우 완료 상태
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 완료 조우의 남은 체력 거절
+            data.tutorialHealth = 0; // 완료 상태의 체력 기록 제거
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 완료한 첫 조우 허용
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝

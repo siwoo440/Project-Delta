@@ -44,6 +44,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 준비 표시
         public void PrepareInput() // 가상 입력을 실제 게임에 전달
         { // 준비 시작
+            RoomTravelController.TutorialEncounterTestOverride = false; // 기존 던전 기능의 독립 검증
             ObservationStorage.TestDirectoryOverride = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "ObservationPlayModeTests", System.Guid.NewGuid().ToString("N"))); // 개별 시험의 독립 저장 경로
             originalBackground = InputSystem.settings.backgroundBehavior; // 기존 입력 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 검증 포커스 영향 제외
@@ -676,6 +677,135 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 var image = GameObject.Find("DungeonMiniMap/MapContent/Room_" + room.X + "_" + room.Y); // 실제 미니맵 방 칸
                 Assert.That(image != null, Is.EqualTo(visible)); // 생성된 구조와 지도 공개 상태 일치
             } // 지도 검사 끝
+        } // 검증 끝
+        [UnityTest] // 첫 슬라임 조우와 회유·저장 재개 검증
+        public IEnumerator FirstSlime_ObservePersuadeAndResume() // 첫 일반 조우와 완료 상태 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 조우 기능 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 새 게임 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 실제 게임 객체
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            Assert.That(travel.TutorialEncounter.Monsters[0].Id, Is.EqualTo("MON_SLIME")); // 실제 첫 조우 데이터 연결 확인
+            yield return UseDoor(travel, player, first); // 실제 첫 일반 방 진입
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 슬라임 조우 화면 진입
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_SLIME")); // 첫 조우 대상 확인
+            Assert.That(GameObject.Find("EncounterCanvas/Status").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("슬라임")); // 실제 조우 대상 표시
+            Assert.That(GameObject.Find("EncounterPortrait").GetComponent<UnityEngine.UI.RawImage>().texture.name, Is.EqualTo("SlimePrototype")); // 슬라임 조우 이미지 확인
+            var observeCalls = 0; // 관찰 주사위 호출 수
+            EncounterScreenView.ObserveRollOverride = (minimum, maximum) => ++observeCalls == 1 ? 20 : 1; // 관찰 성공의 시험 주사위
+            GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 슬라임 관찰 선택
+            yield return null; // 관찰 처리 대기
+            Assert.That(app.Observations.Contains("MON_SLIME"), Is.True); // 실제 슬라임 관찰 기록
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 플레이 화면 캡처 요청
+            { // 캡처 시작
+                var image = CaptureScreen("EncounterCanvas"); // 실제 첫 슬라임 조우 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 화면 저장
+                Object.Destroy(image); // 임시 화면 정리
+            } // 캡처 끝
+            var calls = 0; // 회유 주사위 호출 수
+            EncounterScreenView.PersuadeRollOverride = (minimum, maximum) => ++calls == 1 ? 20 : 1; // 회유 성공 주사위
+            GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 슬라임 회유 선택
+            yield return null; // 회유 처리 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 회유 후 탐험 복귀
+            Assert.That(travel.TutorialCompleted, Is.True); // 첫 조우 완료 기록
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 완료한 회차 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Object.Destroy(app.gameObject); // 기존 실행 객체 종료
+            yield return null; // 기존 객체 정리
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 새 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 객체
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전
+            Assert.That(travel.TutorialCompleted, Is.True); // 완료 상태의 저장 복원
+            Assert.That(app.Observations.Contains("MON_SLIME"), Is.True); // 슬라임 영구 관찰 기록 복원
+        } // 검증 끝
+        [UnityTest] // 첫 슬라임 조우 단계 도망 검증
+        public IEnumerator FirstSlime_EscapeReturnsToPreviousRoom() // 조우 도망과 재등장 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 조우 기능 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 새 게임 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            yield return UseDoor(travel, player, first); // 슬라임 조우 진입
+            var calls = 0; // 도망 주사위 호출 수
+            EncounterScreenView.EscapeRollOverride = (minimum, maximum) => ++calls == 1 ? 20 : 1; // 도망 성공 주사위
+            GameObject.Find("EncounterEscapeButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 조우 단계 도망 선택
+            yield return null; // 도망 반영 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 복귀 확인
+            Assert.That(travel.RoomX, Is.EqualTo(0)); // 이전 방 가로 좌표 확인
+            Assert.That(travel.RoomY, Is.EqualTo(0)); // 이전 방 세로 좌표 확인
+            Assert.That(travel.TutorialCompleted, Is.False); // 도망한 대상의 미완료 유지
+            yield return UseDoor(travel, player, first); // 같은 방의 재조우
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 조우 화면 재진입
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_SLIME")); // 같은 슬라임 대상 유지
+        } // 검증 끝
+        [UnityTest] // 첫 슬라임 전투 후 도주와 체력 보존 검증
+        public IEnumerator FirstSlime_BattleRetreatPreservesEnemyAcrossRestart() // 전투와 도주 후 대상 상태 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 조우 기능 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 새 게임 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 실제 게임 객체
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 현재 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            yield return UseDoor(travel, player, first); // 첫 슬라임 조우 진입
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 첫 조우 화면 확인
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 일반 전투 선택
+            yield return null; // 전투 화면 준비 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실제 전투 진입
+            Assert.That(GameObject.Find("BattleCanvas/Opponent").GetComponent<UnityEngine.UI.Text>().text, Is.EqualTo("슬라임")); // 전투 대상 이름 확인
+            Assert.That(GameObject.Find("EnemyPortrait").GetComponent<UnityEngine.UI.RawImage>().texture.name, Is.EqualTo("SlimePrototype")); // 슬라임 전투 이미지 확인
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 명중과 피해 시험 난수
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 공격 선택
+            yield return null; // 공격 처리 대기
+            var remaining = travel.CurrentEncounterHealth(); // 기존 저장 체력 조회
+            var healthText = GameObject.Find("PlayerHealth").GetComponent<UnityEngine.UI.Text>(); // 실제 전투 상태 확인
+            Assert.That(healthText, Is.Not.Null); // 전투 화면 유지 확인
+            var calls = 0; // 후퇴 주사위 호출 수
+            CombatScreenView.RetreatRollOverride = (minimum, maximum) => ++calls == 1 ? 20 : 1; // 후퇴 성공 주사위
+            GameObject.Find("FleeBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 전투 도주 선택
+            yield return null; // 후퇴 반영 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 복귀 확인
+            while (player.IsRoomTransitionLocked) // 복귀 연출 종료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 남은 상대 체력 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Object.Destroy(app.gameObject); // 기존 실행 객체 종료
+            yield return null; // 기존 객체 정리
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 저장을 읽는 새 실행
+            yield return WaitForPhase(GamePhase.Title); // 새 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 객체
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전
+            player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 복원된 플레이어
+            first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 저장된 첫 연결
+            yield return UseDoor(travel, player, first); // 같은 슬라임 재조우
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 재조우 화면 확인
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_SLIME")); // 같은 대상 식별자 확인
+            Assert.That(travel.CurrentEncounterHealth(), Is.LessThan(remaining)); // 도망 전 피해를 보존한 상대 체력
         } // 검증 끝
         [UnityTest] // 비밀벽의 실제 조사와 저장 재개 검증
         public IEnumerator SecretWall_DiscoverOpenAndRestore() // 발견과 개방 상태 복원 확인
@@ -3271,6 +3401,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 검증 후 정리 표시
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작
+            RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 시험 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             typeof(CombatScreenView).GetProperty("RetreatRollOverride")?.SetValue(null, null); // 검증용 후퇴 주사위 해제

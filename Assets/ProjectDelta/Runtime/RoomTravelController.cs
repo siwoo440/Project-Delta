@@ -20,7 +20,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private const int TrialForceAttack = 50; // 기존 기본 공격력의 시험 적용
         private const int TrialForceDifficulty = 50; // 아직 미정인 문의 시험 난이도
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
-        private int generationVersion = 2; // 현재 회차의 던전 생성 규칙
+        private int generationVersion = 3; // 현재 회차의 던전 생성 규칙
+        private bool tutorialCompleted; // 첫 슬라임 조우 완료 여부
+        private int tutorialHealth; // 도망한 슬라임의 남은 체력
+        private EncounterPlacement tutorialEncounter; // 첫 일반 방의 고정 조우 데이터
+        public static bool? TutorialEncounterTestOverride { get; set; } // 독립 테스트의 첫 조우 활성화 설정
+        public bool TutorialCompleted => tutorialCompleted; // 첫 조우 완료 상태
+        private bool TutorialEnabled => TutorialEncounterTestOverride ?? true; // 실제 게임의 첫 조우 활성 상태
+        public EncounterPlacement TutorialEncounter => tutorialEncounter; // 첫 일반 방의 실제 조우 데이터
+        public string CurrentMonsterId => IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Id : "trial-elite"; // 현재 시험 조우 대상 식별자
+        public string CurrentMonsterName => IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 현재 시험 대상 이름
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
         private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
         private readonly Dictionary<string, int> encounterHealth = new Dictionary<string, int>(); // 층과 방별 후퇴한 시험 적의 체력
@@ -89,6 +98,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 version = RunSaveData.CurrentVersion, // 회차 형식 버전
                 seed = Seed, // 최초 던전 생성 시드
                 generationVersion = generationVersion, // 현재 회차의 생성 규칙
+                tutorialCompleted = tutorialCompleted, // 첫 슬라임 조우 완료 상태
+                tutorialHealth = tutorialHealth, // 도망 후 남은 첫 슬라임 체력
                 secretPassages = Discovery.SaveSecrets(), // 발견한 비밀 연결과 개방 상태
                 layoutFingerprint = DungeonLayoutFingerprint.Compute(Layout), // 저장 당시 현재 층의 구조 지문
                 floor = Floor, // 현재 층 번호
@@ -285,7 +296,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 SaveTemplates(); // 변경 전 방 원형 보관
                 var saved = AppRoot.Instance.PendingRun; // 복원 대기 중인 회차
                 Seed = saved == null ? GenerationSeedOverride ?? Guid.NewGuid().GetHashCode() : saved.seed; // 새 게임 또는 저장된 시드
-                generationVersion = saved == null ? 2 : saved.version < 3 ? 1 : saved.generationVersion; // 새 회차 또는 저장된 생성 규칙
+                generationVersion = saved == null ? 3 : saved.version < 3 ? 1 : saved.generationVersion; // 새 회차 또는 저장된 생성 규칙
+                tutorialCompleted = saved != null && (saved.version < 4 || saved.tutorialCompleted); // 이전 회차와 저장된 첫 조우 완료
+                tutorialHealth = saved == null || saved.version < 4 ? 0 : saved.tutorialHealth; // 저장된 첫 조우 상대 체력
                 var floorSeed = saved != null && saved.floor == 2 ? unchecked(Seed + 7919) : Seed; // 저장 층의 생성 시드
                 Layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 현재 층 구조
                 doorLocks = saved == null ? new DoorLockState(Layout) : DoorLockState.FromSaved(Layout, saved.doorLock); // 새 문 또는 저장된 문 상태
@@ -298,6 +311,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 복원 오류 조건 시작
                     throw new InvalidOperationException("Invalid saved dungeon state."); // 잘못된 저장 복원 거절
                 } // 복원 오류 조건 끝
+                if (generationVersion == 3 && Floor == 1) // 첫 일반 조우가 있는 새 생성 규칙 검사
+                { // 조우 데이터 준비 시작
+                    foreach (var door in Layout.Doors) // 시작 방 연결 순회
+                    { // 첫 연결 검사 시작
+                        if (door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret) // 첫 일반 연결 검사
+                        { // 첫 연결 조건 시작
+                            tutorialEncounter = EncounterPlacement.Create(Layout, 1, door.TargetRoomX, door.TargetRoomY, new[] { "MON_SLIME" }, true); // 검증된 첫 슬라임 배치
+                            break; // 첫 조우 배치 완료
+                        } // 첫 연결 조건 끝
+                    } // 첫 연결 검사 끝
+                    if (tutorialEncounter == null) // 첫 조우 데이터 유효성 검사
+                    { // 배치 오류 시작
+                        throw new InvalidOperationException("Invalid first encounter placement."); // 잘못된 첫 조우 차단
+                    } // 배치 오류 끝
+                } // 조우 데이터 준비 끝
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
                 UpdateLockMarkers(Layout, rooms, doorLocks); // 잠긴 문의 양방향 표시
@@ -421,6 +449,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 탐험 외 조우 차단
             } // 검사 제외 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (TutorialEnabled && IsTutorialRoom() && !tutorialCompleted) // 미완료 첫 슬라임 조우 검사
+            { // 첫 조우 시작
+                AppRoot.Instance.StartEncounter(); // 슬라임 조우 선택 화면 진입
+                return; // 다른 조우와 단서 중복 차단
+            } // 첫 조우 끝
             var wall = Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing); // 현재 바라보는 벽 조회
             if (wall != null && wall.IsSecret && !Discovery.IsSecretDiscovered(wall)) // 미발견 비밀벽의 단서 검사
             { // 단서 조건 시작
@@ -437,6 +470,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 준비 안 됨 조건 시작
                 return CombatScreenView.TrialEnemyHealth; // 시험 적의 기본 최대 체력
             } // 준비 안 됨 조건 끝
+            if (IsTutorialRoom() && !tutorialCompleted) // 첫 슬라임 조우 검사
+            { // 첫 조우 조건 시작
+                return tutorialHealth > 0 ? tutorialHealth : CombatScreenView.TrialEnemyHealth; // 저장된 체력 또는 시험 최대 체력
+            } // 첫 조우 조건 끝
             return encounterHealth.TryGetValue(EncounterKey(), out var health) ? health : CombatScreenView.TrialEnemyHealth; // 보관한 체력 또는 기본 체력
         } // 조회 끝
         public bool StoreCurrentEncounterHealth(int health) // 후퇴 전 현재 방의 시험 적 체력 보관
@@ -445,6 +482,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 잘못된 보관 조건 시작
                 return false; // 다른 방과 잘못된 적 체력 저장 차단
             } // 잘못된 보관 조건 끝
+            if (IsTutorialRoom() && !tutorialCompleted) // 첫 슬라임 조우 검사
+            { // 첫 조우 체력 보관 시작
+                tutorialHealth = health; // 도망 후 남은 체력 보관
+                return true; // 첫 슬라임 체력 보관 성공
+            } // 첫 조우 체력 보관 끝
             encounterHealth[EncounterKey()] = health; // 같은 층과 방의 현재 적 체력 보관
             return true; // 현재 조우의 체력 보관 완료
         } // 보관 끝
@@ -455,7 +497,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 완료할 수 없는 조우 차단
             } // 준비 안 됨 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
-            return room != null && room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()); // 미완료 상위 개체 방 검사
+            return room != null && ((IsTutorialRoom() && !tutorialCompleted) || (room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()))); // 미완료 첫 조우 또는 상위 방 검사
         } // 검사 끝
         public bool CompleteCurrentEncounter() // 현재 방의 시험 조우 완료
         { // 완료 시작
@@ -464,6 +506,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 조우 완료 차단
             } // 준비 안 됨 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            if (room != null && IsTutorialRoom() && !tutorialCompleted) // 미완료 첫 슬라임 검사
+            { // 첫 조우 완료 시작
+                tutorialCompleted = true; // 첫 조우 완료 기록
+                tutorialHealth = 0; // 완료한 상대의 체력 기록 제거
+                return true; // 첫 슬라임 조우 완료
+            } // 첫 조우 완료 끝
             if (room == null || room.Kind != RoomKind.Elite || !completedEncounters.Add(EncounterKey())) // 상위 개체 방과 중복 완료 검사
             { // 완료 거절 조건 시작
                 return false; // 잘못된 방과 중복 완료 차단
@@ -481,6 +529,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 식별 시작
             return Floor + ":" + state.RoomX + ":" + state.RoomY; // 현재 층의 고유 방 식별자
         } // 식별 끝
+        private bool IsTutorialRoom() // 현재 방의 첫 슬라임 조우 여부
+        { // 검사 시작
+            if (!TutorialEnabled || tutorialEncounter == null || Floor != 1 || state == null) // 첫 조우 활성 상태와 배치 및 층 검사
+            { // 제외 조건 시작
+                return false; // 다른 층과 이전 회차 제외
+            } // 제외 조건 끝
+            return state.RoomX == tutorialEncounter.RoomX && state.RoomY == tutorialEncounter.RoomY; // 현재 방과 고정 조우 위치 비교
+        } // 검사 끝
         private void OnForceDoor() // 정면 잠긴 문의 공격력 판정
         { // 강제 개방 시작
             if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || player.IsRoomTransitionLocked || lastTransitionFrame == Time.frameCount) // 탐험 상태와 중복 입력 검사
@@ -608,6 +664,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
             BeginRoomTransition(door.Direction); // 도착 방으로 부드러운 화면 이동 시작
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
+            if (TutorialEnabled && IsTutorialRoom() && !tutorialCompleted) // 첫 연결 방의 슬라임 검사
+            { // 첫 조우 시작
+                AppRoot.Instance.StartEncounter(); // 실제 일반 조우 선택 진입
+            } // 첫 조우 끝
         } // 처리 끝
         private static void BeginRoomTransition(MoveDirection direction) // 도착 방의 부드러운 화면 전환
         { // 전환 시작

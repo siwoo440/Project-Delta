@@ -57,13 +57,23 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 배경색
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 전투 안내 강조 색상
+                var travelObject = GameObject.Find("RoomTravel"); // 실제 던전 객체 조회
+                var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 조우 대상 조회
+                var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
                 AddPortrait(canvas.transform, "PlayerPortrait", "BattlePortraits/PlayerPrototype", new Vector2(-600f, 45f)); // 주인공 임시 초상화
-                AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 상위 개체 임시 초상화
+                if (travel != null && travel.CurrentMonsterId == "MON_SLIME") // 첫 슬라임 전투 검사
+                { // 슬라임 표시 시작
+                    AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimePrototype", new Vector2(600f, 45f)); // 첫 슬라임 이미지
+                } // 슬라임 표시 끝
+                else // 기존 시험 전투 분기
+                { // 상위 표시 시작
+                    AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 상위 개체 임시 초상화
+                } // 상위 표시 끝
                 UiFactory.CreateText(canvas.transform, "Header", "전투", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 전투 화면 제목
                 UiFactory.CreateText(canvas.transform, "Status", "조우 · 공격과 방어, 도주, 회복약", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
-                UiFactory.CreateText(canvas.transform, "Opponent", "상위 개체", 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 상대 영역
+                UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 실제 상대 이름
                 view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-260f, -20f), new Vector2(300f, 65f), Color.white); // 플레이어 체력
                 view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
@@ -109,14 +119,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         private void StartTrialRound() // 시험 참가자의 첫 행동 준비
         { // 준비 시작
+            var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
+            var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+            var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
             participants = new[] // 시험 참가자 목록
             { // 목록 시작
                 new BattleActor("플레이어", TrialPlayerSpeed, true, 0), // 시험 플레이어 속도
-                new BattleActor("상위 개체", TrialEnemySpeed, false, 1) // 시험 상대 속도
+                new BattleActor(enemyName, TrialEnemySpeed, false, 1) // 실제 상대의 시험 속도
             }; // 목록 끝
             player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
-            var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
-            var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
             var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
             enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 85, 8, enemyHealth); // 현재 방의 시험 상위 개체
             round = new BattleRound(participants); // 참가자별 라운드 생성

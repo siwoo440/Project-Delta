@@ -13,6 +13,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text description; // 조우 선택과 이동 결과 안내
         private AppRoot owner; // 현재 게임 상태 관리자
         private RoomTravelController travel; // 이전 방 이동 제어
+        private string monsterId; // 실제 조우 대상 식별자
+        private string monsterName; // 실제 조우 대상 이름
         private readonly System.Random random = new System.Random(); // 조우 도망 주사위
         private bool pendingEscape; // 도망 성공 후 방 이동 재시도 상태
         private bool pendingPersuasion; // 회유 성공 후 조우 완료 재시도 상태
@@ -50,6 +52,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.owner = owner; // 현재 게임 관리자 연결
                 var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
                 view.travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 이전 방 이동 제어 연결
+                view.monsterId = view.travel == null ? TrialMonsterId : view.travel.CurrentMonsterId; // 실제 조우 대상 식별자
+                view.monsterName = view.travel == null ? "상위 개체" : view.travel.CurrentMonsterName; // 실제 조우 대상 이름
                 var canvas = UiFactory.CreateCanvas("EncounterCanvas"); // 조우 전용 화면 생성
                 canvas.transform.SetParent(screen.transform, false); // 조우 화면 아래 배치
                 canvas.sortingOrder = 100; // 탐험 화면보다 앞에 표시
@@ -62,9 +66,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 조우 화면 배경색
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 조우 화면 강조 색상
-                CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 시험 대상의 임시 그림
+                if (view.monsterId == "MON_SLIME") // 첫 슬라임 조우 검사
+                { // 슬라임 표시 시작
+                    CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimePrototype", new Vector2(600f, 45f)); // 첫 슬라임 이미지
+                } // 슬라임 표시 끝
+                else // 기존 상위 개체 분기
+                { // 상위 표시 시작
+                    CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 기존 상위 개체 임시 그림
+                } // 상위 표시 끝
                 UiFactory.CreateText(canvas.transform, "Header", "조우", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 조우 화면 제목
-                UiFactory.CreateText(canvas.transform, "Status", "상위 개체를 발견했습니다", 30, new Vector2(0f, 295f), new Vector2(1100f, 70f), accent); // 시험 조우 상황
+                UiFactory.CreateText(canvas.transform, "Status", view.monsterName + "을 발견했습니다", 30, new Vector2(0f, 295f), new Vector2(1100f, 70f), accent); // 실제 조우 대상 안내
                 view.description = UiFactory.CreateText(canvas.transform, "EncounterDescription", "행동을 선택하세요", 26, new Vector2(-160f, 45f), new Vector2(800f, 130f), Color.white); // 현재 선택과 저장 오류 안내
                 UiFactory.CreateText(canvas.transform, "EncounterScope", "유혹 · 아이템은 준비 중", 23, new Vector2(0f, -420f), new Vector2(1400f, 60f), accent); // 미구현 선택 안내
                 view.fight = UiFactory.CreateButton(canvas.transform, "EncounterFightButton", "전투", new Vector2(-235f, -300f)); // 실제 전투 선택
@@ -76,7 +87,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.persuade = UiFactory.CreateButton(canvas.transform, "EncounterPersuadeButton", "회유", new Vector2(705f, -300f)); // 실제 회유 선택
                 view.persuade.onClick.AddListener(view.AttemptPersuade); // 매력과 저항 회유 연결
                 view.persuade.interactable = view.travel != null && view.travel.CanCompleteCurrentEncounter(); // 실제 회유 대상 없는 조우 차단
-                if (owner.Observations.Contains(TrialMonsterId)) // 이미 관찰한 시험 대상 검사
+                if (owner.Observations.Contains(view.monsterId)) // 이미 관찰한 대상 검사
                 { // 관찰 완료 조건 시작
                     view.observe.transform.Find("Label").GetComponent<Text>().text = "정보 확인"; // 기록된 정보 다시 보기 안내
                 } // 관찰 완료 조건 끝
@@ -111,12 +122,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 잘못된 관찰 요청 차단
             } // 관찰 거절 조건 끝
             lastActionFrame = Time.frameCount; // 같은 프레임의 중복 선택 차단
-            if (owner.Observations.Contains(TrialMonsterId)) // 이미 관찰한 대상 검사
+            if (owner.Observations.Contains(monsterId)) // 이미 관찰한 대상 검사
             { // 정보 확인 조건 시작
                 ShowObservedInfo(); // 추가 주사위 없이 기록된 정보 표시
                 return; // 중복 관찰 차단
             } // 정보 확인 조건 끝
-            if (owner.PendingObservationId != TrialMonsterId) // 아직 굴리지 않은 관찰 판정 검사
+            if (owner.PendingObservationId != monsterId) // 아직 굴리지 않은 관찰 판정 검사
             { // 관찰 판정 시작
                 var playerRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 플레이어 관찰 주사위
                 var enemyRoll = ObserveRollOverride == null ? random.Next(1, 21) : ObserveRollOverride(1, 21); // 상대 은폐 주사위
@@ -135,9 +146,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     owner.StartCombat(); // 관찰 실패 후 일반 전투 진입
                     return; // 정보 공개 차단
                 } // 관찰 실패 조건 끝
-                owner.PendingObservationId = TrialMonsterId; // 화면 이동 후에도 성공 판정 보존
+                owner.PendingObservationId = monsterId; // 화면 이동 후에도 성공 판정 보존
             } // 관찰 판정 끝
-            if (!owner.TryRecordObservation(TrialMonsterId)) // 안전한 영구 기록 검사
+            if (!owner.TryRecordObservation(monsterId)) // 안전한 대상별 영구 기록 검사
             { // 저장 실패 조건 시작
                 description.text = owner.ObservationSaveMessage + (owner.ObservationSaveBlocked ? " 원본 확인 후 재시작 · 미저장 판정 초기화" : " 관찰 선택으로 재시도"); // 실제 오류와 복구 시 미저장 판정 초기화 안내
                 return; // 성공한 판정을 다시 굴리지 않고 보존
@@ -208,7 +219,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (!pendingEscape) // 아직 굴리지 않은 도망 판정 검사
             { // 속도 판정 시작
                 var player = new BattleActor("플레이어", CombatScreenView.TrialPlayerSpeed, true, 0); // 시험 플레이어 속도
-                var enemy = new BattleActor("상위 개체", CombatScreenView.TrialEnemySpeed, false, 1); // 시험 상대 속도
+                var enemy = new BattleActor(monsterName, CombatScreenView.TrialEnemySpeed, false, 1); // 실제 대상의 시험 속도
                 var actors = new[] // 현재 시험 조우 참가자
                 { // 참가자 목록 시작
                     player, enemy // 플레이어와 상위 개체
