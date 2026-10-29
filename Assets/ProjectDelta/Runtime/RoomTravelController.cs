@@ -86,6 +86,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 저장 데이터 시작
                 version = RunSaveData.CurrentVersion, // 회차 형식 버전
                 seed = Seed, // 최초 던전 생성 시드
+                layoutFingerprint = DungeonLayoutFingerprint.Compute(Layout), // 저장 당시 현재 층의 구조 지문
                 floor = Floor, // 현재 층 번호
                 roomX = state.RoomX, // 현재 방 가로 좌표
                 roomY = state.RoomY, // 현재 방 세로 좌표

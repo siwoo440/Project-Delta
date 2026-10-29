@@ -61,6 +61,11 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 캡처 조건 끝
             app.ReturnToTitle(); // 타이틀 복귀
             yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Object.Destroy(app.gameObject); // 첫 실행의 공통 객체 종료
+            yield return null; // 기존 객체 정리 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행의 시작 씬 로드
+            yield return WaitForPhase(GamePhase.Title); // 새 실행의 타이틀 대기
+            app = AppRoot.Instance; // 새 실행의 공통 객체
             Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개 요청
             yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
             travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전 상태

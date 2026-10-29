@@ -27,5 +27,24 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             data.slots = new SaveItemSlot[0]; // 누락된 인벤토리 칸
             Assert.That(RunRestoreRules.IsValid(data), Is.False); // 슬롯 수 오류 거절
         } // 검증 끝
+        [Test] // 새 저장의 던전 구조 일치 검증
+        public void Validate_RequiresMatchingLayoutFingerprintForNewVersion() // 던전 구조 변경 거절
+        { // 검증 시작
+            var data = ValidSnapshot(); // 정상 이전 저장 준비
+            data.version = 2; // 새 회차 저장 버전
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(DungeonGenerator.Generate(data.seed)); // 실제 생성 구조의 지문
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 같은 던전의 재개 허용
+            data.layoutFingerprint = "incorrect"; // 변조된 던전 지문
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 구조 거절
+            data.layoutFingerprint = null; // 지문 누락
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 누락된 지문 거절
+        } // 검증 끝
+        [Test] // 이전 회차 저장 호환성 검증
+        public void Validate_AcceptsLegacyVersionWithoutFingerprint() // 이전 저장 읽기 유지
+        { // 검증 시작
+            var data = ValidSnapshot(); // 기존 버전 회차
+            Assert.That(data.version, Is.EqualTo(1)); // 기존 버전 확인
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 지문이 없는 기존 회차 허용
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝

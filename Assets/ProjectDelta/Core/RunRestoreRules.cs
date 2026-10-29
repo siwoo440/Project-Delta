@@ -19,6 +19,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 기록 검사 끝
             var floorSeed = data.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 현재 층의 재현 시드
             var layout = DungeonGenerator.Generate(floorSeed); // 저장된 층 구조 재생성
+            if (data.version == RunSaveData.CurrentVersion && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 새 저장과 실제 구조 지문 비교
+            { // 지문 오류 시작
+                return false; // 변경되거나 누락된 구조 거절
+            } // 지문 오류 끝
             if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
             { // 던전 오류 시작
                 return false; // 잘못된 던전 상태 거절

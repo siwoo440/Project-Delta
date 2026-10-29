@@ -13,7 +13,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 회차 버전과 체력 검증
         public void Run_RejectsUnknownVersionAndInvalidHealth() // 버전과 체력 오류 거절
         { // 검증 시작
-            var run = new RunSaveData { version = 2, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
+            var run = new RunSaveData { version = 3, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
             Assert.That(run.IsValid(), Is.False); // 새 버전 거절 확인
             run.version = 1; // 지원 버전 설정
             run.health = 2; // 최대치 초과 체력
