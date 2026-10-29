@@ -195,7 +195,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             foreach (var room in travel.Layout.Rooms) // 실제 층의 모든 방 순회
             { // 방 검사 시작
                 var visible = travel.Discovery.GetVisibility(room.X, room.Y) != RoomVisibility.Hidden; // 실제 공개 여부
-                Assert.That(GameObject.Find("FullMapCanvas/Room_" + room.X + "_" + room.Y) != null, Is.EqualTo(visible)); // 공개된 방만 지도 표시
+                Assert.That(GameObject.Find("FullMapCanvas/MapViewport/MapContent/Room_" + room.X + "_" + room.Y) != null, Is.EqualTo(visible)); // 공개된 방만 지도 표시
             } // 방 검사 끝
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
@@ -229,6 +229,52 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 다음 입력 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소가 타이틀 복귀로 전달되지 않음
         } // 검증 끝
+        [UnityTest] // 전체 지도 조작과 탐험 입력 분리 검증
+        public IEnumerator FullMap_KeyboardMovesZoomsAndRecenters() // 키보드 지도 조작 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var initialX = player.X; // 탐험 위치 보관
+            var initialY = player.Y; // 탐험 위치 보관
+            AppRoot.Instance.OpenFullMap(); // 실제 지도 열기
+            yield return null; // 지도 준비 대기
+            var view = GameObject.Find("FullMapScreen").GetComponent<FullMapScreenView>(); // 지도 화면 제어
+            var initialOffset = view.MapOffset; // 초기 지도 위치
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 지도 이동 입력
+            InputSystem.Update(); // 이동 입력 반영
+            yield return null; // 이동 처리 대기
+            Assert.That(view.MapOffset, Is.Not.EqualTo(initialOffset)); // 지도 위치 변경 확인
+            Assert.That(player.X, Is.EqualTo(initialX)); // 플레이어 가로 위치 유지
+            Assert.That(player.Y, Is.EqualTo(initialY)); // 플레이어 세로 위치 유지
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 해제 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Equals)); // 지도 확대 입력
+            InputSystem.Update(); // 확대 입력 반영
+            yield return null; // 확대 처리 대기
+            Assert.That(view.MapZoom, Is.GreaterThan(1f)); // 지도 확대 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 확대 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 해제 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Home)); // 현재 위치 복귀 입력
+            InputSystem.Update(); // 복귀 입력 반영
+            yield return null; // 복귀 처리 대기
+            Assert.That(view.CurrentRoomScreenOffset.magnitude, Is.LessThan(0.01f)); // 현재 방의 지도 중심 복귀 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 지도 중 탐험 입력 잠금 확인
+            for (var index = 0; index < 20; index++) // 최대 배율을 넘는 확대 요청
+            { // 확대 반복 시작
+                view.Zoom(1); // 지도 확대 요청
+            } // 확대 반복 끝
+            Assert.That(view.MapZoom, Is.EqualTo(2f)); // 최대 배율 제한 확인
+            for (var index = 0; index < 20; index++) // 최소 배율을 넘는 축소 요청
+            { // 축소 반복 시작
+                view.Zoom(-1); // 지도 축소 요청
+            } // 축소 반복 끝
+            Assert.That(view.MapZoom, Is.EqualTo(0.5f)); // 최소 배율 제한 확인
+        } // 검증 끝
         [UnityTest] // 마우스 전체 지도 열기와 닫기 검증
         public IEnumerator FullMap_OpensAndClosesWithMouseButtons() // 마우스 버튼의 지도 왕복 확인
         { // 검증 시작
@@ -245,6 +291,16 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 마우스의 지도 진입 확인
             InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }); // 마우스 버튼 해제
             InputSystem.Update(); // 버튼 해제 반영
+            yield return null; // 해제 처리 대기
+            var view = GameObject.Find("FullMapScreen").GetComponent<FullMapScreenView>(); // 실제 지도 화면
+            var zoom = GameObject.Find("MapZoomIn"); // 마우스 확대 버튼
+            var zoomPosition = RectTransformUtility.WorldToScreenPoint(null, zoom.GetComponent<RectTransform>().position); // 확대 버튼 위치
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = zoomPosition }.WithButton(MouseButton.Left)); // 확대 버튼 클릭
+            InputSystem.Update(); // 확대 입력 반영
+            yield return null; // 확대 처리 대기
+            Assert.That(view.MapZoom, Is.GreaterThan(1f)); // 마우스 지도 확대 확인
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = zoomPosition }); // 마우스 버튼 해제
+            InputSystem.Update(); // 해제 입력 반영
             yield return null; // 해제 처리 대기
             var close = GameObject.Find("MapCloseButton"); // 지도 화면의 닫기 버튼
             Assert.That(close, Is.Not.Null); // 지도 닫기 버튼 존재 확인
@@ -272,6 +328,23 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 보기 버튼 해제
             InputSystem.Update(); // 버튼 해제 처리
             yield return null; // 해제 상태 반영
+            var view = GameObject.Find("FullMapScreen").GetComponent<FullMapScreenView>(); // 지도 제어 화면
+            var original = view.MapOffset; // 최초 지도 위치
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 게임패드 지도 이동
+            InputSystem.Update(); // 방향 입력 반영
+            yield return null; // 이동 처리 대기
+            Assert.That(view.MapOffset, Is.Not.EqualTo(original)); // 게임패드 지도 이동 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.RightShoulder)); // 게임패드 지도 확대
+            InputSystem.Update(); // 확대 입력 반영
+            yield return null; // 확대 처리 대기
+            Assert.That(view.MapZoom, Is.GreaterThan(1f)); // 게임패드 확대 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.West)); // 게임패드 현재 위치 복귀
+            InputSystem.Update(); // 중심 복귀 입력 반영
+            yield return null; // 복귀 처리 대기
+            Assert.That(view.CurrentRoomScreenOffset.magnitude, Is.LessThan(0.01f)); // 현재 방의 화면 중심 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 조작 버튼 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return null; // 해제 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.Select)); // 보기 버튼으로 지도 닫기
             InputSystem.Update(); // 지도 닫기 처리
             yield return null; // 탐험 복귀 대기

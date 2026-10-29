@@ -34,6 +34,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action SaveRequested; // 회차 저장 요청 알림
         public event Action FullMapRequested; // 전체 지도 열기 요청 알림
         public event Action FullMapCloseRequested; // 전체 지도 닫기 요청 알림
+        public event Action<Vector2Int> FullMapPanRequested; // 지도 이동 요청 알림
+        public event Action<int> FullMapZoomRequested; // 지도 확대와 축소 요청 알림
+        public event Action FullMapCenterRequested; // 현재 방 중심 복귀 요청 알림
         public event Action HistoryRequested; // 회차 기록 열기 요청 알림
         public event Action HistoryCloseRequested; // 회차 기록 닫기 요청 알림
         public event Action<int> HistoryPageRequested; // 회차 기록 페이지 이동 알림
@@ -96,6 +99,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var closeMap = fullMapInput.AddAction("CloseFullMap", InputActionType.Button, "<Keyboard>/escape"); // 지도 취소 입력
             closeMap.AddBinding("<Gamepad>/buttonEast"); // 게임패드 지도 닫기
             closeMap.performed += OnCloseFullMap; // 취소 요청 감지
+            AddMapPan("MapUp", "<Keyboard>/upArrow", "<Gamepad>/dpad/up", Vector2Int.up); // 지도 위쪽 이동 입력
+            AddMapPan("MapDown", "<Keyboard>/downArrow", "<Gamepad>/dpad/down", Vector2Int.down); // 지도 아래쪽 이동 입력
+            AddMapPan("MapLeft", "<Keyboard>/leftArrow", "<Gamepad>/dpad/left", Vector2Int.left); // 지도 왼쪽 이동 입력
+            AddMapPan("MapRight", "<Keyboard>/rightArrow", "<Gamepad>/dpad/right", Vector2Int.right); // 지도 오른쪽 이동 입력
+            var mapZoomIn = fullMapInput.AddAction("MapZoomIn", InputActionType.Button, "<Keyboard>/equals"); // 지도 확대 입력
+            mapZoomIn.AddBinding("<Gamepad>/rightShoulder"); // 게임패드 확대 입력
+            mapZoomIn.performed += OnMapZoom; // 확대 요청 연결
+            var mapZoomOut = fullMapInput.AddAction("MapZoomOut", InputActionType.Button, "<Keyboard>/minus"); // 지도 축소 입력
+            mapZoomOut.AddBinding("<Gamepad>/leftShoulder"); // 게임패드 축소 입력
+            mapZoomOut.performed += OnMapZoom; // 축소 요청 연결
+            var mapCenter = fullMapInput.AddAction("MapCenter", InputActionType.Button, "<Keyboard>/home"); // 현재 위치 복귀 입력
+            mapCenter.AddBinding("<Gamepad>/buttonWest"); // 게임패드 현재 위치 복귀
+            mapCenter.performed += OnMapCenter; // 현재 위치 복귀 연결
             var openHistory = explorationMap.AddAction("OpenHistory", InputActionType.Button, "<Keyboard>/h"); // 회차 기록 열기 단축키
             openHistory.AddBinding("<Gamepad>/leftStickPress"); // 게임패드 왼쪽 스틱 버튼
             openHistory.performed += OnOpenHistory; // 기록 열기 요청 감지
@@ -176,6 +192,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 explorationMap.Enable(); // 탐험 입력만 활성화
             } // 탐험 입력 조건 끝
         } // 전환 끝
+        private void AddMapPan(string name, string keyboard, string gamepad, Vector2Int direction) // 지도 방향 버튼 연결
+        { // 연결 시작
+            var action = fullMapInput.AddAction(name, InputActionType.Button, keyboard); // 키보드 방향 입력
+            action.AddBinding(gamepad); // 게임패드 방향 입력
+            action.performed += context => FullMapPanRequested?.Invoke(direction); // 지도 방향 요청 전달
+        } // 연결 끝
+        private void OnMapZoom(InputAction.CallbackContext context) // 지도 배율 변경 전달
+        { // 전달 시작
+            FullMapZoomRequested?.Invoke(context.action.name == "MapZoomIn" ? 1 : -1); // 확대 또는 축소 요청
+        } // 전달 끝
+        private void OnMapCenter(InputAction.CallbackContext context) // 현재 위치 중심 요청 전달
+        { // 전달 시작
+            FullMapCenterRequested?.Invoke(); // 지도 중심 복귀 요청
+        } // 전달 끝
         private static InputAction AddDirectionAction(InputActionMap map, string name, InputActionType type) // 공통 방향 입력 생성
         { // 생성 시작
             var action = map.AddAction(name, type); // 방향 동작 추가
