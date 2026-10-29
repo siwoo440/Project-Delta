@@ -134,20 +134,25 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 } // 공격 끝
                 Assert.That(GameObject.Find("RoundStatus").GetComponent<Text>().text, Is.EqualTo("승리")); // 저장 실패 전 실제 승리 판정
                 Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 자동 저장 실패 후 전투 결과 유지
-                Assert.That(GameObject.Find("BossResultScreen"), Is.Null); // 저장 전 결과 화면 차단
+                Assert.That(GameObject.Find("EndingScreen"), Is.Null); // 저장 전 결과 화면 차단
                 Assert.That(app.Experience, Is.EqualTo(experience)); // 저장 실패 후 경험치 유지
                 Assert.That(new RunStorage(RunStorage.TestDirectoryOverride).Load(out _).bossOutcome, Is.Zero); // 실패 시 기존 회차 결과 유지
             } // 실제 저장 잠금 해제
             yield return null; // 저장 재시도 프레임 대기
             finish.onClick.Invoke(); // 승리 결과 저장 재시도
-            yield return null; // 실제 결과 화면 준비
-            Assert.That(GameObject.Find("BossResultScreen"), Is.Not.Null); // 저장된 마왕 결과 화면
+            yield return WaitForObject("EndingBranchReturn"); // 저장된 승리 후보 화면 대기
+            Assert.That(GameObject.Find("EndingScreen"), Is.Not.Null); // 저장된 결말 선택 화면
             Assert.That(app.Level, Is.EqualTo(level)); // 승리 경험치 없는 레벨 유지
             Assert.That(app.Experience, Is.EqualTo(experience)); // 승리 경험치 없음 확인
             var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var warning); // 실제 결과 저장 파일 조회
             Assert.That(warning, Is.Empty); // 결과 저장 오류 없음
             Assert.That(saved, Is.Not.Null); // 실제 결과 회차 저장
             Assert.That(saved.floor, Is.EqualTo(5)); // 다섯째 층 결과 저장
+            Assert.That(saved.bossOutcome, Is.EqualTo(1)); // 실제 일반 마왕 승리 저장
+            Assert.That(saved.hasEndingCandidates, Is.True); // 결말 후보의 선행 저장
+            Assert.That(saved.endingReturnCandidates, Does.Contain(EndingRules.ReturnBasic)); // 실제 기본 귀환 후보
+            Assert.That(saved.endingStayCandidates, Does.Contain(EndingRules.StayBasic)); // 실제 기본 잔류 후보
+            Assert.That(string.IsNullOrEmpty(saved.endingSelectedId), Is.True); // 사용자 선택 전 미확정 상태
             Assert.That(saved.level, Is.EqualTo(level)); // 저장된 레벨 유지
             Assert.That(saved.experience, Is.EqualTo(experience)); // 저장된 경험치 유지
             Object.Destroy(app.gameObject); // 실제 실행 종료
@@ -156,10 +161,13 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
             app = AppRoot.Instance; // 새 실행 관리자
             Assert.That(app.ContinueRun(), Is.True); // 결과가 있는 회차 재개
-            yield return WaitForObject("BossResultScreen"); // 미확인 마왕 결과 복원 대기
+            yield return WaitForObject("EndingBranchReturn"); // 저장된 승리 후보 화면 복원
             Assert.That(app.Level, Is.EqualTo(level)); // 재실행 후 레벨 유지
             Assert.That(app.Experience, Is.EqualTo(experience)); // 재실행 후 경험치 유지
-            Assert.That(GameObject.Find("BossResultTitleButton"), Is.Not.Null); // 결과 화면의 타이틀 선택
+            Assert.That(GameObject.Find("EndingBranchStay"), Is.Not.Null); // 복원된 던전 잔류 방향
+            GameObject.Find("EndingBranchReturn").GetComponent<Button>().onClick.Invoke(); // 실제 귀환 후보 열기
+            Assert.That(GameObject.Find("EndingCandidate_" + EndingRules.ReturnBasic), Is.Not.Null); // 복원된 기본 귀환 후보
+            Assert.That(GameObject.Find("EndingCandidate_" + EndingRules.ReturnHeroic), Is.Not.Null); // 복원된 일반 승리 후보
         } // 검증 끝
         [UnityTest] // 마왕전 항복 취소와 저장 재시도 검증
         public IEnumerator Boss_SurrenderCancelAndRetryPersistAcrossRestart() // 항복 확인과 저장된 결과 복원
@@ -182,17 +190,17 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 confirm.onClick.Invoke(); // 저장 잠금 중 항복 확정
                 yield return null; // 실패 처리 대기
                 Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 후 전투 보존
-                Assert.That(GameObject.Find("BossResultScreen"), Is.Null); // 저장 전 결과 화면 차단
+                Assert.That(GameObject.Find("EndingScreen"), Is.Null); // 저장 전 결과 화면 차단
                 Assert.That(new RunStorage(RunStorage.TestDirectoryOverride).Load(out _).bossOutcome, Is.Zero); // 저장 실패 후 이전 결과 보존
             } // 저장 잠금 해제
             yield return null; // 항복 재시도 프레임 대기
             GameObject.Find("ExitBattleButton").GetComponent<Button>().onClick.Invoke(); // 결과 버튼의 실제 항복 저장 재시도
-            yield return WaitForObject("BossResultScreen"); // 저장된 항복 결과 표시
+            yield return WaitForObject("EndingResultName"); // 저장된 항복 결말 표시
             var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var warning); // 실제 항복 결과 조회
             Assert.That(warning, Is.Empty); // 정상 저장 안내 확인
             Assert.That(saved.bossOutcome, Is.EqualTo(3)); // 실제 항복 결과 저장
-            Assert.That(GameObject.Find("BossResultHeading").GetComponent<Text>().text, Does.Contain("항복")); // 화면의 항복 결과 확인
-            yield return RestartAndCheckBossResult(3, "항복"); // 실제 재실행 후 같은 결과 복원
+            AssertAutomaticEnding(saved, BattleDefeatReason.Surrender); // 실제 자동 결말과 영구 기록 확인
+            yield return RestartAndCheckBossResult(3); // 실제 재실행 후 같은 결과 복원
         } // 검증 끝
         [UnityTest] // 마왕전 체력 소진 패배의 저장 검증
         public IEnumerator Boss_ZeroHealthDefeatPersistsAcrossRestart() // 실제 전투 패배와 결과 복원
@@ -200,18 +208,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return EnterBossCombat(true, false); // 체력 일의 실제 마왕 전투 진입
             var app = AppRoot.Instance; // 실제 회차 관리자
             var attack = GameObject.Find("AdvanceBattleButton").GetComponent<Button>(); // 실제 전투 공격
-            for (var turn = 0; turn < 10 && GameObject.Find("BossResultScreen") == null; turn++) // 실제 체력 소진과 자동 저장까지 진행
+            for (var turn = 0; turn < 10 && GameObject.Find("EndingScreen") == null; turn++) // 실제 체력 소진과 자동 저장까지 진행
             { // 공격 시작
                 attack.onClick.Invoke(); // 실제 공격과 마왕의 반격
                 yield return null; // 자동 결과 저장과 다음 프레임 대기
             } // 공격 끝
             Assert.That(app.PlayerHealth, Is.Zero); // 실제 플레이어 체력 소진
-            Assert.That(GameObject.Find("BossResultScreen"), Is.Not.Null); // 체력 소진 직후 자동 결과 표시
+            yield return WaitForObject("EndingResultName"); // 저장된 체력 소진 결말 대기
+            Assert.That(GameObject.Find("EndingScreen"), Is.Not.Null); // 체력 소진 직후 자동 결과 표시
             var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var warning); // 실제 패배 결과 조회
             Assert.That(warning, Is.Empty); // 정상 저장 안내 확인
             Assert.That(saved.bossOutcome, Is.EqualTo(2)); // 실제 체력 소진 결과 저장
-            Assert.That(GameObject.Find("BossResultHeading").GetComponent<Text>().text, Does.Contain("패배")); // 화면의 패배 결과 확인
-            yield return RestartAndCheckBossResult(2, "패배"); // 실제 재실행 후 같은 결과 복원
+            AssertAutomaticEnding(saved, BattleDefeatReason.HealthZero); // 실제 자동 결말과 영구 기록 확인
+            yield return RestartAndCheckBossResult(2); // 실제 재실행 후 같은 결과 복원
         } // 검증 끝
         private IEnumerator EnterBossCombat(bool lowHealth, bool checkEscape) // 실제 층 이동과 마왕 전투 진입
         { // 진입 시작
@@ -256,18 +265,33 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             GameObject.Find("BossPreparationEnter").GetComponent<Button>().onClick.Invoke(); // 실제 전투 진입 선택
             yield return WaitForPhase(GamePhase.Combat); // 조우 연출과 실제 전투 대기
         } // 진입 끝
-        private static IEnumerator RestartAndCheckBossResult(int outcome, string label) // 실제 앱 재시작 후 결과 확인
+        private static IEnumerator RestartAndCheckBossResult(int outcome) // 실제 앱 재시작 후 결과 확인
         { // 재시작 시작
             Object.Destroy(AppRoot.Instance.gameObject); // 현재 실행 종료
             yield return null; // 공통 객체 제거 대기
             yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 새 실행 시작
             yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
             Assert.That(AppRoot.Instance.ContinueRun(), Is.True); // 실제 저장 회차 재개
-            yield return WaitForObject("BossResultScreen"); // 저장된 결과 화면 복원
+            yield return WaitForObject("EndingResultName"); // 저장된 자동 결말 결과 복원
             var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 재실행 후 실제 저장 조회
             Assert.That(saved.bossOutcome, Is.EqualTo(outcome)); // 원래 결과 번호 보존
-            Assert.That(GameObject.Find("BossResultHeading").GetComponent<Text>().text, Does.Contain(label)); // 원래 결과 화면 보존
+            AssertAutomaticEnding(saved, outcome == 2 ? BattleDefeatReason.HealthZero : BattleDefeatReason.Surrender); // 재실행 후 동일 기록 확인
         } // 재시작 끝
+        private static void AssertAutomaticEnding(RunSaveData saved, BattleDefeatReason reason) // 마왕 패배의 자동 결말과 영구 기록 확인
+        { // 검증 시작
+            Assert.That(saved.hasEndingCandidates, Is.True); // 확정된 결말 후보 보관
+            Assert.That(saved.endingAutomaticCandidate, Is.EqualTo(EndingRules.DemonServant)); // 마왕의 종 자동 후보
+            Assert.That(saved.endingSelectedId, Is.EqualTo(EndingRules.DemonServant)); // 실제 자동 결말 선택
+            Assert.That(GameObject.Find("EndingResultName").GetComponent<Text>().text, Is.EqualTo(EndingRules.DisplayName(EndingRules.DemonServant))); // 저장된 결말 이름 표시
+            var endings = new EndingHistoryStorage(RunStorage.TestDirectoryOverride); // 실제 독립 결말 기록
+            var entries = endings.Load(out var endingWarning); // 검증된 영구 결말 조회
+            Assert.That(endingWarning, Is.Empty); // 결말 저장 오류 없음
+            Assert.That(entries.Count(entry => entry.RunId == saved.runId && entry.TransactionId == saved.bossTransactionId && entry.EndingId == EndingRules.DemonServant), Is.EqualTo(1)); // 동일 회차의 단일 결말 기록
+            var defeats = new DefeatHistoryStorage(RunStorage.TestDirectoryOverride, id => id == "MON_DEMON_LORD"); // 마왕 패배 기록 조회
+            var records = defeats.Load(out var defeatWarning); // 검증된 패배 기록
+            Assert.That(defeatWarning, Is.Empty); // 패배 저장 오류 없음
+            Assert.That(records.Count(entry => entry.TransactionId == saved.runId && entry.TargetId == "MON_DEMON_LORD" && entry.Reason == reason), Is.EqualTo(1)); // 원인과 대상을 포함한 단일 기록
+        } // 검증 끝
         private static List<RoomDoor> FindOpenRoute(RoomTravelController travel, DungeonRoom target) // 잠긴 문을 제외한 실제 방 경로
         { // 탐색 시작
             var start = travel.Layout.GetRoom(travel.RoomX, travel.RoomY); // 현재 출발 방

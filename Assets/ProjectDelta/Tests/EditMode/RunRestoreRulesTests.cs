@@ -211,6 +211,89 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             data.health = 0; // 기존 저장의 체력 소진
             Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이전 저장의 사망 상태 차단 유지
         } // 검증 끝
+        private static void ApplyEndingCandidates(RunSaveData data) // 실제 저장 상태의 결말 후보 구성
+        { // 후보 준비 시작
+            var equipped = (string.IsNullOrEmpty(data.weaponId) ? 0 : 1) + (string.IsNullOrEmpty(data.armorId) ? 0 : 1) + (string.IsNullOrEmpty(data.accessoryId) ? 0 : 1) + (string.IsNullOrEmpty(data.bagId) ? 0 : 1); // 실제 장착 부위 수
+            Assert.That(EndingRules.TryCandidates(data.bossOutcome, data.health, data.maxHealth, equipped, data.relicIds.Length, out var result), Is.True); // 실제 결말 후보 계산
+            data.hasEndingCandidates = true; // 후보 확정 상태
+            data.endingReturnCandidates = new System.Collections.Generic.List<string>(result.ReturnCandidates).ToArray(); // 실제 귀환 후보 복사
+            data.endingStayCandidates = new System.Collections.Generic.List<string>(result.StayCandidates).ToArray(); // 실제 잔류 후보 복사
+            data.endingAutomaticCandidate = result.AutomaticCandidate; // 실제 자동 후보 복사
+        } // 후보 준비 끝
+        [Test] // 보스 승리 후 후보와 선택 복원 검증
+        public void Validate_EndingCandidatesRequireExactSavedState() // 승리 후보와 사용자 선택 대조
+        { // 검증 시작
+            var data = BossResultSnapshot(); // 실제 보스 방 저장
+            data.version = 20; // 결말 후보 저장 버전
+            data.bossOutcome = 1; // 일반 마왕 승리
+            data.health = 20; // 상처뿐 후보의 실제 체력
+            ApplyEndingCandidates(data); // 실제 체력과 장비 기반 후보
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 선택 전 고정 후보 허용
+            data.endingSelectedId = EndingRules.ReturnWounded; // 실제 귀환 후보 선택
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 실제 후보의 선택 허용
+            data.endingSelectedId = "unknown"; // 후보에 없는 임의 결말
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 위조된 선택 차단
+            data.endingSelectedId = null; // 후보 선택 초기화
+            data.endingReturnCandidates[0] = "unknown"; // 저장된 귀환 후보 위조
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 실제 후보와 불일치 차단
+            ApplyEndingCandidates(data); // 실제 후보 재구성
+            data.health = 21; // 실제 체력 조건 변경
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이전 조건의 상처 후보 차단
+            data.health = 20; // 원래 체력 복구
+            data.relicIds = new[] { TrialRelicCatalog.AttackId }; // 빈손 조건을 바꾸는 유물
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이전 조건의 빈손 후보 차단
+            data.relicIds = new string[0]; // 빈 유물 상태 복구
+            data.weaponId = EquipmentCatalog.BasicSwordId; // 빈손 조건을 바꾸는 장착 무기
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이전 조건의 장비 없는 후보 차단
+            ApplyEndingCandidates(data); // 장착 장비를 반영한 후보 생성
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 실제 장비 조건의 후보 허용
+            var original = data.endingReturnCandidates[0]; // 첫 귀환 후보 보관
+            data.endingReturnCandidates[0] = data.endingReturnCandidates[1]; // 첫 후보 순서 변경
+            data.endingReturnCandidates[1] = original; // 두 번째 후보 순서 변경
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 재계산과 다른 후보 순서 차단
+        } // 검증 끝
+        [Test] // 마왕 패배와 항복의 자동 후보 검증
+        public void Validate_EndingAutomaticCandidateRequiresBossDefeat() // 자동 결과와 선택 대조
+        { // 검증 시작
+            foreach (var outcome in new[] { 2, 3 }) // 체력 패배와 항복 순회
+            { // 결과 검사 시작
+                var data = BossResultSnapshot(); // 실제 보스 방 저장
+                data.version = 20; // 결말 후보 저장 버전
+                data.bossOutcome = outcome; // 실제 보스 결과
+                data.health = outcome == 2 ? 0 : 50; // 결과에 일치하는 체력
+                ApplyEndingCandidates(data); // 실제 결과의 자동 후보
+                Assert.That(data.endingAutomaticCandidate, Is.EqualTo(EndingRules.DemonServant)); // 실제 마왕의 종 후보
+                Assert.That(RunRestoreRules.IsValid(data), Is.True); // 정상 자동 후보 허용
+                data.endingSelectedId = EndingRules.DemonServant; // 실제 자동 후보 확정
+                Assert.That(RunRestoreRules.IsValid(data), Is.True); // 자동 결말 확정 허용
+                data.endingSelectedId = EndingRules.ReturnBasic; // 패배의 귀환 선택 위조
+                Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 승리 결말 차단
+                data.endingSelectedId = null; // 선택 상태 복구
+                data.endingAutomaticCandidate = "unknown"; // 자동 후보 위조
+                Assert.That(RunRestoreRules.IsValid(data), Is.False); // 잘못된 자동 후보 차단
+            } // 결과 검사 끝
+        } // 검증 끝
+        [Test] // 미확정 후보와 이전 버전 호환 검증
+        public void Validate_EndingFieldsRespectPendingAndLegacyVersion() // 미확정 데이터와 이전 저장 확인
+        { // 검증 시작
+            var data = BossResultSnapshot(); // 실제 보스 방 저장
+            data.version = 20; // 후보 저장 버전
+            data.bossOutcome = 1; // 정상 마왕 승리
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 후보 미확정 결과 보존
+            data.endingSelectedId = EndingRules.ReturnBasic; // 후보 없는 선택
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 미확정 선택 차단
+            data.endingSelectedId = null; // 선택 복구
+            data.endingReturnCandidates = new[] { EndingRules.ReturnBasic }; // 미확정 상태의 후보 정보
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 미확정 후보 차단
+            data.version = 19; // 후보 기능 이전의 저장
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 이전 저장의 새로운 필드 무시
+            data.version = 20; // 새 저장 복구
+            data.endingReturnCandidates = null; // 누락된 후보 초기화
+            data.hasEndingCandidates = true; // 후보 확정 표시
+            data.bossOutcome = 0; // 완료되지 않은 마왕전
+            data.bossTransactionId = null; // 미완료 결과 식별자 제거
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 마왕 결과 없는 후보 확정 차단
+        } // 검증 끝
         [Test] // 유효한 회차의 복원 가능 여부
         public void Validate_AcceptsCoherentSnapshot() // 정상 회차 허용
         { // 검증 시작

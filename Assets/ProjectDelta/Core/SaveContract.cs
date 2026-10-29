@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 19; // 마왕 결과를 포함한 저장 버전
+        public const int CurrentVersion = 20; // 최종 결말 후보를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -125,6 +125,58 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public TrialEventBattleSaveData trialEventBattle; // 마지막 완료 행동의 이벤트 전투
         public int bossOutcome; // 미결 영과 승리 일 및 패배 이와 항복 삼
         public string bossTransactionId; // 확정된 마왕 결과의 고유 식별자
+        public bool hasEndingCandidates; // 최종 결말 후보 확정 여부
+        public string[] endingReturnCandidates; // 확정된 현실 귀환 후보
+        public string[] endingStayCandidates; // 확정된 던전 잔류 후보
+        public string endingAutomaticCandidate; // 패배 또는 항복 자동 후보
+        public string endingSelectedId; // 확정한 단일 결말 식별자
+        private static bool SameCandidates(string[] saved, IReadOnlyList<string> expected) // 저장된 후보와 계산 결과 비교
+        { // 비교 시작
+            if (saved == null || expected == null || saved.Length != expected.Count) // 후보 목록 존재와 개수 검사
+            { // 불일치 시작
+                return false; // 누락되거나 다른 후보 차단
+            } // 불일치 끝
+            for (var index = 0; index < saved.Length; index++) // 각 후보 순회
+            { // 후보 비교 시작
+                if (!string.Equals(saved[index], expected[index], StringComparison.Ordinal)) // 순서와 식별자 일치 검사
+                { // 불일치 시작
+                    return false; // 변경된 후보 차단
+                } // 불일치 끝
+            } // 후보 비교 끝
+            return true; // 순서까지 같은 후보 목록
+        } // 비교 끝
+        private static bool ContainsCandidate(IReadOnlyList<string> candidates, string selected) // 후보 목록의 선택 확인
+        { // 확인 시작
+            foreach (var candidate in candidates) // 계산된 후보 순회
+            { // 후보 검사 시작
+                if (string.Equals(candidate, selected, StringComparison.Ordinal)) // 선택된 식별자 검사
+                { // 일치 시작
+                    return true; // 실제 후보 선택 확인
+                } // 일치 끝
+            } // 후보 검사 끝
+            return false; // 목록에 없는 선택
+        } // 확인 끝
+        private bool ValidEndingCandidates() // 최종 결과와 후보 저장의 일관성 검사
+        { // 검사 시작
+            if (!hasEndingCandidates) // 아직 확정되지 않은 후보 검사
+            { // 미확정 시작
+                return (endingReturnCandidates == null || endingReturnCandidates.Length == 0) && (endingStayCandidates == null || endingStayCandidates.Length == 0) && string.IsNullOrEmpty(endingAutomaticCandidate) && string.IsNullOrEmpty(endingSelectedId); // 후보와 선택 기록이 없는 상태
+            } // 미확정 끝
+            if (bossOutcome == 0 || relicIds == null) // 결과와 실제 유물 목록 검사
+            { // 필수 정보 오류 시작
+                return false; // 미완료 전투와 누락된 유물 차단
+            } // 필수 정보 오류 끝
+            var equipped = (string.IsNullOrEmpty(weaponId) ? 0 : 1) + (string.IsNullOrEmpty(armorId) ? 0 : 1) + (string.IsNullOrEmpty(accessoryId) ? 0 : 1) + (string.IsNullOrEmpty(bagId) ? 0 : 1); // 실제 장착된 장비 부위 수
+            if (!EndingRules.TryCandidates(bossOutcome, health, maxHealth, equipped, relicIds.Length, out var calculated) || calculated == null) // 실제 회차 조건으로 후보 재계산
+            { // 계산 오류 시작
+                return false; // 잘못된 결과와 조건 차단
+            } // 계산 오류 끝
+            if (!SameCandidates(endingReturnCandidates, calculated.ReturnCandidates) || !SameCandidates(endingStayCandidates, calculated.StayCandidates) || !(string.IsNullOrEmpty(endingAutomaticCandidate) && string.IsNullOrEmpty(calculated.AutomaticCandidate) || string.Equals(endingAutomaticCandidate, calculated.AutomaticCandidate, StringComparison.Ordinal))) // 저장 후보와 실제 조건 검사
+            { // 후보 오류 시작
+                return false; // 위조되거나 누락된 후보 차단
+            } // 후보 오류 끝
+            return string.IsNullOrEmpty(endingSelectedId) || string.Equals(endingSelectedId, calculated.AutomaticCandidate, StringComparison.Ordinal) || ContainsCandidate(calculated.ReturnCandidates, endingSelectedId) || ContainsCandidate(calculated.StayCandidates, endingSelectedId); // 실제 후보 또는 미선택 상태
+        } // 검사 끝
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || floor > (version >= 18 ? 5 : 2) || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
@@ -135,6 +187,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 마왕 결과 오류 시작
                 return false; // 미결 상태의 거래와 잘못된 결과 차단
             } // 마왕 결과 오류 끝
+            if (version >= 20 && !ValidEndingCandidates()) // 확정 결과와 최종 후보의 일관성 검사
+            { // 결말 상태 오류 시작
+                return false; // 변경된 후보와 잘못된 선택 차단
+            } // 결말 상태 오류 끝
             if (version >= 11 && (!EquipmentState.TryRestore(weaponId, armorId, accessoryId, bagId, out var equipment) || !equipment.TryCalculate(50, 40, 10, 0, 150, 10, out var equipmentStats) || slots.Length != equipmentStats.InventoryCapacity)) // 장비 부위와 가방 용량 일치 검사
             { // 장비 저장 오류 시작
                 return false; // 알 수 없는 장비와 잘못된 용량 차단

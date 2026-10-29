@@ -26,6 +26,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private CombatScreenView combatScreen; // 시험 전투 화면
         private BossPreparationScreenView bossPreparation; // 마왕 방 진입 전 준비 화면
         private BossResultScreenView bossResult; // 저장된 마왕 결과 대기 화면
+        private EndingHistoryStorage endingStorage; // 독립 결말과 파편 영구 저장소
+        private EndingScreenView endingScreen; // 현재 결말 선택과 결과 화면
         private string pendingBossTransactionId; // 저장 재시도에도 유지할 마왕 결과 식별자
         private TrialEventBattleState trialEventBattle; // 현재 시험 이벤트 전투 상태
         private TrialEventBattleScreenView trialEventBattleScreen; // 별도 이벤트 전투 화면
@@ -165,6 +167,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 저장 읽기 시작
                 runStorage = new RunStorage(RunStorage.ResolveDirectory()); // 독립 회차 저장 경로
                 defeatStorage = new DefeatHistoryStorage(RunStorage.ResolveDirectory(), id => id == "trial-elite" || MonsterCatalog.Find(id) != null); // 실제 상대만 허용하는 패배 기록
+                endingStorage = new EndingHistoryStorage(RunStorage.ResolveDirectory()); // 회차와 같은 기준 폴더의 결말 기록
+                endingStorage.Load(out _); // 결말 파일 최초 검증과 충돌 기준 설정
                 savedRun = runStorage.Load(out var runWarning); // 현재 회차 데이터 읽기
                 savedRunValid = savedRun != null && savedRun.encounterHealth <= CombatScreenView.TrialEnemyHealth; // 실제 적 체력 범위 검사
                 RunSaveMessage = runWarning; // 저장 오류 안내 보관
@@ -350,7 +354,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 RejectRunRestore(); // 원본 보존과 타이틀 복귀
                 yield break; // 잘못된 결과 차단
             } // 오류 끝
-            ShowBossResult(savedRun.bossOutcome); // 저장된 결과 화면 표시
+            OpenEndingFlow(); // 저장된 결과의 결말 흐름 복원
         } // 복원 끝
         public void OpenBossPreparation(System.Action enter) // 마왕 방 진입 전 준비 확인
         { // 열기 시작
@@ -416,7 +420,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             savedRun = data; // 실제 저장된 결과 보관
             savedRunValid = true; // 저장 결과 재개 허용
             EndCombat(); // 저장 성공 후 전투 화면 종료
-            ShowBossResult(outcome); // 저장된 결과 화면 표시
+            OpenEndingFlow(); // 저장된 결과의 결말 흐름 표시
             return true; // 결과 보존 성공
         } // 저장 끝
         private void ShowBossResult(int outcome) // 보존된 마왕 결과 화면 열기
@@ -437,6 +441,223 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 ReturnToTitle(); // 저장 결과를 보존한 타이틀 복귀
             } // 오류 끝
         } // 표시 끝
+        private bool TrySaveEndingData(RunSaveData data, out string message) // 결말 후보와 선택의 회차 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 오류 없음
+            if (data == null || data.runId != CurrentRunId || runStorage == null || !RunRestoreRules.IsValid(data)) // 회차 식별과 후보 계약 검사
+            { // 거절 시작
+                message = "결말 선택 상태를 확인할 수 없습니다."; // 실제 상태 오류 안내
+                return false; // 잘못된 회차 저장 차단
+            } // 거절 끝
+            if (!runStorage.TrySave(data, out message)) // 독립 회차 저장 검사
+            { // 오류 시작
+                return false; // 이전 회차 상태 보존
+            } // 오류 끝
+            savedRun = data; // 확인된 결말 상태 보관
+            savedRunValid = true; // 저장된 회차 재개 허용
+            return true; // 실제 저장 성공
+        } // 저장 끝
+        private void OpenEndingFlow() // 저장된 마왕 결과의 결말 흐름
+        { // 열기 시작
+            if (savedRun == null || savedRun.bossOutcome == 0 || savedRun.runId != CurrentRunId) // 실제 마왕 결과와 회차 검사
+            { // 오류 시작
+                RejectRunRestore(); // 원본 보존과 타이틀 복귀
+                return; // 잘못된 결과 차단
+            } // 오류 끝
+            Input.SetPhase(GamePhase.Pause); // 탐험 잠금과 화면 입력 활성화
+            if (endingScreen != null) // 기존 재시도 화면 검사
+            { // 화면 정리 시작
+                endingScreen.Close(); // 이전 화면 닫기
+                endingScreen = null; // 이전 화면 참조 제거
+            } // 화면 정리 끝
+            if (savedRun.version < 20 || !savedRun.hasEndingCandidates) // 아직 후보가 확정되지 않은 결과 검사
+            { // 후보 준비 시작
+                var data = JsonUtility.FromJson<RunSaveData>(JsonUtility.ToJson(savedRun)); // 독립 회차 저장본 복사
+                RunStorage.NormalizeEquipment(data); // 복사된 빈 장비 객체 정리
+                data.pendingReward = null; // 마왕 결과에 없는 빈 일반 보상 정리
+                data.trialEventBattle = null; // 마왕 결과에 없는 빈 이벤트 전투 정리
+                data.version = RunSaveData.CurrentVersion; // 최신 결말 저장 형식 적용
+                var equipped = (string.IsNullOrEmpty(data.weaponId) ? 0 : 1) + (string.IsNullOrEmpty(data.armorId) ? 0 : 1) + (string.IsNullOrEmpty(data.accessoryId) ? 0 : 1) + (string.IsNullOrEmpty(data.bagId) ? 0 : 1); // 저장된 장착 장비 부위 수
+                if (!EndingRules.TryCandidates(data.bossOutcome, data.health, data.maxHealth, equipped, data.relicIds.Length, out var candidates)) // 실제 결과와 조건의 후보 계산
+                { // 계산 오류 시작
+                    ShowEndingRetry("결말 후보를 확인할 수 없습니다.", OpenEndingFlow); // 원본을 보존한 재시도 안내
+                    return; // 잘못된 후보 표시 차단
+                } // 계산 오류 끝
+                data.hasEndingCandidates = true; // 후보 확정 상태
+                data.endingReturnCandidates = new System.Collections.Generic.List<string>(candidates.ReturnCandidates).ToArray(); // 실제 귀환 후보 복사
+                data.endingStayCandidates = new System.Collections.Generic.List<string>(candidates.StayCandidates).ToArray(); // 실제 잔류 후보 복사
+                data.endingAutomaticCandidate = candidates.AutomaticCandidate; // 패배와 항복의 자동 후보
+                data.endingSelectedId = null; // 최초 선택 전 상태
+                if (!TrySaveEndingData(data, out var message)) // 후보의 선행 저장 검사
+                { // 저장 실패 시작
+                    ShowEndingRetry(message, OpenEndingFlow); // 같은 후보 저장 재시도
+                    return; // 저장 전 선택 차단
+                } // 저장 실패 끝
+            } // 후보 준비 끝
+            try // 검증된 후보 화면 생성
+            { // 생성 시작
+                endingScreen = EndingScreenView.Create(savedRun.endingReturnCandidates, savedRun.endingStayCandidates, ChooseEnding, FinishEnding); // 확정된 후보와 실제 처리 연결
+                if (!string.IsNullOrEmpty(savedRun.endingSelectedId)) // 이미 선택한 결말 검사
+                { // 선택 복원 시작
+                    ProcessEnding(); // 같은 선택의 영구 기록 재시도
+                } // 선택 복원 끝
+                else if (!string.IsNullOrEmpty(savedRun.endingAutomaticCandidate)) // 패배 또는 항복의 자동 결말 검사
+                { // 자동 선택 시작
+                    ChooseEnding(savedRun.endingAutomaticCandidate); // 자동 후보의 회차 저장
+                } // 자동 선택 끝
+            } // 생성 끝
+            catch (System.Exception exception) // 결말 화면 생성 오류
+            { // 오류 시작
+                Debug.LogError("Ending screen failed: " + exception.Message); // 실제 오류 기록
+                ReturnToTitle(); // 저장된 회차를 보존한 타이틀 복귀
+            } // 오류 끝
+        } // 열기 끝
+        private void ShowEndingRetry(string message, System.Action retry) // 결말 처리 실패의 안전한 재시도 화면
+        { // 표시 시작
+            if (endingScreen == null) // 아직 결말 화면이 없는지 검사
+            { // 화면 생성 시작
+                endingScreen = EndingScreenView.Create(new string[0], new string[0], ChooseEnding, FinishEnding); // 선택 없는 재시도 화면 생성
+            } // 화면 생성 끝
+            endingScreen.ClearResult(); // 이전 결과와 중복 버튼 제거
+            endingScreen.ShowRetry(message + " 다시 시도해 주세요.", retry); // 실제 오류와 같은 거래 재시도 표시
+        } // 표시 끝
+        private void ChooseEnding(string id) // 확인된 후보 하나를 회차에 확정
+        { // 선택 시작
+            if (savedRun == null || !savedRun.hasEndingCandidates || !string.IsNullOrEmpty(savedRun.endingSelectedId)) // 실제 미선택 후보 검사
+            { // 거절 시작
+                return; // 중복 선택과 다른 회차 변경 차단
+            } // 거절 끝
+            var data = JsonUtility.FromJson<RunSaveData>(JsonUtility.ToJson(savedRun)); // 독립 회차 상태 복사
+            RunStorage.NormalizeEquipment(data); // 복사된 빈 장비 객체 정리
+            data.pendingReward = null; // 마왕 결과에 없는 빈 일반 보상 정리
+            data.trialEventBattle = null; // 마왕 결과에 없는 빈 이벤트 전투 정리
+            data.endingSelectedId = id; // 사용자가 고른 단일 결말
+            if (!TrySaveEndingData(data, out var message)) // 선택의 선행 저장 검사
+            { // 저장 실패 시작
+                if (!string.IsNullOrEmpty(savedRun.endingAutomaticCandidate)) // 자동 결말의 재시도 검사
+                { // 자동 재시도 시작
+                    ShowEndingRetry(message, () => ChooseEnding(id)); // 동일 자동 선택 재시도
+                } // 자동 재시도 끝
+                else // 직접 선택 분기
+                { // 선택 재시도 시작
+                    endingScreen.ShowError(message + " 다시 선택해 주세요."); // 선택 화면의 저장 실패 안내
+                } // 선택 재시도 끝
+                return; // 저장되지 않은 결말의 기록 차단
+            } // 저장 실패 끝
+            ProcessEnding(); // 저장된 선택의 영구 기록
+        } // 선택 끝
+        private void ProcessEnding() // 고정된 결말과 최초 보상 처리
+        { // 처리 시작
+            if (savedRun == null || string.IsNullOrEmpty(savedRun.endingSelectedId) || endingStorage == null || defeatStorage == null) // 선택과 저장소 검사
+            { // 오류 시작
+                ShowEndingRetry("결말 저장소를 확인할 수 없습니다.", ProcessEnding); // 같은 결과 재시도 안내
+                return; // 누락된 기록 처리 차단
+            } // 오류 끝
+            if (savedRun.bossOutcome >= 1) // 마왕 결과와 패배 기록의 선행 충돌 검사
+            { // 충돌 검사 시작
+                var expectedReason = savedRun.bossOutcome == 2 ? BattleDefeatReason.HealthZero : BattleDefeatReason.Surrender; // 저장된 마왕 패배 원인
+                var defeats = defeatStorage.Load(out var defeatWarning); // 최신 패배 기록과 무결성 조회
+                if (defeatStorage.IsBlocked) // 손상되거나 복구 대기인 기록 검사
+                { // 차단 시작
+                    ShowEndingRetry(defeatWarning, ProcessEnding); // 기존 기록 보존과 재시도 안내
+                    return; // 확인되지 않은 영구 기록 차단
+                } // 차단 끝
+                foreach (var defeat in defeats) // 기존 패배 거래 순회
+                { // 거래 검사 시작
+                    if (defeat.TransactionId == CurrentRunId && (savedRun.bossOutcome == 1 || defeat.TargetId != "MON_DEMON_LORD" || defeat.Reason != expectedReason)) // 승리와 패배 충돌 또는 서로 다른 패배 검사
+                    { // 충돌 시작
+                        ShowEndingRetry("같은 회차에 다른 패배 기록이 있습니다.", ProcessEnding); // 충돌 기록 보호 안내
+                        return; // 충돌한 결말 보상 차단
+                    } // 충돌 끝
+                } // 거래 검사 끝
+            } // 충돌 검사 끝
+            if (!endingStorage.TryRecord(CurrentRunId, savedRun.bossTransactionId, savedRun.endingSelectedId, out _, out _, out var error)) // 고유 거래의 영구 결말과 최초 보상 저장
+            { // 기록 실패 시작
+                ShowEndingRetry(error, ProcessEnding); // 동일 거래 재시도
+                return; // 영구 기록 전 회차 종료 차단
+            } // 기록 실패 끝
+            if (savedRun.bossOutcome >= 2) // 실제 마왕 패배 또는 항복 검사
+            { // 패배 기록 시작
+                var reason = savedRun.bossOutcome == 2 ? BattleDefeatReason.HealthZero : BattleDefeatReason.Surrender; // 저장된 마왕 결과의 실제 원인
+                if (!defeatStorage.TryAppend(CurrentRunId, "MON_DEMON_LORD", reason, out _, out error)) // 같은 회차의 마왕 패배 기록 검사
+                { // 기록 실패 시작
+                    ShowEndingRetry(error, ProcessEnding); // 결말 거래를 중복 없이 재시도
+                    return; // 패배 기록 전 회차 종료 차단
+                } // 기록 실패 끝
+            } // 패배 기록 끝
+            if (!endingStorage.TryGetRun(CurrentRunId, out var receipt)) // 저장된 결말 거래 재조회
+            { // 조회 실패 시작
+                ShowEndingRetry("저장된 결말을 확인할 수 없습니다.", ProcessEnding); // 검증 실패 재시도
+                return; // 확인되지 않은 결과 표시 차단
+            } // 조회 실패 끝
+            endingScreen.ClearResult(); // 이전 재시도 표시 정리
+            endingScreen.ShowResult(savedRun.endingSelectedId, receipt.GrantedShards, endingStorage.TotalShards); // 실제 영구 기록과 보상 표시
+        } // 처리 끝
+        private void FinishEnding() // 영구 기록 확인 후 현재 회차 종료
+        { // 종료 시작
+            if (savedRun == null || endingStorage == null || defeatStorage == null || runStorage == null || savedRun.runId != CurrentRunId) // 현재 회차와 저장소 검사
+            { // 오류 시작
+                endingScreen.ShowFinalError("결말 기록을 확인할 수 없습니다."); // 기존 회차 보존 안내
+                return; // 확인되지 않은 회차 종료 차단
+            } // 오류 끝
+            try // 영구 기록 잠금과 회차 종료 검사
+            { // 잠금 시작
+                var directory = RunStorage.ResolveDirectory(); // 실제 영구 기록 폴더
+                System.IO.Directory.CreateDirectory(directory); // 잠금 파일 폴더 준비
+                using (var endingGate = new System.IO.FileStream(System.IO.Path.Combine(directory, "ending-history.lock"), System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None)) // 결말 기록 독점 잠금
+                using (var defeatGate = new System.IO.FileStream(System.IO.Path.Combine(directory, "defeat.lock"), System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None)) // 패배 기록 독점 잠금
+                { // 기록 재검증 시작
+                    endingStorage.Load(out var endingWarning); // 최신 결말 기록 재조회
+                    if (endingStorage.IsBlocked || !endingStorage.TryGetRun(CurrentRunId, out var receipt) || !string.Equals(receipt.TransactionId, savedRun.bossTransactionId, System.StringComparison.OrdinalIgnoreCase) || receipt.EndingId != savedRun.endingSelectedId) // 손상과 동일 결말 영수증 검사
+                    { // 오류 시작
+                        endingScreen.ShowFinalError(string.IsNullOrEmpty(endingWarning) ? "결말 기록을 확인할 수 없습니다." : endingWarning); // 실제 기록 오류 안내
+                        return; // 영구 기록 불일치의 회차 종료 차단
+                    } // 오류 끝
+                    var defeats = defeatStorage.Load(out var defeatWarning); // 최신 패배 기록 재조회
+                    if (defeatStorage.IsBlocked) // 손상 또는 복구 대기 검사
+                    { // 오류 시작
+                        endingScreen.ShowFinalError(defeatWarning); // 실제 패배 기록 오류 안내
+                        return; // 확인되지 않은 회차 종료 차단
+                    } // 오류 끝
+                    var matchingDefeat = false; // 현재 회차 패배 기록 확인 상태
+                    foreach (var defeat in defeats) // 검증된 패배 기록 순회
+                    { // 패배 검사 시작
+                        if (defeat.TransactionId != CurrentRunId) // 다른 회차 기록 검사
+                        { // 다른 회차 시작
+                            continue; // 다음 기록 확인
+                        } // 다른 회차 끝
+                        var reason = savedRun.bossOutcome == 2 ? BattleDefeatReason.HealthZero : BattleDefeatReason.Surrender; // 현재 마왕 결과의 패배 원인
+                        if (savedRun.bossOutcome == 1 || defeat.TargetId != "MON_DEMON_LORD" || defeat.Reason != reason) // 승리와 패배 충돌 및 기록 불일치 검사
+                        { // 오류 시작
+                            endingScreen.ShowFinalError("현재 회차의 패배 기록이 결말과 다릅니다."); // 충돌 안내
+                            return; // 충돌한 회차 종료 차단
+                        } // 오류 끝
+                        matchingDefeat = true; // 일치한 마왕 패배 기록 확인
+                    } // 패배 검사 끝
+                    if (savedRun.bossOutcome >= 2 && !matchingDefeat) // 패배 또는 항복의 영구 기록 누락 검사
+                    { // 오류 시작
+                        endingScreen.ShowFinalError("마왕 패배 기록을 확인할 수 없습니다."); // 누락된 패배 기록 안내
+                        return; // 패배 기록 없는 회차 종료 차단
+                    } // 오류 끝
+                    if (!runStorage.TryMarkEnded(CurrentRunId, out var error)) // 두 영구 기록 잠금 중 회차 종료 검사
+                    { // 종료 실패 시작
+                        endingScreen.ShowFinalError(error + " 다시 선택해 주세요."); // 같은 종료 재시도 안내
+                        return; // 저장된 결과 보존
+                    } // 종료 실패 끝
+                } // 기록 재검증 끝
+            } // 잠금 끝
+            catch (System.Exception) // 파일 접근과 잠금 실패
+            { // 오류 시작
+                endingScreen.ShowFinalError("결말 기록을 확인할 수 없습니다. 다시 시도해 주세요."); // 안전한 재시도 안내
+                return; // 확인되지 않은 회차 보존
+            } // 오류 끝
+            savedRun = runStorage.Load(out var warning); // 종료 후 다른 회차 보존 여부 확인
+            savedRunValid = savedRun != null && RunRestoreRules.IsValid(savedRun); // 실제 이어하기 가능 여부
+            RunSaveMessage = warning; // 종료 저장 안내
+            endingScreen.Close(); // 결과 화면 닫기
+            endingScreen = null; // 결과 화면 참조 해제
+            ReturnToTitle(); // 확인한 결말의 타이틀 복귀
+        } // 종료 끝
         private IEnumerator OpenRestoredEventBattle() // 저장된 이벤트 전투 화면 복원
         { // 복원 시작
             while (Flow.Phase == GamePhase.Loading) // 던전 장면 전환 검사
@@ -684,6 +905,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 회차 없음 시작
                 return; // 비교할 회차 없음
             } // 회차 없음 끝
+            if (savedRun.version >= 19 && savedRun.bossOutcome != 0) // 확정된 마왕 결과의 결말 대기 검사
+            { // 결말 대기 시작
+                return; // 결과 확인 전 회차 종료 차단
+            } // 결말 대기 끝
             var runId = savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 저장 회차의 안정적인 식별자
             foreach (var record in records) // 검증된 패배 기록 순회
             { // 기록 비교 시작
