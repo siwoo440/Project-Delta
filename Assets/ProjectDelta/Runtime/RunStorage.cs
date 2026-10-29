@@ -1,4 +1,5 @@
 using System; // 저장 오류와 고유 식별자
+using System.Collections.Generic; // 복구 후보 목록
 using System.IO; // 안전한 파일 접근
 using System.Security.Cryptography; // 파일 무결성 검사
 using System.Text; // 저장 문자 인코딩
@@ -45,15 +46,32 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             expectedHash = null; // 읽은 해시 초기화
             try // 파일과 형식 검사
             { // 검사 시작
-                if (!File.Exists(current)) // 저장 파일 존재 검사
-                { // 파일 없음 시작
-                    return null; // 이어할 회차 없음
-                } // 파일 없음 끝
-                if (TryRead(current, out var data, out var hash)) // 파일 무결성과 데이터 검사
+                if (File.Exists(current) && TryRead(current, out var data, out var hash)) // 현재 파일 무결성과 데이터 검사
                 { // 정상 파일 시작
                     expectedHash = hash; // 동시 변경 비교 기준
                     return data; // 검증된 회차 데이터
                 } // 정상 파일 끝
+                blocked = File.Exists(current); // 손상된 현재 파일 보호
+                if (Directory.Exists(root)) // 복구 후보 폴더 검사
+                { // 후보 검사 시작
+                    var candidates = new List<string>(Directory.GetFiles(root, "run-*.tmp")); // 저장 중 임시 파일 목록
+                    candidates.AddRange(Directory.GetFiles(root, "run-backup-*.json")); // 기존 회차 백업 목록
+                    candidates.Sort(CompareCandidates); // 최신 저장 시도 우선 정렬
+                    foreach (var path in candidates) // 복구 후보 순회
+                    { // 후보 검사 시작
+                        if (TryRead(path, out var recovered, out _)) // 후보 무결성과 회차 상태 검사
+                        { // 복구 가능 조건 시작
+                            blocked = true; // 원본과 복구 후보 보호
+                            warning = "회차 저장에 문제가 있어 복구 기록을 읽었습니다. 파일 확인 전에는 저장할 수 없습니다."; // 복구와 저장 차단 안내
+                            return recovered; // 검증된 복구 회차
+                        } // 복구 가능 조건 끝
+                    } // 후보 검사 끝
+                    blocked = blocked || candidates.Count > 0; // 손상된 후보 파일 보호
+                } // 후보 검사 끝
+                if (!blocked) // 현재 파일과 복구 후보가 없는 새 게임 검사
+                { // 새 게임 조건 시작
+                    return null; // 이어할 회차 없음
+                } // 새 게임 조건 끝
             } // 검사 끝
             catch (Exception) // 저장 접근 오류
             { // 접근 오류 시작
@@ -84,7 +102,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     } // 충돌 조건 끝
                     var payload = JsonUtility.ToJson(data); // 회차 데이터 직렬화
                     var envelope = JsonUtility.ToJson(new Envelope { payload = payload, checksum = Hash(Encoding.UTF8.GetBytes(payload)) }); // 무결성 값 포함
-                    var temporary = Path.Combine(root, "run-" + Guid.NewGuid().ToString("N") + ".tmp"); // 고유 임시 파일
+                    var transaction = DateTime.UtcNow.Ticks.ToString("D19"); // 같은 저장 시도의 정렬 시각
+                    var temporary = Path.Combine(root, "run-" + transaction + "-" + Guid.NewGuid().ToString("N") + ".tmp"); // 고유 임시 파일
                     using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) // 새 임시 파일 생성
                     using (var writer = new StreamWriter(stream, new UTF8Encoding(false))) // UTF8 문자 기록
                     { // 임시 저장 시작
@@ -99,7 +118,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     } // 검증 실패 끝
                     if (exists) // 기존 파일 존재 검사
                     { // 교체 시작
-                        var backup = Path.Combine(root, "run-backup-" + DateTime.UtcNow.Ticks + "-" + Guid.NewGuid().ToString("N") + ".json"); // 충돌 없는 백업 경로
+                        var backup = Path.Combine(root, "run-backup-" + transaction + "-" + Guid.NewGuid().ToString("N") + ".json"); // 같은 저장 시도의 백업 경로
                         File.Copy(current, backup, false); // 기존 저장 별도 보존
                         File.Replace(temporary, current, null); // 기존 파일의 원자적 교체
                     } // 교체 끝
@@ -122,6 +141,28 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 실패 상태 전달
             } // 오류 처리 끝
         } // 저장 끝
+        private static int CompareCandidates(string left, string right) // 복구 후보의 최신순 비교
+        { // 비교 시작
+            var order = CandidateTicks(right).CompareTo(CandidateTicks(left)); // 저장 시도 시각 비교
+            if (order != 0) // 다른 저장 시각 검사
+            { // 시각 조건 시작
+                return order; // 최신 시도 우선
+            } // 시각 조건 끝
+            var leftPending = left.EndsWith(".tmp", StringComparison.Ordinal); // 왼쪽 임시 파일 여부
+            var rightPending = right.EndsWith(".tmp", StringComparison.Ordinal); // 오른쪽 임시 파일 여부
+            return leftPending != rightPending ? (leftPending ? -1 : 1) : string.CompareOrdinal(right, left); // 같은 시도의 임시 기록 우선
+        } // 비교 끝
+        private static long CandidateTicks(string path) // 복구 파일의 정렬 시각
+        { // 시각 조회 시작
+            var name = Path.GetFileName(path); // 복구 파일 이름
+            var prefix = name.StartsWith("run-backup-", StringComparison.Ordinal) ? "run-backup-" : "run-"; // 백업 또는 임시 파일 접두사
+            var separator = name.IndexOf('-', prefix.Length); // 시각 다음 구분자 위치
+            if (name.StartsWith(prefix, StringComparison.Ordinal) && separator > prefix.Length && separator - prefix.Length <= 19 && long.TryParse(name.Substring(prefix.Length, separator - prefix.Length), out var ticks)) // 기존과 새 형식의 저장 시각 검사
+            { // 저장 시각 조건 시작
+                return ticks; // 기록된 저장 시각
+            } // 저장 시각 조건 끝
+            return File.GetLastWriteTimeUtc(path).Ticks; // 이전 임시 파일의 파일 수정 시각
+        } // 시각 조회 끝
         private static string Hash(byte[] bytes) // SHA256 계산
         { // 계산 시작
             using (var hash = SHA256.Create()) // 해시 계산 도구

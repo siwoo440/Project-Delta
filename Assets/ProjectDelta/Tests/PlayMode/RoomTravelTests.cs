@@ -93,6 +93,31 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.RoomX, Is.EqualTo(0)); // 저장된 시작 방 확인
             Assert.That(travel.Layout.GetRoom(0, 0).Kind, Is.EqualTo(RoomKind.Start)); // 저장 시드의 시작 방 확인
         } // 검증 끝
+        [UnityTest] // 손상 저장의 복구 재개 검증
+        public IEnumerator Recovery_ContinuesFromBackupAndProtectsOriginal() // 백업 재개와 저장 차단
+        { // 검증 시작
+            var root = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "RunPlayTests", System.Guid.NewGuid().ToString("N")); // 독립 검증 저장 경로
+            RunStorage.TestDirectoryOverride = root; // 게임에 독립 경로 전달
+            var store = new RunStorage(root); // 시험 저장 기능
+            store.Load(out _); // 최초 저장 상태 조회
+            var layout = DungeonGenerator.Generate(123); // 재현 가능한 시험 던전
+            var data = new RunSaveData { version = 1, seed = 123, floor = 1, health = 42, maxHealth = 100, slots = new InventoryState().SaveSlots(), visitedRooms = new[] { new SavedRoom() }, doorLock = new DoorLockState(layout).Save(), history = new string[0] }; // 유효한 시작 방 저장
+            Assert.That(store.TrySave(data, out _), Is.True); // 첫 회차 저장
+            data.health = 50; // 이후 체력 변경
+            Assert.That(store.TrySave(data, out _), Is.True); // 백업을 포함한 두 번째 저장
+            var path = System.IO.Path.Combine(root, "run-v1.json"); // 현재 회차 파일
+            System.IO.File.WriteAllText(path, "corrupt"); // 손상된 원본 모사
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 게임 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 표시 대기
+            var app = AppRoot.Instance; // 실제 실행 객체
+            Assert.That(app.CanContinueRun, Is.True); // 유효한 백업의 이어하기 허용
+            Assert.That(app.RunSaveMessage, Does.Contain("복구")); // 사용자 복구 안내 확인
+            Assert.That(app.ContinueRun(), Is.True); // 복구 회차 재개 요청
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 화면 대기
+            Assert.That(app.PlayerHealth, Is.EqualTo(42)); // 이전 백업의 체력 복원
+            Assert.That(app.TrySaveRun(out _), Is.False); // 복구 중 원본 덮어쓰기 차단
+            Assert.That(System.IO.File.ReadAllText(path), Is.EqualTo("corrupt")); // 손상 원본 보존
+        } // 검증 끝
 #if UNITY_EDITOR // 편집기 설정 보관
         private InputSettings.EditorInputBehaviorInPlayMode originalEditor; // 기존 편집기 입력 설정
 #endif // 편집기 설정 끝
