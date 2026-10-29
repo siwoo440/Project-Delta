@@ -13,7 +13,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 회차 버전과 체력 검증
         public void Run_RejectsUnknownVersionAndInvalidHealth() // 버전과 체력 오류 거절
         { // 검증 시작
-            var run = new RunSaveData { version = 10, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
+            var run = new RunSaveData { version = 11, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
             Assert.That(run.IsValid(), Is.False); // 새 버전 거절 확인
             run.version = 1; // 지원 버전 설정
             run.health = 2; // 최대치 초과 체력
@@ -47,6 +47,17 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(run.IsValid(), Is.True); // 단일 완료 거래 허용
             run.rewardReceipts = new[] { new SavedRewardReceipt { transactionId = id }, new SavedRewardReceipt { transactionId = id } }; // 중복 완료 거래
             Assert.That(run.IsValid(), Is.False); // 중복 보상 거래 거절
+        } // 검증 끝
+        [Test] // 새 저장의 보상 아이템 종류 검증
+        public void Run_RequiresKnownRewardItemForNewVersion() // 미지원 보상과 이전 저장 확인
+        { // 검증 시작
+            var run = new RunSaveData { version = 10, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, statPoints = 5, slots = new SaveItemSlot[0], hasPendingReward = true, pendingReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = 1, experience = 60, potionCount = 1, itemId = "unknown" } }; // 알 수 없는 보상 후보
+            Assert.That(run.IsValid(), Is.False); // 새 저장의 미등록 아이템 차단
+            run.pendingReward.itemId = "trial-mana-potion"; // 실제 시험 마나 회복약
+            Assert.That(run.IsValid(), Is.True); // 등록된 보상 후보 허용
+            run.version = 9; // 종류가 저장되지 않았던 이전 버전
+            run.pendingReward.itemId = null; // 이전 저장의 누락된 아이템 종류
+            Assert.That(run.IsValid(), Is.True); // 이전 소형 회복약 후보 호환
         } // 검증 끝
         [Test] // 아이템 수량과 빈 칸 검증
         public void Run_RejectsInvalidSlots() // 잘못된 아이템 거절

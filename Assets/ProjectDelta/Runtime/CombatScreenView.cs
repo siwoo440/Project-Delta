@@ -28,6 +28,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button defend; // 방어 행동 버튼
         private Button potion; // 시험 회복약 행동 버튼
         private Button skill; // 강한 일격 시험 기술 버튼
+        private Button itemButton; // 선택한 전투 소비품 사용 버튼
+        private GameObject itemDialog; // 전투 아이템 선택 화면
+        private Text itemNotice; // 선택한 아이템의 사용 결과
         private Text playerMana; // 현재 플레이어 마나 표시
         private readonly SkillCooldownState skillCooldown = new SkillCooldownState(); // 기술의 자기 차례 대기 상태
         private Button exit; // 시험 종료 또는 결과 복귀 버튼
@@ -136,6 +139,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var tempt = UiFactory.CreateButton(canvas.transform, "TemptBattleButton", "유혹 · 준비 중", Vector2.zero); // 미구현 유혹 행동
                 var persuade = UiFactory.CreateButton(canvas.transform, "PersuadeBattleButton", "회유 · 준비 중", Vector2.zero); // 미구현 전투 회유 행동
                 var observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰 · 준비 중", Vector2.zero); // 미구현 전투 관찰 행동
+                view.itemButton = UiFactory.CreateButton(canvas.transform, "BattleItemListButton", "아이템 선택", Vector2.zero); // 전투 중 보유 아이템 선택
+                view.itemButton.onClick.AddListener(view.OpenBattleItems); // 실제 전투 아이템 화면 연결
                 tempt.interactable = false; // 미구현 유혹 차단
                 persuade.interactable = false; // 미구현 전투 회유 차단
                 observe.interactable = false; // 미구현 전투 관찰 차단
@@ -153,7 +158,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.surrenderDialog.SetActive(false); // 확인 화면 초기 숨김
                 var actionLayout = canvas.gameObject.AddComponent<CombatActionLayout>(); // 화면 너비별 행동 배치
                 actionLayout.Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill, -380f); // 하단 첫 행동 줄 배치
-                actionLayout.SetSecondaryRow(new[] { tempt, persuade, observe, view.exit }, -475f); // 미구현 행동과 항복의 하단 두 번째 줄
+                actionLayout.SetSecondaryRow(new[] { tempt, persuade, observe, view.itemButton, view.exit }, -475f); // 아이템과 항복의 하단 두 번째 줄
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
                 { // 기본 선택 시작
@@ -252,7 +257,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 준비 끝
         private void Advance() // 플레이어 기본 공격과 적 기본 행동
         { // 행동 시작
-            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 중복 또는 잘못된 행동 차단
             } // 행동 거절 조건 끝
@@ -275,7 +280,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 행동 끝
         private void Defend() // 플레이어의 방어 행동
         { // 방어 시작
-            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 중복 또는 잘못된 방어 차단
             } // 행동 거절 조건 끝
@@ -289,7 +294,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 방어 끝
         private void StrongStrike() // 시험 기술 강한 일격 사용
         { // 기술 시작
-            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 실제 전투와 행동 검사
+            if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 실제 전투 행동 검사
             { // 기술 거절 시작
                 return; // 잘못된 기술 요청 차단
             } // 기술 거절 끝
@@ -326,9 +331,96 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 전투 종료 끝
             CompletePlayerTurn(); // 기술 행동 소모와 상대 차례
         } // 기술 끝
+        private void OpenBattleItems() // 전투 중 보유 소비품 선택
+        { // 선택 시작
+            if (itemDialog != null || surrenderDialog.activeSelf || owner.Flow.Phase != GamePhase.Combat || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 확인 화면과 실제 행동 상태 검사
+            { // 선택 거절 시작
+                return; // 잘못된 아이템 선택 차단
+            } // 선택 거절 끝
+            advance.interactable = false; // 선택 중 공격 차단
+            flee.interactable = false; // 선택 중 도주 차단
+            defend.interactable = false; // 선택 중 방어 차단
+            potion.interactable = false; // 선택 중 바로 사용 차단
+            skill.interactable = false; // 선택 중 기술 차단
+            itemButton.interactable = false; // 중복 아이템 화면 차단
+            exit.interactable = false; // 선택 중 항복 차단
+            if (groupTargets != null) // 다수 대상 버튼 검사
+            { // 대상 잠금 시작
+                foreach (var target in groupTargets) // 실제 대상 버튼 순회
+                { // 버튼 잠금 시작
+                    target.interactable = false; // 선택 중 대상 변경 차단
+                } // 버튼 잠금 끝
+            } // 대상 잠금 끝
+            var canvas = transform.Find("BattleCanvas"); // 실제 전투 화면 조회
+            itemDialog = new GameObject("BattleItemDialog", typeof(RectTransform), typeof(Image)); // 전투 아이템 선택 배경
+            itemDialog.transform.SetParent(canvas, false); // 전투 화면 위에 배치
+            var rect = itemDialog.GetComponent<RectTransform>(); // 전체 화면 위치
+            rect.anchorMin = Vector2.zero; // 왼쪽 아래 기준
+            rect.anchorMax = Vector2.one; // 오른쪽 위 기준
+            rect.offsetMin = Vector2.zero; // 아래 여백 제거
+            rect.offsetMax = Vector2.zero; // 위 여백 제거
+            itemDialog.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 0.98f); // 선택 화면 배경
+            UiFactory.CreateText(itemDialog.transform, "BattleItemTitle", "사용할 아이템을 선택하세요", 40, new Vector2(0f, 390f), new Vector2(1200f, 80f), Color.white); // 아이템 선택 안내
+            for (var index = 0; index < owner.Inventory.Slots.Count; index++) // 실제 소지품 슬롯 순회
+            { // 슬롯 생성 시작
+                var slotIndex = index; // 선택할 슬롯 번호
+                var slot = owner.Inventory.Slots[index]; // 실제 소지품 묶음
+                var button = UiFactory.CreateButton(itemDialog.transform, "BattleItemSlot_" + index, slot.IsEmpty ? "빈 슬롯" : slot.Name + " × " + slot.Quantity, new Vector2(index < 5 ? -400f : 400f, 270f - (index % 5) * 85f)); // 개별 아이템 선택 버튼
+                button.GetComponent<RectTransform>().sizeDelta = new Vector2(700f, 65f); // 실제 슬롯 버튼 크기
+                button.transform.Find("Label").GetComponent<RectTransform>().sizeDelta = new Vector2(700f, 65f); // 아이템 이름 표시 영역
+                button.transform.Find("Label").GetComponent<Text>().fontSize = 24; // 아이템 이름 글자 크기
+                button.interactable = TrialConsumableRules.Find(slot.ItemId) != null; // 지원하는 소비품만 선택 허용
+                button.onClick.AddListener(() => UseBattleItem(slotIndex)); // 선택한 실제 슬롯 사용
+                button.gameObject.AddComponent<BattleItemCancelRelay>().Initialize(this); // 슬롯 취소 입력 연결
+            } // 슬롯 생성 끝
+            itemNotice = UiFactory.CreateText(itemDialog.transform, "BattleItemNotice", "취소하면 행동을 소모하지 않습니다", 23, new Vector2(0f, -200f), new Vector2(1200f, 60f), Color.white); // 취소와 사용 결과 안내
+            var cancel = UiFactory.CreateButton(itemDialog.transform, "CancelBattleItemButton", "취소", new Vector2(0f, -330f)); // 아이템 선택 취소 버튼
+            cancel.onClick.AddListener(CloseBattleItems); // 기존 전투 복귀 연결
+            cancel.gameObject.AddComponent<BattleItemCancelRelay>().Initialize(this); // 취소 버튼의 취소 입력 연결
+            EventSystem.current.SetSelectedGameObject(cancel.gameObject); // 기본 취소 선택
+        } // 선택 끝
+        private void UseBattleItem(int index) // 선택한 전투 소비품 사용
+        { // 사용 시작
+            if (itemDialog == null || owner.Flow.Phase != GamePhase.Combat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount || index < 0 || index >= owner.Inventory.Slots.Count) // 선택 화면과 실제 행동 검사
+            { // 사용 거절 시작
+                return; // 잘못된 아이템 행동 차단
+            } // 사용 거절 끝
+            var item = TrialConsumableRules.Find(owner.Inventory.Slots[index].ItemId); // 실제 선택한 소비품
+            if (item == null || !BattleConsumableRules.TryUse(owner.Inventory, index, player, owner.PlayerMana, 50, out var mana, out var restored)) // 실제 회복과 단일 소비 검사
+            { // 사용 실패 시작
+                itemNotice.text = "이 아이템을 사용할 수 없습니다"; // 최대 자원 또는 잘못된 사용 안내
+                return; // 소지품과 행동 차례 보존
+            } // 사용 실패 끝
+            lastActionFrame = Time.frameCount; // 성공한 행동의 중복 사용 차단
+            owner.UpdatePlayerMana(mana); // 확인된 마나 반영
+            owner.UpdatePlayerHealth(player.Health); // 확인된 체력 반영
+            CloseBattleItems(); // 선택 화면 닫기
+            notice.text = item.Name + " · " + restored + " 회복"; // 실제 아이템 사용 결과
+            UpdateHealth(); // 체력과 마나 표시 갱신
+            CompletePlayerTurn(); // 성공한 사용의 행동 소모
+        } // 사용 끝
+        public void CloseBattleItems() // 전투 아이템 선택 취소 또는 종료
+        { // 닫기 시작
+            if (itemDialog == null) // 실제 선택 화면 검사
+            { // 화면 없음 시작
+                return; // 중복 닫기 차단
+            } // 화면 없음 끝
+            itemDialog.SetActive(false); // 기존 선택 화면 즉시 숨김
+            Destroy(itemDialog); // 선택 화면 정리
+            itemDialog = null; // 선택 화면 참조 해제
+            advance.interactable = true; // 공격 선택 복구
+            flee.interactable = true; // 도주 선택 복구
+            defend.interactable = true; // 방어 선택 복구
+            potion.interactable = true; // 바로 사용 복구
+            skill.interactable = true; // 기술 선택 복구
+            itemButton.interactable = true; // 아이템 선택 복구
+            exit.interactable = true; // 항복 선택 복구
+            RefreshGroupTargets(); // 생존한 적의 선택 복구
+            EventSystem.current.SetSelectedGameObject(advance.gameObject); // 전투 기본 선택 복구
+        } // 닫기 끝
         private void UsePotion() // 플레이어의 시험 회복약 사용 행동
         { // 회복약 사용 시작
-            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 잘못된 회복약 행동 차단
             } // 행동 거절 조건 끝
@@ -345,7 +437,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 회복약 사용 끝
         private void Flee() // 일반 전투의 속도 주사위 후퇴
         { // 후퇴 시작
-            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (itemDialog != null || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 잘못된 후퇴 행동 차단
             } // 행동 거절 조건 끝
@@ -377,6 +469,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 defend.interactable = false; // 성공한 후퇴 이후 방어 차단
                 potion.interactable = false; // 성공한 후퇴 이후 회복약 차단
                 skill.interactable = false; // 성공한 후퇴 이후 기술 차단
+                itemButton.interactable = false; // 성공한 후퇴 이후 아이템 선택 차단
                 exit.interactable = false; // 성공한 후퇴 이후 시험 종료 차단
             } // 후퇴 판정 끝
             var stored = groupBattle == null ? travel.StoreCurrentEncounterHealth(enemy.Health) : travel.StoreCurrentGroupHealth(new[] { groupFighters[0].Health, groupFighters[1].Health }); // 단일 또는 다수 적의 개별 체력 보관
@@ -476,12 +569,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             defend.interactable = false; // 종료된 전투의 방어 차단
             potion.interactable = false; // 종료된 전투의 회복약 사용 차단
             skill.interactable = false; // 종료된 전투의 기술 차단
+            itemButton.interactable = false; // 종료된 전투의 아이템 선택 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             return true; // 전투 종료 확인
         } // 확인 끝
         private void Complete() // 시험 종료 또는 전투 결과 확정
         { // 완료 시작
+            if (itemDialog != null) // 전투 아이템 선택 검사
+            { // 선택 중 종료 차단 시작
+                return; // 아이템 선택 중 다른 종료 차단
+            } // 선택 중 종료 차단 끝
             if (pendingRetreat) // 성공한 후퇴의 이동 대기 검사
             { // 후퇴 대기 조건 시작
                 return; // 확정된 후퇴 중 다른 전투 종료 차단
@@ -499,6 +597,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 defend.interactable = false; // 확인 중 방어 차단
                 potion.interactable = false; // 확인 중 회복 차단
                 skill.interactable = false; // 확인 중 기술 차단
+                itemButton.interactable = false; // 확인 중 아이템 선택 차단
                 exit.interactable = false; // 중복 확인 화면 차단
                 if (groupTargets != null) // 다수 대상 버튼 검사
                 { // 대상 잠금 시작
@@ -534,7 +633,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                                 potions++; // 시험 회복약 후보 추가
                             } // 아이템 후보 끝
                         } // 개별 드롭 끝
-                        pendingVictoryReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = normal, eliteEnemies = elite, experience = experience, gold = 10 * normal + 30 * elite, potionCount = potions }; // 고유 거래와 시험 골드 후보
+                        var itemId = string.Empty; // 기본 소비품 후보 없음
+                        if (potions > 0) // 실제 소비품 후보 존재 검사
+                        { // 종류 선택 시작
+                            var kinds = new[] { "trial-small-potion", "trial-large-potion", "trial-mana-potion" }; // 현재 지원하는 시험 소비품 종류
+                            var itemRoll = RewardRollOverride == null ? random.Next(0, kinds.Length) : RewardRollOverride(0, kinds.Length); // 시험 소비품 종류 선택
+                            if (itemRoll < 0 || itemRoll >= kinds.Length) // 선택 범위 검사
+                            { // 선택 오류 시작
+                                notice.text = "보상 아이템을 결정할 수 없습니다."; // 잘못된 시험 난수 안내
+                                return; // 잘못된 후보 저장 차단
+                            } // 선택 오류 끝
+                            itemId = kinds[itemRoll]; // 보관할 실제 소비품 종류
+                        } // 종류 선택 끝
+                        pendingVictoryReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = normal, eliteEnemies = elite, experience = experience, gold = 10 * normal + 30 * elite, potionCount = potions, itemId = itemId }; // 고유 거래와 시험 소비품 후보
                     } // 후보 생성 끝
                     if (!owner.TryStageVictoryReward(pendingVictoryReward, confirmReplaceOtherRun, out var error)) // 후보의 사전 저장 검사
                     { // 저장 실패 시작
@@ -563,6 +674,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             defend.interactable = true; // 방어 선택 복구
             potion.interactable = true; // 회복 선택 복구
             skill.interactable = true; // 기술 선택 복구
+            itemButton.interactable = true; // 아이템 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 다수 적의 생존 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 기존 행동 선택 복귀
@@ -596,6 +708,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             defend.interactable = false; // 패배 후 방어 차단
             potion.interactable = false; // 패배 후 회복 차단
             skill.interactable = false; // 패배 후 기술 차단
+            itemButton.interactable = false; // 패배 후 아이템 선택 차단
             exit.transform.Find("Label").GetComponent<Text>().text = "기록 후 타이틀로"; // 저장 실패 시 재시도 안내
             var travelObject = GameObject.Find("RoomTravel"); // 현재 조우 객체
             var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 실제 조우 상태
@@ -646,7 +759,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 조회 끝
         private void SelectGroupTarget(int index) // 실제 생존 적을 명시적으로 선택
         { // 선택 시작
-            if (groupBattle == null || index < 0 || index >= groupFighters.Length || !groupBattle.TrySelectEnemy(groupFighters[index].Actor)) // 대상 범위와 생존 검사
+            if (itemDialog != null || groupBattle == null || index < 0 || index >= groupFighters.Length || !groupBattle.TrySelectEnemy(groupFighters[index].Actor)) // 아이템 선택과 대상 범위 및 생존 검사
             { // 선택 거절 시작
                 return; // 잘못된 선택 차단
             } // 선택 거절 끝
@@ -668,6 +781,22 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 button.transform.Find("Label").GetComponent<Text>().text = fighter.Actor.Name + " · " + fighter.Health + "/" + fighter.MaxHealth + (groupBattle.SelectedEnemy == fighter.Actor ? " ✓" : ""); // 체력과 직접 선택 여부 표시
             } // 적 표시 끝
         } // 표시 끝
+    } // 클래스 끝
+    public sealed class BattleItemCancelRelay : MonoBehaviour, ICancelHandler // 전투 아이템 선택의 취소 입력 중계
+    { // 클래스 시작
+        private CombatScreenView screen; // 실제 전투 화면
+        public void Initialize(CombatScreenView target) // 전투 화면 연결
+        { // 연결 시작
+            screen = target; // 취소할 전투 화면 보관
+        } // 연결 끝
+        public void OnCancel(BaseEventData eventData) // 취소 키 또는 게임패드 취소 입력
+        { // 취소 시작
+            eventData.Use(); // 다른 화면으로 취소 전파 차단
+            if (screen != null) // 실제 전투 화면 검사
+            { // 화면 닫기 시작
+                screen.CloseBattleItems(); // 행동 소모 없이 선택 취소
+            } // 화면 닫기 끝
+        } // 취소 끝
     } // 클래스 끝
     public sealed class CombatActionLayout : MonoBehaviour // 화면 너비에 맞는 행동 버튼 배치
     { // 클래스 시작

@@ -29,6 +29,28 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(warning, Is.Empty); // 정상 저장 안내 없음
             Assert.That(loaded.health, Is.EqualTo(42)); // 체력 복원 확인
         } // 검증 끝
+        [Test] // 이전 보상 후보의 아이템 종류 복원 검증
+        public void Load_LegacyRewardCandidateKeepsSmallPotion() // 종류가 없던 이전 보상 호환
+        { // 검증 시작
+            var data = Snapshot(42); // 정상 이전 회차
+            data.version = 9; // 소비품 종류가 없던 마지막 저장 버전
+            data.generationVersion = 1; // 기존 던전 생성 규칙
+            data.secretPassages = new SavedSecretPassage[0]; // 기존 구조의 빈 비밀 기록
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(DungeonGenerator.Generate(data.seed)); // 기존 던전 구조 지문
+            data.mana = 50; // 현재 마나
+            data.maxMana = 50; // 실제 최대 마나
+            data.runId = Guid.NewGuid().ToString("N"); // 회차 식별자
+            data.level = 1; // 기본 레벨
+            data.statPoints = 5; // 기본 스탯 포인트
+            data.hasPendingReward = true; // 미완료 보상 후보
+            data.pendingReward = new SavedBattleReward { transactionId = Guid.NewGuid().ToString("N"), normalEnemies = 1, experience = 60, potionCount = 1 }; // 종류 없는 기존 소형 회복약 후보
+            var store = new RunStorage(root); // 독립 회차 저장소
+            store.Load(out _); // 최초 저장 상태 조회
+            Assert.That(store.TrySave(data, out var error), Is.True, error); // 이전 버전의 유효한 후보 저장
+            var restored = new RunStorage(root).Load(out var warning); // 새 실행의 실제 후보 읽기
+            Assert.That(warning, Is.Empty); // 정상 저장 확인
+            Assert.That(restored.pendingReward.itemId, Is.EqualTo("trial-small-potion")); // 기존 소형 회복약 후보 복원
+        } // 검증 끝
         [Test] // 종료 회차의 백업 재등장 방지 검증
         public void EndedRun_IsNotRecoveredAndNewRunCanBeSaved() // 회차 종료와 새 저장 확인
         { // 검증 시작

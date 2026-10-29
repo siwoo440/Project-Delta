@@ -8,7 +8,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         public const string TrialPotionId = "trial-small-potion"; // 시험 소형 회복약 식별자
         public const int TrialPotionRecovery = 25; // 기획 기준 시험 체력 회복량
-        public const int TrialPotionStackLimit = 5; // 기획 기준 시험 최대 중첩
+        public const int TrialPotionStackLimit = 5; // 미확정 시험 최대 중첩
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
         private RunStorage runStorage; // 현재 회차 저장 기능
@@ -337,6 +337,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 오류 복구 끝
         } // 표시 끝
         public bool TryResolveVictoryReward(bool takePotion, out string error) // 보상 획득 또는 아이템 포기의 원자적 확정
+        { // 일반 확정 시작
+            return ResolveVictoryReward(takePotion, -1, null, null, 0, 0, out error); // 기존 인벤토리를 보존하는 일반 확정
+        } // 일반 확정 끝
+        public bool TryResolveVictoryRewardReplacing(int index, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, out string error) // 확인한 보유 묶음의 보상 교체
+        { // 교체 확정 시작
+            if (index < 0) // 잘못된 교체 슬롯 검사
+            { // 슬롯 오류 시작
+                error = "교체할 아이템을 확인할 수 없습니다."; // 슬롯 오류 안내
+                return false; // 일반 획득으로 잘못 전환되는 상황 차단
+            } // 슬롯 오류 끝
+            return ResolveVictoryReward(true, index, expectedId, expectedName, expectedQuantity, expectedLimit, out error); // 확인한 슬롯을 포함한 원자적 확정
+        } // 교체 확정 끝
+        private bool ResolveVictoryReward(bool takePotion, int replaceIndex, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, out string error) // 보상과 조우 완료의 공통 저장
         { // 확정 시작
             error = string.Empty; // 기본 오류 없음
             var room = GameObject.Find("RoomTravel"); // 현재 방 이동 객체
@@ -347,15 +360,41 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 거래 차단
             } // 확정 거절 끝
             var reward = savedRun.pendingReward; // 사전 저장된 후보
+            var item = reward.potionCount > 0 ? TrialConsumableRules.Find(reward.itemId) : null; // 저장된 보상 소비품 정의
+            if (reward.potionCount > 0 && item == null) // 알 수 없는 보상 종류 검사
+            { // 보상 종류 오류 시작
+                error = "보상 아이템을 확인할 수 없습니다."; // 보상 종류 오류 안내
+                return false; // 확인되지 않은 보상 지급 차단
+            } // 보상 종류 오류 끝
             var inventory = InventoryState.FromSavedSlots(savedRun.slots); // 저장된 소지품의 독립 복사
             if (inventory == null || !ExperienceRules.TryAdvance(savedRun.level, savedRun.experience, reward.experience, out var growth) || (long)savedRun.gold + reward.gold > int.MaxValue) // 소지품과 성장 및 재화 범위 검사
             { // 계산 오류 시작
                 error = "보상 상태를 계산할 수 없습니다."; // 계산 오류 안내
                 return false; // 원본과 후보 보존
             } // 계산 오류 끝
-            if (takePotion && reward.potionCount > 0 && inventory.Add(TrialPotionId, "소형 회복약", reward.potionCount, TrialPotionStackLimit).Remaining > 0) // 회복약 전체 수용 검사
+            if (replaceIndex >= 0) // 기존 묶음을 교체하는지 검사
+            { // 교체 검사 시작
+                if (!takePotion || reward.potionCount <= 0 || replaceIndex >= inventory.Slots.Count || replaceIndex >= Inventory.Slots.Count) // 후보와 교체 범위 검사
+                { // 교체 오류 시작
+                    error = "교체할 아이템을 확인할 수 없습니다."; // 교체 오류 안내
+                    return false; // 기존 소지품과 후보 보존
+                } // 교체 오류 끝
+                var live = Inventory.Slots[replaceIndex]; // 현재 화면의 실제 보유 묶음
+                var saved = inventory.Slots[replaceIndex]; // 후보 저장 시점의 보유 묶음
+                if (live.IsEmpty || live.ItemId != expectedId || live.Name != expectedName || live.Quantity != expectedQuantity || live.StackLimit != expectedLimit || saved.ItemId != expectedId || saved.Name != expectedName || saved.Quantity != expectedQuantity || saved.StackLimit != expectedLimit) // 확인 시점과 저장 시점의 아이템 비교
+                { // 변경 충돌 시작
+                    error = "아이템이 변경되어 교체할 수 없습니다."; // 기존 데이터 변경 안내
+                    return false; // 다른 묶음의 삭제 차단
+                } // 변경 충돌 끝
+                if (!inventory.TryReplace(replaceIndex, item.Id, item.Name, reward.potionCount, item.StackLimit)) // 독립 인벤토리의 전체 교체 검사
+                { // 교체 실패 시작
+                    error = "보상 아이템을 교체할 수 없습니다."; // 교체 실패 안내
+                    return false; // 기존 소지품 보존
+                } // 교체 실패 끝
+            } // 교체 검사 끝
+            else if (takePotion && reward.potionCount > 0 && inventory.Add(item.Id, item.Name, reward.potionCount, item.StackLimit).Remaining > 0) // 선택된 소비품 전체 수용 검사
             { // 공간 부족 시작
-                error = "인벤토리 공간이 부족합니다. 아이템을 포기할 수 있습니다."; // 명시적 선택 안내
+                error = "인벤토리 공간이 부족합니다. 교체하거나 아이템을 포기할 수 있습니다."; // 명시적 선택 안내
                 return false; // 기존 인벤토리와 후보 보존
             } // 공간 부족 끝
             var data = JsonUtility.FromJson<RunSaveData>(JsonUtility.ToJson(savedRun)); // 저장 후보의 독립 복사
@@ -711,6 +750,37 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = "체력 " + amount + " 회복 · 소형 회복약 1개 사용"; // 실제 회복과 소비 안내
             RecordExplorationEvent(message); // 실제 회복 성공의 탐험 기록 보관
             return true; // 체력 회복과 아이템 소비 완료
+        } // 사용 끝
+        public bool TryUseInventoryConsumable(int index, out string message) // 선택한 시험 소비품의 탐험 사용
+        { // 사용 시작
+            message = "사용할 수 없는 아이템입니다"; // 기본 사용 불가 안내
+            if (Flow.Phase != GamePhase.Inventory || index < 0 || index >= Inventory.Slots.Count) // 탐험 인벤토리와 슬롯 범위 검사
+            { // 사용 거절 시작
+                return false; // 잘못된 상태와 슬롯 차단
+            } // 사용 거절 끝
+            var item = TrialConsumableRules.Find(Inventory.Slots[index].ItemId); // 선택한 실제 소비품 정의
+            if (item == null) // 지원하는 소비품 검사
+            { // 미지원 시작
+                return false; // 알 수 없는 아이템 보존
+            } // 미지원 끝
+            var current = item.Resource == TrialConsumableResource.Health ? PlayerHealth : PlayerMana; // 선택한 자원의 현재 값
+            var maximum = item.Resource == TrialConsumableResource.Health ? 100 : 50; // 현재 시험 최대 자원
+            if (!TrialConsumableRules.TryUse(Inventory, index, current, maximum, out var recovered)) // 실제 회복과 소비 검사
+            { // 회복 실패 시작
+                message = "회복할 자원이 없습니다"; // 최대치 또는 사용 불가 안내
+                return false; // 아이템과 자원 보존
+            } // 회복 실패 끝
+            if (item.Resource == TrialConsumableResource.Health) // 체력 회복 아이템 검사
+            { // 체력 회복 시작
+                UpdatePlayerHealth(recovered); // 확인된 체력 반영
+            } // 체력 회복 끝
+            else // 마나 회복 분기
+            { // 마나 회복 시작
+                UpdatePlayerMana(recovered); // 확인된 마나 반영
+            } // 마나 회복 끝
+            message = item.Name + " 사용 · " + (item.Resource == TrialConsumableResource.Health ? "체력 " : "마나 ") + (recovered - current) + " 회복"; // 실제 사용 결과 안내
+            RecordExplorationEvent(message); // 성공한 아이템 사용 기록
+            return true; // 확인된 소비와 회복 성공
         } // 사용 끝
         public void UpdatePlayerMana(int mana) // 전투 후 현재 마나 반영
         { // 갱신 시작

@@ -48,6 +48,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public int experience; // 확인된 경험치
         public int gold; // 확인된 시험 골드
         public int potionCount; // 확인된 시험 회복약 수량
+        public string itemId; // 확인된 시험 소비품 식별자
     } // 클래스 끝
     [Serializable] // 완료된 보상 기록 직렬화
     public sealed class SavedRewardReceipt // 확정된 전투별 보상 거래
@@ -58,7 +59,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 9; // 다수 조우 종족을 포함한 저장 버전
+        public const int CurrentVersion = 10; // 보상 소비품 종류를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -116,6 +117,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 후보 오류 시작
                 return false; // 잘못된 보상 저장 거절
             } // 후보 오류 끝
+            if (version >= 10 && hasPendingReward && pendingReward.potionCount > 0 && TrialConsumableRules.Find(pendingReward.itemId) == null) // 새 보상 후보의 실제 소비품 종류 검사
+            { // 보상 종류 오류 시작
+                return false; // 알 수 없는 소비품 지급 차단
+            } // 보상 종류 오류 끝
             if (version >= 8 && rewardReceipts != null) // 완료된 보상 거래 목록 검사
             { // 거래 검사 시작
                 if (rewardReceipts.Length > 10000) // 보상 기록 수 범위 검사

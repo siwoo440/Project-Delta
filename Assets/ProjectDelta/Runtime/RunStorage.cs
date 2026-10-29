@@ -318,6 +318,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 빈 후보 정리 시작
                     candidate.pendingReward = null; // 완료 또는 이전 저장의 빈 후보 정리
                 } // 빈 후보 정리 끝
+                if (candidate != null && candidate.version < 10 && candidate.hasPendingReward && candidate.pendingReward != null && candidate.pendingReward.potionCount > 0) // 이전 버전의 소형 회복약 후보 검사
+                { // 이전 보상 복원 시작
+                    candidate.pendingReward.itemId = "trial-small-potion"; // 기존 보상의 실제 소비품 종류 보존
+                } // 이전 보상 복원 끝
                 if (!RunRestoreRules.IsValid(candidate)) // 버전과 던전 상태 검사
                 { // 형식 오류 시작
                     return false; // 지원하지 않는 회차 거절
