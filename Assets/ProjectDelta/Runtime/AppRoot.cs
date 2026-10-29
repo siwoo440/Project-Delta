@@ -27,6 +27,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private BossPreparationScreenView bossPreparation; // 마왕 방 진입 전 준비 화면
         private BossResultScreenView bossResult; // 저장된 마왕 결과 대기 화면
         private EndingHistoryStorage endingStorage; // 독립 결말과 파편 영구 저장소
+        public bool TryGetEarnedEndingShards(out int shards) // 검증된 결말 최초 해금 파편 누적 조회
+        { // 조회 시작
+            shards = 0; // 기본 조회 실패 값
+            if (endingStorage == null || endingStorage.IsBlocked) // 저장소와 보호 상태 검사
+            { // 조회 불가 시작
+                return false; // 손상 기록의 잔액 추정 차단
+            } // 조회 불가 끝
+            shards = endingStorage.TotalShards; // 검증된 최초 해금 파편 합계
+            return true; // 정상 누적 조회
+        } // 조회 끝
         private EndingScreenView endingScreen; // 현재 결말 선택과 결과 화면
         private string pendingBossTransactionId; // 저장 재시도에도 유지할 마왕 결과 식별자
         private TrialEventBattleState trialEventBattle; // 현재 시험 이벤트 전투 상태

@@ -36,6 +36,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             journalButton.onClick.AddListener(OpenJournal); // 기록 화면 열기 연결
             UiFactory.CreateText(canvas.transform, "BuildLabel", "2D 탐험  ·  조우  ·  관찰 기록", 21, new Vector2(0f, -390f), new Vector2(1000f, 70f), mint); // 개발 범위 표시
             UiFactory.CreateText(canvas.transform, "Controls", "마우스 클릭  /  Enter  /  게임패드 선택", 20, new Vector2(0f, -450f), new Vector2(1100f, 60f), new Color(0.54f, 0.61f, 0.65f)); // 조작 안내 표시
+            var earnedShards = 0; // 누적 파편 기본 조회 값
+            var hasShards = AppRoot.Instance != null && AppRoot.Instance.TryGetEarnedEndingShards(out earnedShards); // 검증된 결말 파편 조회
+            var shardText = hasShards ? "결말 최초 보상 누적 " + earnedShards + " · 내부 시험: 사용 불가" : "결말 파편 확인 불가 · 기록을 확인해 주세요"; // 실제 누적 또는 기록 오류 안내
+            UiFactory.CreateText(canvas.transform, "EarnedShardsStatus", shardText, 20, new Vector2(0f, -515f), new Vector2(1400f, 48f), mint); // 읽기 전용 파편과 시험 제한 표시
             EventSystem.current.SetSelectedGameObject(newGameButton.gameObject); // 키보드와 게임패드 기본 포커스
         } // 구성 끝
         private void OnContinue() // 저장 회차 재개 요청
