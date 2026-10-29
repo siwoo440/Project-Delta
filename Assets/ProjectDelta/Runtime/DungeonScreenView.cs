@@ -6,15 +6,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class DungeonScreenView : MonoBehaviour // 던전 안내 표시
     { // 클래스 시작
         private Text status; // 현재 방 이름 표시
+        private Text playerHealth; // 현재 플레이어 체력 표시
         private Text doorNotice; // 잠긴 문과 열쇠 안내
         private RoomTravelController travel; // 실제 방 이동과 역할 정보
         private void Start() // 기본 안내 화면 구성
         { // 구성 시작
             var canvas = UiFactory.CreateCanvas("DungeonCanvas"); // 던전 안내 화면 생성
             canvas.transform.SetParent(transform, false); // 씬 화면 아래 배치
+            CreateBackground(canvas.transform, "DungeonPlayerBackground", new Vector2(-750f, 410f), new Vector2(300f, 130f)); // 왼쪽 플레이어 상태 배경
             CreateBackground(canvas.transform, "DungeonHeaderBackground", new Vector2(0f, 410f), new Vector2(510f, 155f)); // 상단 안내의 어두운 배경
             CreateBackground(canvas.transform, "DungeonControlsBackground", new Vector2(0f, -405f), new Vector2(1780f, 215f)); // 하단 조작 안내의 어두운 배경
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
+            playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 28, new Vector2(-750f, 410f), new Vector2(280f, 80f), Color.white); // 실제 플레이어 체력 안내
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
             doorNotice = UiFactory.CreateText(canvas.transform, "DoorNotice", "", 23, new Vector2(0f, -340f), new Vector2(1200f, 60f), mint); // 문 상호작용 안내
@@ -34,6 +37,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UpdateRoom(); // 시작 방의 이름 표시
             } // 방 정보 연결 끝
         } // 구성 끝
+        private void Update() // 탐험 중 실제 체력 표시 갱신
+        { // 갱신 시작
+            if (playerHealth == null || AppRoot.Instance == null) // 체력 안내와 게임 상태 검사
+            { // 누락 조건 시작
+                return; // 표시할 체력이 없는 경우 유지
+            } // 누락 조건 끝
+            var health = AppRoot.Instance.PlayerHealth; // 현재 플레이어 체력
+            playerHealth.text = "체력 " + health + " / 100"; // 현재 체력과 시험 최대 체력
+            playerHealth.color = health <= 25 ? new Color(1f, 0.48f, 0.42f) : Color.white; // 낮은 체력의 경고 색상
+        } // 갱신 끝
         private static void CreateBackground(Transform parent, string name, Vector2 position, Vector2 size) // 안내 문구용 입력 통과 배경
         { // 생성 시작
             var background = new GameObject(name, typeof(RectTransform), typeof(Image)); // 화면 배경 객체

@@ -177,6 +177,22 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(door.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonDoor")); // 생성한 문 이미지 적용
             Assert.That(Camera.main.GetComponent("DungeonCameraMotion"), Is.Not.Null); // 플레이어 추적 카메라 제공 확인
         } // 검증 끝
+        [UnityTest] // 탐험 체력 표시와 변경 반영 검증
+        public IEnumerator DungeonHud_TracksPlayerHealth() // 실제 체력의 화면 표시 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var label = GameObject.Find("PlayerHealthStatus"); // 탐험 중 체력 안내
+            Assert.That(label, Is.Not.Null); // 체력 안내 제공 확인
+            var text = label.GetComponent<UnityEngine.UI.Text>(); // 체력 안내 글자
+            Assert.That(text.text, Does.Contain("100 / 100")); // 초기 체력 표시 확인
+            AppRoot.Instance.UpdatePlayerHealth(37); // 전투 후 시험 체력 변경
+            yield return null; // 화면 갱신 대기
+            Assert.That(text.text, Does.Contain("37 / 100")); // 실제 체력 변경 반영 확인
+            AppRoot.Instance.UpdatePlayerHealth(12); // 낮은 체력 상태 설정
+            yield return null; // 경고 표시 갱신 대기
+            Assert.That(text.text, Does.Contain("12 / 100")); // 낮은 체력 수치 표시 확인
+            Assert.That(text.color.r, Is.GreaterThan(text.color.g)); // 낮은 체력의 경고 색상 확인
+        } // 검증 끝
         [UnityTest] // 던전 안내 가독성과 입력 통과 검증
         public IEnumerator DungeonHud_HasReadableNonBlockingBackgrounds() // 안내 배경과 게임 입력 보존
         { // 검증 시작
