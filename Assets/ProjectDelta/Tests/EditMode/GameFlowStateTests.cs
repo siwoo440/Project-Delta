@@ -5,6 +5,25 @@ namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
     public sealed class GameFlowStateTests // 진행 상태 검증
     { // 클래스 시작
+        [Test] // 일시정지와 저장 불러오기 상태 검증
+        public void Pause_OnlyOpensDuringExplorationAndCanReload() // 메뉴 진입과 회차 불러오기 확인
+        { // 검증 시작
+            var flow = new GameFlowState(); // 새 진행 상태
+            Assert.That(flow.TryOpenPause(), Is.False); // 초기 메뉴 진입 차단
+            Assert.That(flow.TryBeginTransition(GamePhase.Title), Is.True); // 타이틀 진입 요청
+            flow.CompleteTransition(); // 타이틀 도착
+            Assert.That(flow.TryOpenPause(), Is.False); // 타이틀 메뉴 진입 차단
+            Assert.That(flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 탐험 진입 요청
+            flow.CompleteTransition(); // 탐험 도착
+            Assert.That(flow.TryOpenPause(), Is.True); // 탐험 메뉴 진입
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Pause)); // 메뉴 상태 확인
+            Assert.That(flow.TryOpenPause(), Is.False); // 중복 메뉴 차단
+            Assert.That(flow.TryClosePause(), Is.True); // 탐험 복귀
+            Assert.That(flow.TryOpenPause(), Is.True); // 메뉴 재진입
+            Assert.That(flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 메뉴에서 저장 회차 불러오기
+            flow.CancelTransition(); // 전환 실패 복구
+            Assert.That(flow.Phase, Is.EqualTo(GamePhase.Pause)); // 실패 시 메뉴 유지
+        } // 검증 끝
         [Test] // 개별 검증 표시
         public void Startup_ReachesTitleOnlyAfterLoadCompletes() // 초기 화면 전환 검증
         { // 검증 시작

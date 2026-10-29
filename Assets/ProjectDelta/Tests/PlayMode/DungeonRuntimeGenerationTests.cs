@@ -53,6 +53,109 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView; // 게임 화면에 검증 입력 전달
 #endif // 편집기 입력 설정 끝
         } // 준비 끝
+        [UnityTest] // 탐험 메뉴와 저장 불러오기 검증
+        public IEnumerator PauseMenu_SavesLoadsAndShowsRunHistory() // 실제 입력과 회차 복원 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "PauseRunTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 새 게임의 실제 탐험 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 실제 회차 관리자
+            Assert.That(GameObject.Find("DungeonCanvas/Controls"), Is.Null); // 하단 조작 설명 제거 확인
+            Assert.That(GameObject.Find("DungeonCanvas/Scope"), Is.Null); // 하단 범례 설명 제거 확인
+            Assert.That(GameObject.Find("HistoryOpenButton"), Is.Null); // 탐험 기록 버튼 제거 확인
+            Assert.That(GameObject.Find("SaveRunButton"), Is.Null); // 탐험 저장 버튼 제거 확인
+            Assert.That(GameObject.Find("MapOpenButton"), Is.Null); // 별도 지도 버튼 제거 확인
+            Assert.That(GameObject.Find("PlayerHealthStatus").GetComponent<RectTransform>().anchoredPosition.y, Is.LessThan(0f)); // 체력의 하단 위치 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 일시정지 키 입력
+            yield return null; // 메뉴 생성 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 일시정지 키 해제
+            yield return null; // 메뉴 입력 준비
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 일시정지 상태 확인
+            Assert.That(app.Input.IsExplorationEnabled, Is.False); // 탐험 이동 잠금 확인
+            Assert.That(GameObject.Find("PauseHistoryEntries").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("시작 방")); // 실제 첫 방 진입 기록 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 화면 캡처 요청 검사
+            { // 캡처 시작
+                var image = CaptureScreen("PauseCanvas"); // 실제 메뉴 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 메뉴 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 끝
+            GameObject.Find("PauseSaveButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 저장 선택
+            Assert.That(GameObject.Find("PauseNotice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("저장했습니다")); // 저장 성공 안내 확인
+            app.UpdatePlayerHealth(51); // 저장 이후 다른 체력 상태 생성
+            GameObject.Find("PauseLoadButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 저장 회차 불러오기
+            yield return WaitForPhase(GamePhase.Exploration); // 복원된 탐험 도착
+            Assert.That(app.PlayerHealth, Is.EqualTo(100)); // 저장된 체력 복원 확인
+            Assert.That(app.ExplorationHistory.Entries.Any(entry => entry.Contains("시작 방")), Is.True); // 저장된 첫 방 진입 기록 복원 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 메뉴 재진입 입력
+            yield return null; // 메뉴 생성 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            yield return null; // 입력 해제 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 메뉴 닫기 입력
+            yield return null; // 닫기 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 키 해제
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소 입력의 탐험 복귀 확인
+        } // 검증 끝
+        [UnityTest] // 메뉴의 타이틀 복귀 전 자동 저장 검증
+        public IEnumerator PauseTitle_AutosavesBeforeReturning() // 실제 자동 저장과 이어하기 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "PauseAutoSaveTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.UpdatePlayerHealth(51); // 저장할 실제 체력
+            app.OpenPause(); // 탐험 메뉴 열기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 메뉴 상태 확인
+            GameObject.Find("PauseTitleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 타이틀 복귀 선택
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(app.CanContinueRun, Is.True); // 자동 저장된 회차 확인
+            Assert.That(app.ContinueRun(), Is.True); // 자동 저장 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 복원된 탐험 도착
+            Assert.That(app.PlayerHealth, Is.EqualTo(51)); // 타이틀 전 현재 체력 복원
+        } // 검증 끝
+        [UnityTest] // 자동 저장 실패의 타이틀 복귀 차단 검증
+        public IEnumerator PauseTitle_SaveFailureKeepsCurrentRun() // 저장 오류와 메뉴 보존 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "PauseBlockedTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.UpdatePlayerHealth(51); // 현재 회차의 체력
+            app.OpenPause(); // 탐험 메뉴 열기
+            var storage = (RunStorage)typeof(AppRoot).GetField("runStorage", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app); // 실제 회차 저장소 조회
+            storage.BlockWrites(); // 저장 실패 상황 설정
+            GameObject.Find("PauseTitleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 타이틀 복귀 선택
+            yield return null; // 저장 실패 처리 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 저장 실패 시 메뉴 유지
+            Assert.That(app.PlayerHealth, Is.EqualTo(51)); // 저장 실패 시 체력 보존
+            Assert.That(GameObject.Find("PauseNotice").GetComponent<UnityEngine.UI.Text>().text, Is.Not.Empty); // 저장 실패 안내 확인
+        } // 검증 끝
+        [UnityTest] // 불러오기 중 씬 전환 실패 복구 검증
+        public IEnumerator PauseLoad_MissingSceneRestoresCurrentRun() // 실제 씬 오류의 회차 보존 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.UpdatePlayerHealth(51); // 기존 회차의 실제 체력
+            app.OpenPause(); // 안정된 탐험의 메뉴 진입
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 일시정지 상태 확인
+            var originalInventory = app.Inventory; // 기존 인벤토리 참조
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic; // 내부 복구 상태 조회 범위
+            typeof(AppRoot).GetField("loadRollbackInventory", flags).SetValue(app, app.Inventory); // 실제 복구용 인벤토리 설정
+            typeof(AppRoot).GetField("loadRollbackKeys", flags).SetValue(app, app.Keys); // 실제 복구용 열쇠 설정
+            typeof(AppRoot).GetField("loadRollbackHistory", flags).SetValue(app, app.ExplorationHistory); // 실제 복구용 기록 설정
+            typeof(AppRoot).GetField("loadRollbackHealth", flags).SetValue(app, app.PlayerHealth); // 실제 복구용 체력 설정
+            app.UpdatePlayerHealth(80); // 불러오기 중 임시 적용된 체력
+            Assert.That(app.Flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 메뉴에서 씬 전환 시작
+            app.Input.SetPhase(GamePhase.Loading); // 전환 중 입력 잠금
+            LogAssert.Expect(LogType.Error, "Scene is not registered: Missing_Pause_Run_Scene"); // 실제 씬 누락 오류 확인
+            var transition = typeof(AppRoot).GetMethod("Transition", flags); // 실제 씬 전환 실행 조회
+            yield return app.StartCoroutine((IEnumerator)transition.Invoke(app, new object[] { "Missing_Pause_Run_Scene" })); // 누락된 씬의 실패 경로 실행
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 기존 메뉴 상태 복원 확인
+            Assert.That(app.PlayerHealth, Is.EqualTo(51)); // 전환 전 체력 복원 확인
+            Assert.That(app.Inventory, Is.SameAs(originalInventory)); // 기존 인벤토리 보존 확인
+            Assert.That(app.Input.IsUiEnabled, Is.True); // 메뉴 입력 복구 확인
+        } // 검증 끝
         [UnityTest] // 타이틀 미관찰 도감과 실제 입력 검증
         public IEnumerator Journal_Empty_OpensAndClosesWithKeyboardAndGamepad() // 미관찰 정보와 선택 복원 확인
         { // 검증 시작
@@ -283,10 +386,11 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var mouse = InputSystem.AddDevice<Mouse>(); // 시험 마우스 연결
             InputSystem.Update(); // 입력 장치 반영
             yield return null; // 입력 준비 대기
-            var open = GameObject.Find("MapOpenButton"); // 탐험 화면의 지도 열기 버튼
-            Assert.That(open, Is.Not.Null); // 지도 열기 버튼 존재 확인
-            var openPosition = RectTransformUtility.WorldToScreenPoint(null, open.GetComponent<RectTransform>().position); // 열기 버튼 화면 좌표
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }.WithButton(MouseButton.Left)); // 열기 버튼 클릭
+            var open = GameObject.Find("DungeonMiniMap"); // 탐험 화면의 미니맵
+            Assert.That(open, Is.Not.Null); // 미니맵 존재 확인
+            var openRect = open.GetComponent<RectTransform>(); // 지도 표시 영역
+            var openPosition = RectTransformUtility.WorldToScreenPoint(null, openRect.TransformPoint(openRect.rect.center)); // 미니맵 중앙 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }.WithButton(MouseButton.Left)); // 미니맵 클릭
             InputSystem.Update(); // 클릭 입력 반영
             yield return null; // 지도 열기 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 마우스의 지도 진입 확인
@@ -401,10 +505,13 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var header = GameObject.Find("DungeonHeaderBackground"); // 상단 안내 배경
             var controls = GameObject.Find("DungeonControlsBackground"); // 하단 안내 배경
             Assert.That(header, Is.Not.Null); // 상단 배경 표시 확인
-            Assert.That(controls, Is.Not.Null); // 하단 배경 표시 확인
+            Assert.That(controls, Is.Null); // 하단 설명 배경 제거 확인
             Assert.That(header.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 상단 배경 입력 통과 확인
-            Assert.That(controls.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 하단 배경 입력 통과 확인
-            Assert.That(controls.GetComponent<UnityEngine.UI.Image>().color.a, Is.GreaterThan(0.7f)); // 바닥과 글씨 분리 확인
+            Assert.That(header.GetComponent<RectTransform>().sizeDelta.y, Is.LessThan(100f)); // 상단 안내 높이 축소 확인
+            var portrait = GameObject.Find("DungeonPlayerPortrait"); // 하단 주인공 일러스트 조회
+            Assert.That(portrait, Is.Not.Null); // 주인공 일러스트 표시 확인
+            Assert.That(portrait.GetComponent<RectTransform>().anchorMin, Is.EqualTo(new Vector2(1f, 0f))); // 오른쪽 하단 고정 확인
+            Assert.That(header.GetComponent<UnityEngine.UI.Image>().color.a, Is.GreaterThan(0.7f)); // 바닥과 글씨 분리 확인
         } // 검증 끝
         [UnityTest] // 회차 기록 열람과 페이지 이동 검증
         public IEnumerator History_OpensPagesAndRestoresExploration() // 실제 기록 화면과 키 입력 확인
@@ -474,16 +581,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var mouse = InputSystem.AddDevice<Mouse>(); // 시험 마우스 연결
             InputSystem.Update(); // 입력 장치 반영
             yield return null; // 입력 준비 대기
-            var open = GameObject.Find("HistoryOpenButton"); // 탐험 화면의 기록 열기 버튼
-            Assert.That(open, Is.Not.Null); // 기록 열기 버튼 확인
-            var openPosition = RectTransformUtility.WorldToScreenPoint(null, open.GetComponent<RectTransform>().position); // 열기 버튼 화면 좌표
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }.WithButton(MouseButton.Left)); // 기록 열기 클릭
-            InputSystem.Update(); // 클릭 입력 반영
+            AppRoot.Instance.OpenHistory(); // 기록 화면 직접 열기
             yield return null; // 기록 화면 준비 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 마우스 기록 진입 확인
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }); // 마우스 버튼 해제
-            InputSystem.Update(); // 버튼 해제 반영
-            yield return null; // 해제 처리 대기
             var close = GameObject.Find("CloseHistoryButton"); // 기록 화면의 닫기 버튼
             Assert.That(close, Is.Not.Null); // 기록 닫기 버튼 확인
             var closePosition = RectTransformUtility.WorldToScreenPoint(null, close.GetComponent<RectTransform>().position); // 닫기 버튼 화면 좌표
@@ -3471,6 +3571,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 정리 조건 끝
             yield return null; // 객체 제거 완료 대기
             ObservationStorage.TestDirectoryOverride = null; // 개별 시험 저장 경로 해제
+            RunStorage.TestDirectoryOverride = null; // 회차 저장 시험 경로 해제
             InputSystem.settings.backgroundBehavior = originalBackground; // 기존 백그라운드 입력 설정 복구
 #if UNITY_EDITOR // 편집기 입력 설정 복구
             InputSystem.settings.editorInputBehaviorInPlayMode = originalEditor; // 기존 편집기 설정 복구

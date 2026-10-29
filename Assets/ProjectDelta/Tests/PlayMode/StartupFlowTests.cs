@@ -74,9 +74,11 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 장치 연결 한 프레임 대기
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // Escape 누름 입력 전달
             InputSystem.Update(); // 입력 처리 실행
-            yield return WaitForPhase(GamePhase.Title); // 타이틀 복귀 대기
+            yield return WaitForPhase(GamePhase.Pause); // 일시정지 메뉴 대기
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 누른 키 해제
             InputSystem.Update(); // 키 해제 반영
+            GameObject.Find("PauseTitleButton").GetComponent<Button>().onClick.Invoke(); // 메뉴에서 타이틀 복귀 선택
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 복귀 대기
             InputSystem.RemoveDevice(keyboard); // 검증 장치 정리
             keyboard = null; // 정리 완료 표시
             Assert.That(root.Input.IsUiEnabled, Is.True); // 화면 입력 복구 확인

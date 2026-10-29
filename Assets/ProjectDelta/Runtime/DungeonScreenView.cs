@@ -16,28 +16,23 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 구성 시작
             var canvas = UiFactory.CreateCanvas("DungeonCanvas"); // 던전 안내 화면 생성
             canvas.transform.SetParent(transform, false); // 씬 화면 아래 배치
-            CreateBackground(canvas.transform, "DungeonPlayerBackground", new Vector2(-750f, 410f), new Vector2(300f, 130f)); // 왼쪽 플레이어 상태 배경
+            CreatePlayerPortrait(canvas.transform); // 오른쪽 하단 주인공 일러스트
+            CreateBackground(canvas.transform, "DungeonPlayerBackground", new Vector2(-750f, -465f), new Vector2(300f, 85f)); // 하단 플레이어 상태 배경
             CreateBackground(canvas.transform, "DungeonLogBackground", new Vector2(750f, -40f), new Vector2(420f, 240f)); // 오른쪽 최근 기록 배경
-            CreateBackground(canvas.transform, "DungeonHeaderBackground", new Vector2(0f, 410f), new Vector2(510f, 155f)); // 상단 안내의 어두운 배경
-            CreateBackground(canvas.transform, "DungeonControlsBackground", new Vector2(0f, -405f), new Vector2(1780f, 215f)); // 하단 조작 안내의 어두운 배경
+            CreateBackground(canvas.transform, "DungeonHeaderBackground", new Vector2(0f, 485f), new Vector2(510f, 85f)); // 상단의 좁은 던전 안내 배경
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
             UiFactory.CreateText(canvas.transform, "LogTitle", "최근 기록", 24, new Vector2(750f, 45f), new Vector2(380f, 45f), Color.white); // 탐험 기록 제목
             explorationLog = UiFactory.CreateText(canvas.transform, "ExplorationLog", "", 20, new Vector2(750f, -65f), new Vector2(380f, 150f), new Color(0.88f, 0.93f, 0.92f)); // 최근 탐험 기록 내용
             explorationLog.alignment = TextAnchor.UpperLeft; // 최근 기록의 왼쪽 정렬
-            playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 28, new Vector2(-750f, 410f), new Vector2(280f, 80f), Color.white); // 실제 플레이어 체력 안내
-            UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
-            status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
+            playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 28, new Vector2(-750f, -465f), new Vector2(280f, 65f), Color.white); // 하단 플레이어 체력 안내
+            UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 27, new Vector2(0f, 505f), new Vector2(510f, 36f), Color.white); // 상단 던전 제목
+            status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 20, new Vector2(0f, 470f), new Vector2(510f, 36f), mint); // 상단 현재 방 안내
             doorNotice = UiFactory.CreateText(canvas.transform, "DoorNotice", "", 23, new Vector2(0f, -340f), new Vector2(1200f, 60f), mint); // 문 상호작용 안내
-            UiFactory.CreateText(canvas.transform, "Scope", "갈색: 문  ·  보라: 잠긴 문  ·  파랑: 계단  ·  분홍: 상위 개체", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.9f, 0.94f, 0.95f)); // 방향과 문과 장애물 표시 안내
-            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문·계단  ·  M / 패드 보기: 지도  ·  F / 패드 X: 강제 개방", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
             var roomObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체 조회
             travel = roomObject == null ? null : roomObject.GetComponent<RoomTravelController>(); // 방 이동 제어기 연결
             DungeonMiniMap.Create(canvas.transform, travel); // 발견한 방의 미니맵 생성
             if (AppRoot.Instance != null) // 공통 게임 객체 존재 검사
             { // 인벤토리 연결 시작
-                MapPointerButton.Create(canvas.transform, "MapOpenButton", "전체 지도", new Vector2(750f, 190f), AppRoot.Instance.OpenFullMap); // 마우스 지도 열기 버튼
-                MapPointerButton.Create(canvas.transform, "HistoryOpenButton", "회차 기록 (H)", new Vector2(750f, -215f), AppRoot.Instance.OpenHistory); // 마우스 기록 열기 버튼
-                MapPointerButton.Create(canvas.transform, "SaveRunButton", "회차 저장 (K)", new Vector2(750f, -300f), SaveRun); // 현재 회차 저장 버튼
                 AppRoot.Instance.Input.SaveRequested += SaveRun; // 키보드와 게임패드 저장 요청 연결
                 AppRoot.Instance.InventoryClosed += ClearDoorNotice; // 인벤토리 복귀 시 안내 초기화
                 AppRoot.Instance.ExplorationEvent += AppendLog; // 성공한 탐험 행동 기록 연결
@@ -62,6 +57,25 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var saved = AppRoot.Instance.TrySaveRun(out var error); // 현재 탐험 저장
             doorNotice.text = saved ? "회차를 저장했습니다" : error; // 저장 결과 안내
         } // 저장 끝
+        private static void CreatePlayerPortrait(Transform parent) // 오른쪽 아래 주인공 일러스트 생성
+        { // 생성 시작
+            var texture = Resources.Load<Texture2D>("BattlePortraits/PlayerPrototype"); // 기존 주인공 이미지 조회
+            if (texture == null) // 선택적 이미지 존재 검사
+            { // 이미지 누락 시작
+                return; // 탐험 화면을 그대로 유지
+            } // 이미지 누락 끝
+            var portrait = new GameObject("DungeonPlayerPortrait", typeof(RectTransform), typeof(RawImage)); // 주인공 이미지 객체
+            portrait.transform.SetParent(parent, false); // 탐험 화면 아래 배치
+            var rect = portrait.GetComponent<RectTransform>(); // 이미지 위치와 크기 조회
+            rect.anchorMin = new Vector2(1f, 0f); // 오른쪽 아래 기준점
+            rect.anchorMax = new Vector2(1f, 0f); // 오른쪽 아래 고정점
+            rect.pivot = new Vector2(1f, 0f); // 이미지 오른쪽 아래 기준
+            rect.anchoredPosition = new Vector2(-30f, 25f); // 화면 모서리 여백
+            rect.sizeDelta = new Vector2(230f * texture.width / texture.height, 230f); // 원본 비율의 이미지 크기
+            var image = portrait.GetComponent<RawImage>(); // 실제 이미지 표시 조회
+            image.texture = texture; // 주인공 이미지 연결
+            image.raycastTarget = false; // 게임 입력 가림 방지
+        } // 생성 끝
         private void Update() // 탐험 중 실제 체력 표시 갱신
         { // 갱신 시작
             if (playerHealth == null || AppRoot.Instance == null) // 체력 안내와 게임 상태 검사

@@ -11,6 +11,24 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 상태 읽기
             private set; // 내부 상태 변경
         } = GamePhase.Initializing; // 초기 준비 상태
+        public bool TryOpenPause() // 탐험 중 일시정지 메뉴 진입
+        { // 진입 시작
+            if (Phase != GamePhase.Exploration) // 탐험 상태 검사
+            { // 진입 거절 시작
+                return false; // 탐험 외 메뉴 차단
+            } // 진입 거절 끝
+            Phase = GamePhase.Pause; // 일시정지 상태 적용
+            return true; // 메뉴 진입 허용
+        } // 진입 끝
+        public bool TryClosePause() // 메뉴에서 탐험 복귀
+        { // 복귀 시작
+            if (Phase != GamePhase.Pause) // 메뉴 상태 검사
+            { // 복귀 거절 시작
+                return false; // 잘못된 닫기 차단
+            } // 복귀 거절 끝
+            Phase = GamePhase.Exploration; // 탐험 상태 복구
+            return true; // 메뉴 닫기 허용
+        } // 복귀 끝
         public bool TryOpenHistory() // 탐험 중 회차 기록 진입
         { // 진입 시작
             if (Phase != GamePhase.Exploration) // 탐험 상태 검사
@@ -114,7 +132,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool TryBeginTransition(GamePhase destination) // 전환 요청 검사
         { // 메서드 시작
             var canOpenTitle = destination == GamePhase.Title && Phase != GamePhase.Loading; // 시작과 복귀 가능 여부
-            var canExplore = destination == GamePhase.Exploration && Phase == GamePhase.Title; // 새 게임 가능 여부
+            var canExplore = destination == GamePhase.Exploration && (Phase == GamePhase.Title || Phase == GamePhase.Pause); // 새 게임과 메뉴 불러오기 허용
             if (!canOpenTitle && !canExplore) // 허용되지 않은 전환 검사
             { // 거절 조건 시작
                 return false; // 중복 또는 잘못된 요청 거절

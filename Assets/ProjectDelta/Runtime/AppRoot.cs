@@ -22,6 +22,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
         private HistoryScreenView historyScreen; // 현재 회차 기록 화면
+        private PauseScreenView pauseScreen; // 탐험 일시정지 메뉴
+        private InventoryState loadRollbackInventory; // 불러오기 실패 시 이전 인벤토리
+        private DoorKeyRing loadRollbackKeys; // 불러오기 실패 시 이전 열쇠
+        private ExplorationHistory loadRollbackHistory; // 불러오기 실패 시 이전 기록
+        private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
         public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
         { // 속성 시작
             get; // 탐험 기록 조회
@@ -109,7 +114,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 경로 오류 끝
             Input = GetComponent<GameInputRouter>(); // 입력 제어 연결
             Input.Initialize(); // 전용 입력 준비
-            Input.BackRequested += ReturnToTitle; // 탐험 복귀 입력 연결
+            Input.BackRequested += OpenPause; // 탐험 일시정지 입력 연결
             Input.InventoryRequested += OpenInventory; // 인벤토리 열기 입력 연결
             Input.FullMapRequested += OpenFullMap; // 전체 지도 열기 입력 연결
             Input.FullMapCloseRequested += CloseFullMap; // 전체 지도 닫기 입력 연결
@@ -160,7 +165,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 저장 끝
         public bool ContinueRun() // 타이틀에서 검증된 회차 재개
         { // 재개 시작
-            if (Flow.Phase != GamePhase.Title || !CanContinueRun) // 타이틀과 회차 검사
+            if ((Flow.Phase != GamePhase.Title && Flow.Phase != GamePhase.Pause) || !CanContinueRun) // 타이틀과 메뉴의 회차 검사
             { // 재개 거절 조건 시작
                 return false; // 잘못된 재개 차단
             } // 재개 거절 조건 끝
@@ -175,6 +180,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 기록 복원 시작
                 restoredHistory.Add(entry); // 검증된 사건 복원
             } // 기록 복원 끝
+            if (Flow.Phase == GamePhase.Pause) // 기존 회차에서 불러오기 검사
+            { // 실패 복구 준비 시작
+                loadRollbackInventory = Inventory; // 기존 인벤토리 보관
+                loadRollbackKeys = Keys; // 기존 열쇠 보관
+                loadRollbackHistory = ExplorationHistory; // 기존 기록 보관
+                loadRollbackHealth = PlayerHealth; // 기존 체력 보관
+            } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
             Keys = restoredKeys; // 복원한 열쇠 적용
             ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
@@ -211,6 +223,59 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        public void OpenPause() // 탐험 중 일시정지 메뉴 열기
+        { // 열기 시작
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 조회
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어 조회
+            if (travel == null || travel.CaptureRun() == null || !Flow.TryOpenPause()) // 안정된 탐험 상태 검사
+            { // 진입 거절 시작
+                return; // 이동 중 메뉴 진입 차단
+            } // 진입 거절 끝
+            Input.SetPhase(GamePhase.Pause); // 탐험 입력 잠금과 메뉴 입력 활성화
+            try // 메뉴 화면 생성
+            { // 생성 시작
+                pauseScreen = PauseScreenView.Create(this, travel.transform); // 현재 회차 메뉴 연결
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 실패 복구 시작
+                Flow.TryClosePause(); // 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Pause screen failed: " + exception.Message); // 실제 오류 기록
+            } // 실패 복구 끝
+        } // 열기 끝
+        public void ClosePause() // 메뉴를 닫고 탐험 복귀
+        { // 닫기 시작
+            if (!Flow.TryClosePause()) // 실제 메뉴 상태 검사
+            { // 닫기 거절 시작
+                return; // 잘못된 닫기 차단
+            } // 닫기 거절 끝
+            if (pauseScreen != null) // 메뉴 화면 존재 검사
+            { // 화면 정리 시작
+                pauseScreen.gameObject.SetActive(false); // 메뉴 즉시 숨김
+                Destroy(pauseScreen.gameObject); // 기존 메뉴 정리
+                pauseScreen = null; // 메뉴 참조 해제
+            } // 화면 정리 끝
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 닫기 끝
+        public bool ReloadRunFromPause(out string error) // 메뉴의 저장 회차 불러오기
+        { // 불러오기 시작
+            error = string.Empty; // 기본 오류 없음
+            if (Flow.Phase != GamePhase.Pause || runStorage == null) // 메뉴와 저장소 검사
+            { // 불러오기 거절 시작
+                error = "저장된 회차를 불러올 수 없습니다."; // 불러오기 불가 안내
+                return false; // 잘못된 요청 차단
+            } // 불러오기 거절 끝
+            var data = runStorage.Load(out var warning); // 최신 저장 파일과 보호 상태 확인
+            if (data == null || !RunRestoreRules.IsValid(data)) // 저장 회차 유효성 검사
+            { // 저장 오류 시작
+                error = string.IsNullOrEmpty(warning) ? "저장된 회차가 없습니다." : warning; // 실제 불러오기 오류 안내
+                return false; // 현재 회차 보존
+            } // 저장 오류 끝
+            savedRun = data; // 확인한 최신 회차 보관
+            savedRunValid = true; // 회차 재개 허용
+            RunSaveMessage = warning; // 저장 복구 안내 보관
+            return ContinueRun(); // 검증된 회차 재개
+        } // 불러오기 끝
         public void OpenHistory() // 탐험 중 회차 기록 화면 열기
         { // 열기 시작
             var room = GameObject.Find("RoomTravel"); // 실제 던전 이동 객체
@@ -506,13 +571,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (sceneLoader.Succeeded) // 실제 로드 성공 검사
             { // 성공 조건 시작
                 Flow.CompleteTransition(); // 도착 상태 확정
+                ClearLoadRollback(); // 불러오기 복구 대상 해제
             } // 성공 조건 끝
             else // 실패 복구 분기
             { // 복구 분기 시작
                 Flow.CancelTransition(); // 이전 상태 복구
+                if (loadRollbackInventory != null) // 메뉴 불러오기 실패 검사
+                { // 기존 회차 복구 시작
+                    Inventory = loadRollbackInventory; // 이전 인벤토리 복원
+                    Keys = loadRollbackKeys; // 이전 열쇠 복원
+                    ExplorationHistory = loadRollbackHistory; // 이전 회차 기록 복원
+                    PlayerHealth = loadRollbackHealth; // 이전 체력 복원
+                    PendingRun = null; // 실패한 회차 복원 요청 해제
+                    ClearLoadRollback(); // 복구 대상 해제
+                } // 기존 회차 복구 끝
             } // 복구 분기 끝
             Input.SetPhase(Flow.Phase); // 현재 화면의 입력 복구
         } // 전환 끝
+        private void ClearLoadRollback() // 불러오기 전 상태 보관 해제
+        { // 해제 시작
+            loadRollbackInventory = null; // 이전 인벤토리 참조 해제
+            loadRollbackKeys = null; // 이전 열쇠 참조 해제
+            loadRollbackHistory = null; // 이전 기록 참조 해제
+        } // 해제 끝
         private void OnDestroy() // 공통 객체 해제
         { // 해제 시작
             if (Instance != this) // 중복 객체 해제 검사
@@ -521,7 +602,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 무시 조건 끝
             if (Input != null) // 입력 객체 존재 검사
             { // 해제 조건 시작
-                Input.BackRequested -= ReturnToTitle; // 복귀 입력 연결 해제
+                Input.BackRequested -= OpenPause; // 일시정지 입력 연결 해제
                 Input.InventoryRequested -= OpenInventory; // 인벤토리 열기 연결 해제
                 Input.FullMapRequested -= OpenFullMap; // 전체 지도 열기 연결 해제
                 Input.FullMapCloseRequested -= CloseFullMap; // 전체 지도 닫기 연결 해제

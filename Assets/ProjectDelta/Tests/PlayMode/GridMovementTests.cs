@@ -30,6 +30,23 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView; // 검증 입력을 게임에 전달
 #endif // 편집기 입력 설정 끝
         } // 준비 끝
+        [UnityTest] // 누른 방향의 연속 이동 검증
+        public IEnumerator HeldW_ContinuesUntilObstacleAndStopsOnRelease() // 길게 누르기와 장애물 차단 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var player = FindPlayer(); // 현재 플레이어 조회
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 위쪽 이동 키 유지
+            InputSystem.Update(); // 누른 키 반영
+            yield return new WaitForSeconds(0.8f); // 연속 이동 대기
+            Assert.That(player.Y, Is.EqualTo(2)); // 여러 칸 이동 후 장애물 앞 정지
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return new WaitForSeconds(0.3f); // 추가 이동 여부 대기
+            Assert.That(player.Y, Is.EqualTo(2)); // 해제 후 위치 유지
+        } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
         public IEnumerator SavedDungeon_ContainsWalkableTilesObstaclesAndPlayer() // 저장된 바닥과 플레이어 검증
         { // 검증 시작

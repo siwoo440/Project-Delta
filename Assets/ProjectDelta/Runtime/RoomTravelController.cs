@@ -77,7 +77,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public bool IsReady => state != null && Layout != null && Discovery != null && player != null; // 생성과 화면 연결 준비 상태
         public RunSaveData CaptureRun() // 확정된 탐험 상태의 저장본
         { // 저장본 생성 시작
-            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || AppRoot.Instance.Flow.Phase != GamePhase.Exploration) // 안정된 탐험 상태 검사
+            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Exploration && AppRoot.Instance.Flow.Phase != GamePhase.Pause)) // 안정된 탐험과 메뉴 상태 검사
             { // 저장 불가 조건 시작
                 return null; // 이동이나 다른 화면의 저장 차단
             } // 저장 불가 조건 끝

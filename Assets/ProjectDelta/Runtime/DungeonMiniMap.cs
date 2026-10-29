@@ -1,5 +1,6 @@
 using ProjectDelta.Core; // 방 구조와 발견 상태
 using UnityEngine; // 화면 객체와 위치
+using UnityEngine.InputSystem; // 미니맵 클릭 입력
 using UnityEngine.UI; // 미니맵 사각형 표시
 namespace ProjectDelta.Runtime // 실행 이름 공간
 { // 이름 공간 시작
@@ -10,6 +11,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text directionLabel; // 현재 위치의 방향 표시
         private float spacing; // 공개된 방에 맞춘 표시 간격
         private Vector2 mapCenter; // 공개된 방의 좌표 중심
+        private InputAction click; // 미니맵 클릭 입력
+        private RectTransform clickRect; // 클릭 가능한 지도 영역
+        private int createdFrame; // 생성 직후 클릭 차단
         public static void Create(Transform parent, RoomTravelController controller) // 화면에 미니맵 생성
         { // 생성 시작
             if (controller == null || !controller.IsReady) // 지도 데이터와 실제 방 상태 준비 검사
@@ -38,6 +42,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             layerRect.offsetMax = Vector2.zero; // 오른쪽 위 여백 없음
             var view = mapObject.GetComponent<DungeonMiniMap>(); // 새 지도 표시기 조회
             view.Initialize(controller, layer.transform); // 데이터 연결과 초기 표시
+            view.clickRect = rect; // 실제 미니맵 클릭 영역
+            view.createdFrame = Time.frameCount; // 생성 프레임 보관
+            view.click = new InputAction("MiniMapClick", InputActionType.Button, "<Mouse>/leftButton"); // 미니맵 클릭 감지
+            view.click.performed += view.OnClick; // 클릭 동작 연결
+            view.click.Enable(); // 미니맵 클릭 활성화
         } // 생성 끝
         private void Initialize(RoomTravelController controller, Transform layer) // 방 데이터와 이벤트 연결
         { // 연결 시작
@@ -49,12 +58,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 연결 끝
         private void OnDestroy() // 지도 이벤트 연결 해제
         { // 정리 시작
+            if (click != null) // 클릭 입력 존재 검사
+            { // 입력 정리 시작
+                click.performed -= OnClick; // 클릭 동작 연결 해제
+                click.Dispose(); // 클릭 입력 정리
+            } // 입력 정리 끝
             if (travel != null) // 방 이동 객체 존재 검사
             { // 연결 해제 시작
                 travel.RoomChanged -= Rebuild; // 지도 갱신 구독 해제
                 travel.DiscoveryChanged -= Rebuild; // 비밀 발견 구독 해제
             } // 연결 해제 끝
         } // 정리 끝
+        private void OnClick(InputAction.CallbackContext context) // 실제 미니맵 클릭 검사
+        { // 클릭 검사 시작
+            var mouse = context.control.device as Mouse; // 클릭한 마우스 조회
+            if (Time.frameCount <= createdFrame || mouse == null || AppRoot.Instance == null || !AppRoot.Instance.Input.IsExplorationEnabled) // 생성 직후와 탐험 상태 검사
+            { // 클릭 차단 시작
+                return; // 잘못된 지도 열기 차단
+            } // 클릭 차단 끝
+            if (RectTransformUtility.RectangleContainsScreenPoint(clickRect, mouse.position.ReadValue(), null)) // 미니맵 영역 검사
+            { // 지도 열기 시작
+                AppRoot.Instance.OpenFullMap(); // 실제 전체 지도 열기
+            } // 지도 열기 끝
+        } // 클릭 검사 끝
         private void Update() // 플레이어 방향의 지도 표시 갱신
         { // 갱신 시작
             if (travel == null || directionLabel == null) // 지도와 방향 표시 검사
