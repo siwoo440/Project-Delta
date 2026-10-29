@@ -89,6 +89,15 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(player.Y, Is.EqualTo(1)); // 위쪽 이동의 세로 위치
             Assert.That(player.Facing, Is.EqualTo(MoveDirection.Up)); // 위쪽 표시 방향
             AssertDirection(player, 0f); // 위쪽 화살표 확인
+            Assert.That(player.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonPlayerUp")); // 위쪽 주인공 이미지 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 플레이 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                var capture = typeof(DungeonRuntimeGenerationTests).GetMethod("CaptureScreen", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic); // 실제 던전 화면 캡처 도구
+                var image = (Texture2D)capture.Invoke(null, new object[] { "DungeonCanvas" }); // 위쪽 주인공의 실제 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
             InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 게임패드 오른쪽 입력
             InputSystem.Update(); // 게임패드 입력 반영
             yield return null; // 게임패드 입력 처리 대기
@@ -99,6 +108,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(player.Y, Is.EqualTo(1)); // 오른쪽 이동의 세로 위치
             Assert.That(player.Facing, Is.EqualTo(MoveDirection.Right)); // 오른쪽 표시 방향
             AssertDirection(player, -90f); // 오른쪽 화살표 확인
+            Assert.That(player.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonPlayerRight")); // 오른쪽 주인공 이미지 확인
             var floor = GameObject.Find("DungeonGrid/Floor").GetComponent<Tilemap>(); // 바닥 중심 변환 조회
             Assert.That(Vector3.Distance(player.transform.position, floor.GetCellCenterWorld(new Vector3Int(1, 1, 0))), Is.LessThan(0.001f)); // 실제 화면과 칸 좌표 일치 확인
             yield return TapKey(Key.S); // 아래쪽 한 칸 입력
@@ -107,10 +117,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(player.Y, Is.EqualTo(0)); // 아래쪽 이동의 세로 위치
             Assert.That(player.Facing, Is.EqualTo(MoveDirection.Down)); // 아래쪽 표시 방향
             AssertDirection(player, 180f); // 아래쪽 화살표 확인
+            Assert.That(player.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonPlayer")); // 아래쪽 주인공 이미지 확인
             yield return TapKey(Key.LeftArrow); // 화살표 키의 왼쪽 입력
             yield return WaitForStopped(player); // 화살표 키 이동 완료 대기
             Assert.That(player.X, Is.EqualTo(0)); // 왼쪽 화살표 키 이동 확인
             Assert.That(player.Facing, Is.EqualTo(MoveDirection.Left)); // 왼쪽 화살표 키 방향 확인
+            Assert.That(player.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonPlayerLeft")); // 왼쪽 주인공 이미지 확인
             yield return TapKey(Key.DownArrow); // 화살표 키의 아래쪽 입력
             yield return WaitForStopped(player); // 아래쪽 화살표 키 이동 완료 대기
             Assert.That(player.Y, Is.EqualTo(-1)); // 아래쪽 화살표 키 이동 확인

@@ -167,6 +167,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     break; // 방향 선택 종료
             } // 방향 선택 끝
             directionIndicator.localRotation = Quaternion.Euler(0f, 0f, angle); // 화살표 회전 적용
+            DungeonPresentation.ApplyPlayerDirection(gameObject, state.Facing); // 실제 이동 방향의 주인공 이미지 적용
         } // 표시 끝
         private static MoveDirection ToMoveDirection(Vector2Int direction) // 화면 방향의 논리 방향 변환
         { // 변환 시작

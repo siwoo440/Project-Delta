@@ -1,4 +1,5 @@
 using System; // 리소스 구성과 수치 검사
+using ProjectDelta.Core; // 플레이어 이동 방향
 using UnityEngine; // 스프라이트와 방 객체
 using UnityEngine.Tilemaps; // 기존 시험 타일 교체
 namespace ProjectDelta.Runtime // 실행 이름 공간
@@ -6,12 +7,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class DungeonPresentationTag : MonoBehaviour // 중복 확대 방지 표시
     { // 클래스 시작
     } // 클래스 끝
+    public sealed class DungeonPlayerArtTag : MonoBehaviour // 생성 주인공 이미지 적용 표시
+    { // 클래스 시작
+    } // 클래스 끝
     public static class DungeonPresentation // 실행 중 던전 이미지와 크기 적용
     { // 클래스 시작
         private static Tile floorTile; // 생성한 바닥 이미지 타일
         private static Tile obstacleTile; // 생성한 장애물 이미지 타일
         private static Sprite doorSprite; // 생성한 문 이미지
-        private static Sprite playerSprite; // 생성한 SD 주인공 이미지
+        private static Sprite playerSprite; // 생성한 SD 주인공 정면 이미지
+        private static Sprite playerUpSprite; // 생성한 SD 주인공 뒤쪽 이미지
+        private static Sprite playerLeftSprite; // 생성한 SD 주인공 왼쪽 이미지
+        private static Sprite playerRightSprite; // 생성한 SD 주인공 오른쪽 이미지
         private static Tile borderTile; // 각 바닥 칸의 검은 테두리
         public static void Apply(RoomBinding[] rooms) // 실제 생성된 방의 표시 구성
         { // 적용 시작
@@ -60,13 +67,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 사용자 이미지 보존 끝
             if (playerSprite == null) // 주인공 이미지 준비 여부 확인
             { // 이미지 준비 시작
-                playerSprite = CreatePlayerSprite(); // 생성한 SD 주인공 연결
+                playerSprite = CreatePlayerSprite("DungeonArt/DungeonPlayer"); // 생성한 SD 주인공 연결
             } // 이미지 준비 끝
             if (playerSprite == null) // 주인공 이미지 누락 확인
             { // 누락 조건 시작
                 return; // 기존 시험 이미지 유지
             } // 누락 조건 끝
             renderer.sprite = playerSprite; // SD 주인공 이미지 표시
+            player.AddComponent<DungeonPlayerArtTag>(); // 생성 이미지의 방향 전환 허용
             renderer.color = Color.white; // 주인공 이미지 본래 색상
             var indicator = player.transform.Find("DirectionIndicator"); // 기존 이동 방향 화살표
             if (indicator != null) // 방향 표시 존재 확인
@@ -74,6 +82,50 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 indicator.localPosition = new Vector3(0f, -0.65f, 0f); // 주인공 아래의 방향 위치
                 indicator.localScale = new Vector3(0.35f, 0.35f, 1f); // 캐릭터를 가리지 않는 화살표 크기
             } // 방향 표시 배치 끝
+        } // 적용 끝
+        public static void ApplyPlayerDirection(GameObject player, MoveDirection direction) // 생성 주인공의 실제 이동 방향 표시
+        { // 적용 시작
+            if (player == null || player.GetComponent<DungeonPlayerArtTag>() == null) // 생성 주인공 적용 여부 검사
+            { // 사용자 이미지 보존 시작
+                return; // 사용자 지정 이미지 변경 차단
+            } // 사용자 이미지 보존 끝
+            var renderer = player.GetComponent<SpriteRenderer>(); // 실제 주인공 이미지 표시기
+            if (renderer == null) // 표시기 존재 검사
+            { // 누락 조건 시작
+                return; // 표시기 없는 객체 보존
+            } // 누락 조건 끝
+            Sprite next = null; // 선택한 방향 이미지
+            switch (direction) // 현재 이동 방향 검사
+            { // 방향 선택 시작
+                case MoveDirection.Up: // 위쪽 이동 방향
+                    if (playerUpSprite == null) // 뒤쪽 이미지 준비 검사
+                    { // 이미지 준비 시작
+                        playerUpSprite = CreatePlayerSprite("DungeonArt/DungeonPlayerUp"); // 뒤쪽 이미지 연결
+                    } // 이미지 준비 끝
+                    next = playerUpSprite; // 뒤쪽 이미지 선택
+                    break; // 방향 선택 종료
+                case MoveDirection.Left: // 왼쪽 이동 방향
+                    if (playerLeftSprite == null) // 왼쪽 이미지 준비 검사
+                    { // 이미지 준비 시작
+                        playerLeftSprite = CreatePlayerSprite("DungeonArt/DungeonPlayerLeft"); // 왼쪽 이미지 연결
+                    } // 이미지 준비 끝
+                    next = playerLeftSprite; // 왼쪽 이미지 선택
+                    break; // 방향 선택 종료
+                case MoveDirection.Right: // 오른쪽 이동 방향
+                    if (playerRightSprite == null) // 오른쪽 이미지 준비 검사
+                    { // 이미지 준비 시작
+                        playerRightSprite = CreatePlayerSprite("DungeonArt/DungeonPlayerRight"); // 오른쪽 이미지 연결
+                    } // 이미지 준비 끝
+                    next = playerRightSprite; // 오른쪽 이미지 선택
+                    break; // 방향 선택 종료
+                case MoveDirection.Down: // 아래쪽 이동 방향
+                    next = playerSprite; // 기존 정면 이미지 선택
+                    break; // 방향 선택 종료
+            } // 방향 선택 끝
+            if (next != null) // 선택한 이미지 존재 검사
+            { // 이미지 변경 시작
+                renderer.sprite = next; // 실제 이동 방향 이미지 표시
+            } // 이미지 변경 끝
         } // 적용 끝
         private static void PrepareArt() // 프로젝트의 생성 이미지 준비
         { // 준비 시작
@@ -136,9 +188,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 바닥 조건 끝
             } // 칸 순회 끝
         } // 표시 끝
-        private static Sprite CreatePlayerSprite() // 확대된 격자에 맞는 주인공 이미지 구성
+        private static Sprite CreatePlayerSprite(string path) // 확대된 격자에 맞는 주인공 이미지 구성
         { // 생성 시작
-            var texture = Resources.Load<Texture2D>("DungeonArt/DungeonPlayer"); // 생성한 SD 주인공 이미지
+            var texture = Resources.Load<Texture2D>(path); // 생성한 방향별 SD 주인공 이미지
             if (texture == null || texture.width <= 0 || texture.height <= 0) // 주인공 이미지 존재 검사
             { // 누락 조건 시작
                 return null; // 기존 시험 이미지 보존

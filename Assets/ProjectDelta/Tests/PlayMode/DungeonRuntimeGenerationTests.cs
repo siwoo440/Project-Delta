@@ -356,6 +356,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var renderer = custom.GetComponent<SpriteRenderer>(); // 사용자 렌더러
             renderer.sprite = sprite; // 사용자 이미지 연결
             DungeonPresentation.ApplyPlayer(custom); // 시험용 이미지 교체 요청
+            DungeonPresentation.ApplyPlayerDirection(custom, MoveDirection.Up); // 사용자 이미지의 방향 전환 요청
             Assert.That(renderer.sprite, Is.SameAs(sprite)); // 사용자 이미지 보존 확인
             Object.Destroy(custom); // 시험 객체 정리
             Object.Destroy(sprite); // 시험 스프라이트 정리
