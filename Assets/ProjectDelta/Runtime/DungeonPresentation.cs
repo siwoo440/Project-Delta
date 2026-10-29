@@ -11,6 +11,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private static Tile floorTile; // 생성한 바닥 이미지 타일
         private static Tile obstacleTile; // 생성한 장애물 이미지 타일
         private static Sprite doorSprite; // 생성한 문 이미지
+        private static Sprite playerSprite; // 생성한 SD 주인공 이미지
         private static Tile borderTile; // 각 바닥 칸의 검은 테두리
         public static void Apply(RoomBinding[] rooms) // 실제 생성된 방의 표시 구성
         { // 적용 시작
@@ -49,6 +50,30 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     } // 문 이미지 적용 끝
                 } // 문 표시 검사 끝
             } // 방 적용 끝
+        } // 적용 끝
+        public static void ApplyPlayer(GameObject player) // 시험용 주인공의 SD 이미지 적용
+        { // 적용 시작
+            var renderer = player == null ? null : player.GetComponent<SpriteRenderer>(); // 실제 주인공 렌더러
+            if (renderer == null || renderer.sprite == null || renderer.sprite.texture == null || renderer.sprite.texture.name != "GridCell") // 기존 시험 이미지 확인
+            { // 사용자 이미지 보존 시작
+                return; // 다른 플레이어 이미지 유지
+            } // 사용자 이미지 보존 끝
+            if (playerSprite == null) // 주인공 이미지 준비 여부 확인
+            { // 이미지 준비 시작
+                playerSprite = CreatePlayerSprite(); // 생성한 SD 주인공 연결
+            } // 이미지 준비 끝
+            if (playerSprite == null) // 주인공 이미지 누락 확인
+            { // 누락 조건 시작
+                return; // 기존 시험 이미지 유지
+            } // 누락 조건 끝
+            renderer.sprite = playerSprite; // SD 주인공 이미지 표시
+            renderer.color = Color.white; // 주인공 이미지 본래 색상
+            var indicator = player.transform.Find("DirectionIndicator"); // 기존 이동 방향 화살표
+            if (indicator != null) // 방향 표시 존재 확인
+            { // 방향 표시 배치 시작
+                indicator.localPosition = new Vector3(0f, -0.65f, 0f); // 주인공 아래의 방향 위치
+                indicator.localScale = new Vector3(0.35f, 0.35f, 1f); // 캐릭터를 가리지 않는 화살표 크기
+            } // 방향 표시 배치 끝
         } // 적용 끝
         private static void PrepareArt() // 프로젝트의 생성 이미지 준비
         { // 준비 시작
@@ -111,6 +136,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 바닥 조건 끝
             } // 칸 순회 끝
         } // 표시 끝
+        private static Sprite CreatePlayerSprite() // 확대된 격자에 맞는 주인공 이미지 구성
+        { // 생성 시작
+            var texture = Resources.Load<Texture2D>("DungeonArt/DungeonPlayer"); // 생성한 SD 주인공 이미지
+            if (texture == null || texture.width <= 0 || texture.height <= 0) // 주인공 이미지 존재 검사
+            { // 누락 조건 시작
+                return null; // 기존 시험 이미지 보존
+            } // 누락 조건 끝
+            var pixelsPerUnit = Math.Max(texture.width, texture.height) * 0.65f; // 격자에 맞춘 이미지 표시 크기
+            return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), pixelsPerUnit); // 투명 여백을 고려한 스프라이트
+        } // 생성 끝
         private static Tile CreateTile(string path, string name) // 생성 이미지의 실행 타일 구성
         { // 생성 시작
             var sprite = CreateSprite(path); // 실제 생성 이미지 스프라이트

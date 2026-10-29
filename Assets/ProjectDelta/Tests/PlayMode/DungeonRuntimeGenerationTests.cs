@@ -177,6 +177,36 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(door.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonDoor")); // 생성한 문 이미지 적용
             Assert.That(Camera.main.GetComponent("DungeonCameraMotion"), Is.Not.Null); // 플레이어 추적 카메라 제공 확인
         } // 검증 끝
+        [UnityTest] // 실제 주인공 이미지와 방향 표시 검증
+        public IEnumerator DungeonPlayer_UsesAnimeSpriteAndVisibleDirection() // 탐험 주인공과 방향 표시 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var player = GameObject.Find("PlayerPreview"); // 실제 플레이어 객체
+            var renderer = player.GetComponent<SpriteRenderer>(); // 플레이어 이미지 렌더러
+            Assert.That(renderer.sprite.texture.name, Is.EqualTo("DungeonPlayer")); // 주인공 이미지 적용 확인
+            Assert.That(renderer.color, Is.EqualTo(Color.white)); // 주인공 이미지 본래 색상 확인
+            Assert.That(renderer.bounds.size.y, Is.InRange(1.8f, 2.2f)); // 확대된 타일에 맞춘 주인공 크기 확인
+            var indicator = player.transform.Find("DirectionIndicator"); // 이동 방향 표시
+            Assert.That(indicator, Is.Not.Null); // 방향 표시 보존 확인
+            Assert.That(indicator.localScale.x, Is.LessThan(0.5f)); // 캐릭터를 가리지 않는 방향 크기
+            Assert.That(indicator.localPosition.y, Is.LessThan(-0.4f)); // 캐릭터 아래의 방향 표시
+        } // 검증 끝
+        [UnityTest] // 사용자 지정 주인공 이미지 보존 검증
+        public IEnumerator DungeonPlayer_CustomSpriteIsPreserved() // 사용자 지정 이미지 덮어쓰기 방지
+        { // 검증 시작
+            var custom = new GameObject("CustomPlayer", typeof(SpriteRenderer)); // 사용자 지정 플레이어 객체
+            var texture = new Texture2D(2, 2); // 사용자 지정 이미지
+            texture.name = "CustomPlayerTexture"; // 시험용 사용자 이미지 이름
+            var sprite = Sprite.Create(texture, new Rect(0f, 0f, 2f, 2f), Vector2.one * 0.5f); // 사용자 지정 스프라이트
+            var renderer = custom.GetComponent<SpriteRenderer>(); // 사용자 렌더러
+            renderer.sprite = sprite; // 사용자 이미지 연결
+            DungeonPresentation.ApplyPlayer(custom); // 시험용 이미지 교체 요청
+            Assert.That(renderer.sprite, Is.SameAs(sprite)); // 사용자 이미지 보존 확인
+            Object.Destroy(custom); // 시험 객체 정리
+            Object.Destroy(sprite); // 시험 스프라이트 정리
+            Object.Destroy(texture); // 시험 이미지 정리
+            yield return null; // 객체 정리 반영 대기
+        } // 검증 끝
         [UnityTest] // 방 이동 화면 전환과 입력 잠금 검증
         public IEnumerator DungeonVisuals_RoomTransition_SlidesAndBlocksInput() // 실제 방 이동과 부드러운 카메라 전환
         { // 검증 시작

@@ -278,6 +278,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 잘못된 추적 카메라 연결 차단
             } // 배치 실패 조건 끝
             player.transform.localScale = Vector3.Scale(player.transform.localScale, new Vector3(2f, 2f, 1f)); // 확대된 타일에 맞춘 플레이어 크기
+            DungeonPresentation.ApplyPlayer(player.gameObject); // 시험 주인공을 SD 이미지로 교체
             var camera = Camera.main; // 실제 던전 카메라 조회
             if (camera != null) // 카메라 존재 검사
             { // 카메라 연결 시작
