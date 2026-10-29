@@ -229,6 +229,33 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 다음 입력 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소가 타이틀 복귀로 전달되지 않음
         } // 검증 끝
+        [UnityTest] // 마우스 전체 지도 열기와 닫기 검증
+        public IEnumerator FullMap_OpensAndClosesWithMouseButtons() // 마우스 버튼의 지도 왕복 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var mouse = InputSystem.AddDevice<Mouse>(); // 시험 마우스 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var open = GameObject.Find("MapOpenButton"); // 탐험 화면의 지도 열기 버튼
+            Assert.That(open, Is.Not.Null); // 지도 열기 버튼 존재 확인
+            var openPosition = RectTransformUtility.WorldToScreenPoint(null, open.GetComponent<RectTransform>().position); // 열기 버튼 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }.WithButton(MouseButton.Left)); // 열기 버튼 클릭
+            InputSystem.Update(); // 클릭 입력 반영
+            yield return null; // 지도 열기 처리 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 마우스의 지도 진입 확인
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }); // 마우스 버튼 해제
+            InputSystem.Update(); // 버튼 해제 반영
+            yield return null; // 해제 처리 대기
+            var close = GameObject.Find("MapCloseButton"); // 지도 화면의 닫기 버튼
+            Assert.That(close, Is.Not.Null); // 지도 닫기 버튼 존재 확인
+            var closePosition = RectTransformUtility.WorldToScreenPoint(null, close.GetComponent<RectTransform>().position); // 닫기 버튼 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = closePosition }.WithButton(MouseButton.Left)); // 닫기 버튼 클릭
+            InputSystem.Update(); // 클릭 입력 반영
+            yield return null; // 지도 닫기 처리 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 마우스의 탐험 복귀 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
+            InputSystem.RemoveDevice(mouse); // 시험 마우스 연결 해제
+        } // 검증 끝
         [UnityTest] // 게임패드의 전체 지도 열기와 닫기 검증
         public IEnumerator FullMap_TogglesWithGamepadSelect() // 보기 버튼의 지도 왕복 확인
         { // 검증 시작
