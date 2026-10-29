@@ -80,6 +80,29 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 지문 오류 시작
                 return false; // 변경되거나 누락된 구조 거절
             } // 지문 오류 끝
+            if (data.version >= 14 && data.roomContentEnabled) // 저장된 방 콘텐츠 배치 검사
+            { // 콘텐츠 복원 검사 시작
+                var currentFloorFound = false; // 현재 층 저장 존재 여부
+                foreach (var savedFloor in data.roomContents) // 모든 방문 층 콘텐츠 순회
+                { // 층별 배치 검사 시작
+                    if (savedFloor.floor > data.floor || savedFloor.floor > 2) // 진행하지 않은 층 검사
+                    { // 층 오류 시작
+                        return false; // 미래 층의 잘못된 콘텐츠 차단
+                    } // 층 오류 끝
+                    var contentSeed = savedFloor.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 층별 재현 씨드
+                    var contentLayout = DungeonGenerator.GenerateVersioned(contentSeed, generationVersion); // 저장된 층의 던전 구조
+                    var excluded = TrialRoomContentPlacement.Excluded(contentLayout, savedFloor.floor, generationVersion, data.groupEncounterEnabled); // 기존 조우 방의 안정적 제외
+                    if (excluded == null || !FloorRoomContent.TryRestore(savedFloor, contentLayout, contentSeed, excluded, out _)) // 기존 조우와 결정적 배치 검사
+                    { // 배치 오류 시작
+                        return false; // 손상되거나 변경된 콘텐츠 차단
+                    } // 배치 오류 끝
+                    currentFloorFound |= savedFloor.floor == data.floor; // 현재 층의 콘텐츠 확인
+                } // 층별 배치 검사 끝
+                if (!currentFloorFound) // 현재 층 상태 누락 검사
+                { // 누락 오류 시작
+                    return false; // 누락된 현재 층의 복원 차단
+                } // 누락 오류 끝
+            } // 콘텐츠 복원 검사 끝
             if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY, data.secretPassages) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
             { // 던전 오류 시작
                 return false; // 잘못된 던전 상태 거절

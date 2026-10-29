@@ -1,4 +1,5 @@
 using System; // 방 변경 알림과 구성 오류
+using System.Collections; // 방 전환 완료 대기
 using System.Collections.Generic; // 완료한 조우 기록
 using ProjectDelta.Core; // 순수 방 연결 규칙
 using UnityEngine; // 실제 방 객체
@@ -21,6 +22,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private const int TrialForceDifficulty = 50; // 아직 미정인 문의 시험 난이도
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private int generationVersion = 3; // 현재 회차의 던전 생성 규칙
+        private readonly List<FloorRoomContent> roomContents = new List<FloorRoomContent>(); // 방문한 층의 상자와 함정 상태
+        private FloorRoomContent currentContent; // 현재 층의 시험 방 콘텐츠
+        public static bool? RoomContentTestOverride { get; set; } // 자동 검증용 시험 콘텐츠 활성 설정
+        public bool RoomContentEnabled { get; private set; } // 현재 회차의 상자와 함정 활성 여부
+        public FloorRoomContent CurrentContent => currentContent; // 현재 층 콘텐츠 조회
+        public bool IsTrapPending => IsReady && currentContent != null && currentContent.TrapRoom.X == RoomX && currentContent.TrapRoom.Y == RoomY && !currentContent.Snapshot().trapCompleted; // 현재 방의 미처리 함정 여부
         private bool tutorialCompleted; // 첫 슬라임 조우 완료 여부
         private int tutorialHealth; // 도망한 슬라임의 남은 체력
         private EncounterPlacement tutorialEncounter; // 첫 일반 방의 고정 조우 데이터
@@ -33,8 +40,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public bool TutorialCompleted => tutorialCompleted; // 첫 조우 완료 상태
         private bool TutorialEnabled => TutorialEncounterTestOverride ?? true; // 실제 게임의 첫 조우 활성 상태
         public EncounterPlacement TutorialEncounter => tutorialEncounter; // 첫 일반 방의 실제 조우 데이터
-        public string CurrentMonsterId => IsGroupRoom() ? (groupGoblin ? "MON_GOBLIN" : "MON_SLIME") : IsTutorialRoom() && !tutorialCompleted ? "MON_SLIME" : "trial-elite"; // 현재 시험 조우 대상 식별자
-        public string CurrentMonsterName => IsGroupRoom() ? (groupGoblin ? "고블린 2개체" : "슬라임 2개체") : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 현재 시험 대상 이름
+        public string CurrentMonsterId => IsMimicEncounter ? "MON_MIMIC" : IsGroupRoom() ? (groupGoblin ? "MON_GOBLIN" : "MON_SLIME") : IsTutorialRoom() && !tutorialCompleted ? "MON_SLIME" : "trial-elite"; // 미믹을 우선한 시험 조우 식별자
+        public string CurrentMonsterName => IsMimicEncounter ? "미믹" : IsGroupRoom() ? (groupGoblin ? "고블린 2개체" : "슬라임 2개체") : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 미믹을 우선한 시험 대상 이름
+        public bool IsMimicEncounter // 현재 상자의 미완료 미믹 여부
+        { // 속성 시작
+            get // 실제 상자 상태 조회
+            { // 조회 시작
+                if (!IsReady || currentContent == null || !currentContent.TryGetChest(RoomX, RoomY, out var chest)) // 현재 방과 상자 검사
+                { // 상자 없음 시작
+                    return false; // 미믹 조우 아님
+                } // 상자 없음 끝
+                var saved = chest.Snapshot(); // 실제 상자와 미믹 상태
+                return saved.mimicState == 2 && !saved.mimicDefeated && !saved.completed; // 살아 있는 미믹 조우
+            } // 조회 끝
+        } // 속성 끝
+        public bool IsCurrentMimic => IsMimicEncounter; // 미믹 승리 처리를 위한 현재 조우 여부
         public bool IsGroupEncounter => IsGroupRoom() && !groupEncounterCompleted; // 현재 미완료 다수 조우 여부
         public DungeonRoom GroupEncounterRoom => groupEncounterRoom; // 시험 다수 조우 방 조회
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
@@ -153,6 +173,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 bagVariant = AppRoot.Instance.Equipment.GetVariant(EquipmentSlot.Bag), // 장착한 가방의 개별 특성
                 relicIds = AppRoot.Instance.Relics.SaveIds(), // 현재 회차의 유물 목록
                 shopStocks = AppRoot.Instance.ShopStocksSnapshot(), // 방문한 층의 상품과 재고
+                roomContentEnabled = RoomContentEnabled, // 현재 회차의 시험 방 콘텐츠 여부
+                roomContents = RoomContentSnapshots(), // 방문한 층의 상자와 함정 기록
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
                 doorLock = lockData, // 현재 층의 잠금 기록
                 hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부
@@ -379,6 +401,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                         } // 선택 오류 끝
                     } // 시험 방 선택 끝
                 } // 조우 데이터 준비 끝
+                RoomContentEnabled = saved != null && saved.version >= 14 ? saved.roomContentEnabled : RoomContentTestOverride ?? true; // 새 회차 또는 저장된 콘텐츠 활성 여부
+                if (RoomContentEnabled && !InitializeRoomContents(saved)) // 층별 배치와 저장 상태 검사
+                { // 콘텐츠 오류 시작
+                    throw new InvalidOperationException("Invalid room content state."); // 잘못된 상자와 함정 상태 차단
+                } // 콘텐츠 오류 끝
+                AddContentMarkers(rooms, currentContent); // 실제 상자 방의 시험 표시 추가
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
                 UpdateLockMarkers(Layout, rooms, doorLocks); // 잠긴 문의 양방향 표시
@@ -476,6 +504,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 추적 구성 생성 끝
                 motion.Initialize(player); // 실제 플레이어 추적 시작
             } // 카메라 연결 끝
+            if (saved != null && currentContent != null && currentContent.TrapRoom.X == state.RoomX && currentContent.TrapRoom.Y == state.RoomY && !currentContent.Snapshot().trapCompleted) // 복원된 함정 방의 미처리 상태 검사
+            { // 복원 함정 처리 시작
+                StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 복원 후 최초 미처리 함정 판정
+            } // 복원 함정 처리 끝
         } // 시작 준비 끝
         private void OnEnable() // 상호작용 입력 연결
         { // 연결 시작
@@ -522,12 +554,95 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 조우 선택 화면과 대기 이동 취소
             } // 자동 조우 조건 끝
         } // 검사 끝
+        public SavedFloorRoomContent[] RoomContentSnapshots() // 방문한 층 콘텐츠의 독립 저장본
+        { // 저장본 생성 시작
+            var result = new SavedFloorRoomContent[roomContents.Count]; // 층별 독립 저장 목록
+            for (var index = 0; index < result.Length; index++) // 현재 콘텐츠 순회
+            { // 복사 시작
+                result[index] = roomContents[index].Snapshot(); // 후보와 상태를 포함한 깊은 복사
+            } // 복사 끝
+            return result; // 실제 층별 상태 전달
+        } // 저장본 생성 끝
+        public SavedFloorRoomContent[] RoomContentSnapshotsWith(FloorRoomContent next) // 한 층을 바꾼 독립 저장본
+        { // 교체 시작
+            if (next == null || currentContent == null || next.Floor != Floor) // 현재 층의 유효한 변경 검사
+            { // 변경 오류 시작
+                return null; // 다른 층의 상태 변경 차단
+            } // 변경 오류 끝
+            var result = RoomContentSnapshots(); // 기존 층의 독립 복사
+            for (var index = 0; index < result.Length; index++) // 저장 층 순회
+            { // 대상 검사 시작
+                if (result[index].floor == next.Floor) // 현재 층 일치 검사
+                { // 교체 대상 시작
+                    result[index] = next.Snapshot(); // 변경할 층의 독립 상태
+                    return result; // 나머지 층을 보존한 목록 전달
+                } // 교체 대상 끝
+            } // 대상 검사 끝
+            return null; // 없는 층의 변경 차단
+        } // 교체 끝
+        public bool ApplyRoomContent(FloorRoomContent next) // 저장된 현재 층 상태 적용
+        { // 적용 시작
+            if (next == null || currentContent == null || next.Floor != Floor) // 현재 층의 상태 검사
+            { // 적용 오류 시작
+                return false; // 다른 층의 적용 차단
+            } // 적용 오류 끝
+            for (var index = 0; index < roomContents.Count; index++) // 현재 층 위치 검색
+            { // 위치 검사 시작
+                if (roomContents[index].Floor == next.Floor) // 동일 층 검사
+                { // 적용 시작
+                    roomContents[index] = next; // 저장된 불변 상태 적용
+                    currentContent = next; // 현재 층 참조 갱신
+                    RefreshContentMarkers(); // 완료된 상자 표시 갱신
+                    return true; // 실제 적용 완료
+                } // 적용 끝
+            } // 위치 검사 끝
+            return false; // 저장되지 않은 층 차단
+        } // 적용 끝
+        private bool InitializeRoomContents(RunSaveData saved) // 저장된 층별 콘텐츠 또는 새 배치 준비
+        { // 준비 시작
+            roomContents.Clear(); // 기존 콘텐츠 상태 초기화
+            if (saved != null && saved.version >= 14 && saved.roomContents != null) // 저장된 콘텐츠 목록 검사
+            { // 복원 시작
+                foreach (var floor in saved.roomContents) // 이전에 생성한 층 순회
+                { // 층 복원 시작
+                    var seed = floor.floor == 1 ? Seed : unchecked(Seed + 7919); // 층별 재현 씨드
+                    var layout = DungeonGenerator.GenerateVersioned(seed, generationVersion); // 저장된 층의 던전 구조
+                    var excluded = TrialRoomContentPlacement.Excluded(layout, floor.floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+                    if (excluded == null || !FloorRoomContent.TryRestore(floor, layout, seed, excluded, out var restored)) // 배치와 상자 상태 검사
+                    { // 복원 오류 시작
+                        return false; // 손상된 층 상태 차단
+                    } // 복원 오류 끝
+                    roomContents.Add(restored); // 검증된 층 상태 보관
+                    if (floor.floor == Floor) // 현재 층 검사
+                    { // 현재 층 시작
+                        currentContent = restored; // 현재 방 콘텐츠 연결
+                    } // 현재 층 끝
+                } // 층 복원 끝
+            } // 복원 끝
+            if (currentContent == null) // 새 회차 또는 이전 저장의 현재 층 검사
+            { // 새 콘텐츠 생성 시작
+                var floorSeed = Floor == 1 ? Seed : unchecked(Seed + 7919); // 실제 현재 층 씨드
+                var excluded = TrialRoomContentPlacement.Excluded(Layout, Floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+                if (excluded == null || !FloorRoomContent.TryCreate(Floor, Layout, floorSeed, excluded, out var created)) // 결정적 시험 콘텐츠 생성
+                { // 생성 오류 시작
+                    return false; // 콘텐츠 부족과 조우 중복 차단
+                } // 생성 오류 끝
+                currentContent = created; // 새 현재 층 상태
+                roomContents.Add(created); // 새 층 보관
+            } // 새 콘텐츠 생성 끝
+            return true; // 모든 층 배치 준비 완료
+        } // 준비 끝
         public int CurrentEncounterHealth() // 현재 방의 후퇴한 시험 적 체력 조회
         { // 조회 시작
             if (!IsReady) // 현재 던전 준비 상태 검사
             { // 준비 안 됨 조건 시작
                 return CombatScreenView.TrialEnemyHealth; // 시험 적의 기본 최대 체력
             } // 준비 안 됨 조건 끝
+            if (IsMimicEncounter && currentContent.TryGetChest(RoomX, RoomY, out var mimic)) // 미완료 미믹과 저장된 상자 검사
+            { // 미믹 체력 조회 시작
+                var mimicHealth = mimic.Snapshot().mimicHealth; // 후퇴 후 보관된 미믹 체력
+                return mimicHealth > 0 ? mimicHealth : CombatScreenView.TrialEnemyHealth; // 실제 저장 체력 또는 시험 최대 체력
+            } // 미믹 체력 조회 끝
             if (IsTutorialRoom() && !tutorialCompleted) // 첫 슬라임 조우 검사
             { // 첫 조우 조건 시작
                 return tutorialHealth > 0 ? tutorialHealth : CombatScreenView.TrialEnemyHealth; // 저장된 체력 또는 시험 최대 체력
@@ -566,6 +681,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 잘못된 보관 조건 시작
                 return false; // 다른 방과 잘못된 적 체력 저장 차단
             } // 잘못된 보관 조건 끝
+            if (IsMimicEncounter) // 상자 미믹의 후퇴 검사
+            { // 미믹 체력 보관 시작
+                return currentContent.TryGetChest(RoomX, RoomY, out var chest) && chest.TryStoreMimicHealth(health, out var stored) && currentContent.TrySetChest(RoomX, RoomY, stored, out var next) && AppRoot.Instance != null && AppRoot.Instance.TryPersistMimicHealth(next, out _); // 미믹 체력과 상자 상태의 원자적 저장
+            } // 미믹 체력 보관 끝
             if (IsTutorialRoom() && !tutorialCompleted) // 첫 슬라임 조우 검사
             { // 첫 조우 체력 보관 시작
                 tutorialHealth = health; // 도망 후 남은 체력 보관
@@ -581,7 +700,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 완료할 수 없는 조우 차단
             } // 준비 안 됨 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
-            return room != null && (IsGroupEncounter || (IsTutorialRoom() && !tutorialCompleted) || (room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()))); // 미완료 다수·첫 조우 또는 상위 방 검사
+            return room != null && (IsMimicEncounter || IsGroupEncounter || (IsTutorialRoom() && !tutorialCompleted) || (room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()))); // 미믹과 미완료 다수·첫 조우 또는 상위 방 검사
         } // 검사 끝
         public bool CompleteCurrentEncounter() // 현재 방의 시험 조우 완료
         { // 완료 시작
@@ -621,6 +740,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 완료 거절 시작
                 return false; // 잘못된 조우 상태 차단
             } // 완료 거절 끝
+            if (IsMimicEncounter) // 상자 미믹의 별도 승리 처리 검사
+            { // 미믹 완료 차단 시작
+                return false; // 일반 조우 보상으로 상자 상태 손상 방지
+            } // 미믹 완료 차단 끝
             if (IsGroupEncounter) // 시험 다수 조우 검사
             { // 다수 완료 시작
                 data.groupEncounterCompleted = true; // 다수 조우 완료 기록
@@ -690,12 +813,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
+            if (IsTrapPending) // 이전 저장에 실패한 함정 검사
+            { // 함정 재시도 시작
+                StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 같은 방에서 함정 저장 재시도
+                return; // 함정 처리 전 상호작용 차단
+            } // 함정 재시도 끝
             var currentRoom = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
             if (currentRoom != null && currentRoom.Kind == RoomKind.Stairs && player.X == 0 && player.Y == 0) // 계단 칸의 상호작용 검사
             { // 계단 상호작용 시작
                 TryNextFloor(); // 다음 층 생성과 이동 요청
                 return; // 문 상호작용 중복 방지
             } // 계단 상호작용 끝
+            if (currentContent != null && Math.Abs((long)player.X) + Math.Abs((long)player.Y) <= 1 && currentContent.TryGetChest(state.RoomX, state.RoomY, out var chest) && !chest.Snapshot().completed) // 중앙 상자와 인접 상호작용 검사
+            { // 상자 상호작용 시작
+                if (IsMimicEncounter) // 확정되었지만 처치하지 않은 미믹 검사
+                { // 미믹 재조우 시작
+                    AppRoot.Instance.StartEncounter(); // 저장된 미믹과 다시 조우
+                } // 미믹 재조우 끝
+                else // 일반 상자 또는 미믹 승리 후 분기
+                { // 상자 확인 시작
+                    AppRoot.Instance.OpenChest(); // 실제 상자 상태와 보상 화면 열기
+                } // 상자 확인 끝
+                return; // 같은 입력의 문 이동 차단
+            } // 상자 상호작용 끝
             var door = Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing); // 현재 접근 위치의 출구 조회
             if (door == null) // 정면 문 존재 검사
             { // 문 없음 조건 시작
@@ -781,6 +921,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
             BeginRoomTransition(door.Direction); // 도착 방으로 부드러운 화면 이동 시작
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
+            if (currentContent != null && currentContent.TrapRoom.X == state.RoomX && currentContent.TrapRoom.Y == state.RoomY && !currentContent.Snapshot().trapCompleted) // 처음 진입한 미완료 함정 방 검사
+            { // 함정 판정 준비 시작
+                StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 방 전환 종료 후 즉시 함정 처리
+            } // 함정 판정 준비 끝
             if (TutorialEnabled && IsTutorialRoom() && !tutorialCompleted) // 첫 연결 방의 슬라임 검사
             { // 첫 조우 시작
                 AppRoot.Instance.StartEncounter(); // 실제 일반 조우 선택 진입
@@ -790,6 +934,40 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 실제 다수 조우 선택 진입
             } // 다수 조우 끝
         } // 처리 끝
+        private IEnumerator ApplyTrapAfterTransition(int expectedFloor, int x, int y) // 전환 완료 후 실제 함정 저장과 발동
+        { // 대기 시작
+            if (input != null) // 함정 판정 전 입력 검사
+            { // 입력 잠금 시작
+                input.SetPhase(GamePhase.Loading); // 판정 전 이동 입력 잠금
+            } // 입력 잠금 끝
+            yield return null; // 같은 프레임의 문 전환 잠금 대기
+            while (AppRoot.Instance != null && AppRoot.Instance.Flow.Phase == GamePhase.Loading) // 복원 장면 전환 검사
+            { // 복원 대기 시작
+                yield return null; // 탐험 상태 전환 대기
+            } // 복원 대기 끝
+            while (player != null && (player.IsRoomTransitionLocked || player.IsMoving)) // 화면 전환과 플레이어 이동 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임의 전환 완료 검사
+            } // 전환 대기 끝
+            if (!IsReady || Floor != expectedFloor || state.RoomX != x || state.RoomY != y || currentContent == null || currentContent.TrapRoom.X != x || currentContent.TrapRoom.Y != y || currentContent.Snapshot().trapCompleted || AppRoot.Instance == null) // 현재 방과 미완료 함정 검사
+            { // 대상 변경 시작
+                yield break; // 다른 방과 이미 완료한 함정 차단
+            } // 대상 변경 끝
+            if (!AppRoot.Instance.TryApplyTrap(this, out var message)) // 실제 판정과 원자적 저장 검사
+            { // 저장 실패 시작
+                DoorNoticeChanged?.Invoke(message + " · E: 다시 시도 · ESC: 메뉴"); // 재시도와 메뉴 안내
+                if (input != null && AppRoot.Instance.Flow.Phase == GamePhase.Exploration) // 탐험 입력 복구 검사
+                { // 입력 복구 시작
+                    input.SetPhase(GamePhase.Exploration); // 실패 후 기존 탐험 입력 복구
+                } // 입력 복구 끝
+                yield break; // 저장되지 않은 결과 적용 차단
+            } // 저장 실패 끝
+            DoorNoticeChanged?.Invoke(message); // 실제 함정 처리 결과 안내
+            if (input != null && AppRoot.Instance.Flow.Phase == GamePhase.Exploration) // 정상 탐험 상태 검사
+            { // 입력 복구 시작
+                input.SetPhase(GamePhase.Exploration); // 함정 완료 후 이동 입력 복구
+            } // 입력 복구 끝
+        } // 대기 끝
         private static void BeginRoomTransition(MoveDirection direction) // 도착 방의 부드러운 화면 전환
         { // 전환 시작
             var camera = Camera.main; // 실제 던전 카메라 조회
@@ -926,6 +1104,59 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 throw new InvalidOperationException("The encounter cell must be walkable."); // 방 변경 전 충돌 거절
             } // 통행 불가 조건 끝
         } // 검사 끝
+        private static void AddContentMarkers(RoomBinding[] bindings, FloorRoomContent content) // 상자 방에 실제 시험 상자 표시
+        { // 표시 시작
+            if (content == null) // 비활성 콘텐츠 검사
+            { // 비활성 시작
+                return; // 상자 표시 없음
+            } // 비활성 끝
+            foreach (var entry in content.Snapshot().chests) // 현재 층 상자 순회
+            { // 상자 표시 시작
+                foreach (var binding in bindings) // 실제 방 연결 순회
+                { // 좌표 검사 시작
+                    if (binding.X != entry.x || binding.Y != entry.y) // 다른 방 검사
+                    { // 다른 방 시작
+                        continue; // 다음 방 검사
+                    } // 다른 방 끝
+                    var floor = binding.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 실제 방 바닥
+                    var marker = new GameObject("ChestMarker"); // 상자 표시 묶음
+                    marker.transform.SetParent(binding.Root.transform, false); // 상자 방에 표시 연결
+                    marker.transform.position = floor.GetCellCenterWorld(Vector3Int.zero); // 중앙 칸에 상자 표시
+                    AddChestPart(marker.transform, "ChestBody", new Vector3(0f, -0.15f, 0f), new Vector3(1.1f, 0.65f, 1f), new Color(0.40f, 0.19f, 0.07f), 3); // 나무 상자 몸체
+                    AddChestPart(marker.transform, "ChestLid", new Vector3(0f, 0.25f, 0f), new Vector3(1.2f, 0.22f, 1f), new Color(0.78f, 0.54f, 0.14f), 4); // 금색 테두리의 상자 뚜껑
+                    AddChestPart(marker.transform, "ChestLatch", new Vector3(0f, 0.03f, 0f), new Vector3(0.18f, 0.25f, 1f), new Color(1f, 0.79f, 0.25f), 5); // 상자 중앙 잠금 장식
+                    marker.SetActive(!entry.chest.completed); // 완료된 상자 숨김
+                    break; // 해당 방 표시 완료
+                } // 좌표 검사 끝
+            } // 상자 표시 끝
+        } // 표시 끝
+        private static void AddChestPart(Transform parent, string name, Vector3 offset, Vector3 size, Color color, int order) // 상자 표시의 단색 구성 요소
+        { // 생성 시작
+            var part = new GameObject(name, typeof(SpriteRenderer)); // 상자 모양 조각
+            part.transform.SetParent(parent, false); // 상자 묶음에 연결
+            part.transform.localPosition = offset; // 상자 내부 위치
+            part.transform.localScale = size; // 실제 타일에 맞는 크기
+            var renderer = part.GetComponent<SpriteRenderer>(); // 화면 표시 구성
+            renderer.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f); // 기본 단색 사각형 이미지
+            renderer.color = color; // 나무와 금속의 시험 색상
+            renderer.sortingOrder = order; // 방 바닥 위 표시 순서
+        } // 생성 끝
+        private void RefreshContentMarkers() // 완료한 상자 표시의 실제 상태 반영
+        { // 갱신 시작
+            if (currentContent == null || rooms == null) // 현재 콘텐츠와 방 검사
+            { // 누락 시작
+                return; // 갱신할 상자 없음
+            } // 누락 끝
+            foreach (var entry in currentContent.Snapshot().chests) // 현재 층 상자 순회
+            { // 표시 갱신 시작
+                var root = FindRoom(entry.x, entry.y); // 실제 상자 방 객체
+                var marker = root == null ? null : root.transform.Find("ChestMarker"); // 상자 표시 조회
+                if (marker != null) // 실제 표시 검사
+                { // 표시 적용 시작
+                    marker.gameObject.SetActive(!entry.chest.completed); // 완료한 상자 숨김
+                } // 표시 적용 끝
+            } // 표시 갱신 끝
+        } // 갱신 끝
         private void AddEncounterMarker(DungeonLayout layout, RoomBinding[] bindings) // 조우 방의 중앙 칸 표시
         { // 표시 시작
             foreach (var room in layout.Rooms) // 생성된 방 순회
@@ -1048,6 +1279,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var nextLayout = DungeonGenerator.GenerateVersioned(nextSeed, generationVersion); // 현재 회차 규칙으로 새 층 생성
                 var nextLocks = new DoorLockState(nextLayout); // 새 층의 독립 문 잠금
                 var nextDiscovery = new DungeonDiscovery(nextLayout, 0, 0); // 새 층의 독립 방문 기록
+                FloorRoomContent nextContent = null; // 다음 층의 시험 콘텐츠
+                if (RoomContentEnabled) // 방 콘텐츠 활성 검사
+                { // 다음 층 콘텐츠 생성 시작
+                    var excluded = TrialRoomContentPlacement.Excluded(nextLayout, Floor + 1, generationVersion, groupEncounterEnabled); // 다음 층의 기존 조우 제외
+                    if (excluded == null || !FloorRoomContent.TryCreate(Floor + 1, nextLayout, nextSeed, excluded, out nextContent)) // 결정적 상자와 함정 준비 검사
+                    { // 생성 오류 시작
+                        throw new InvalidOperationException("Invalid next floor content."); // 기존 층을 유지한 전환 차단
+                    } // 생성 오류 끝
+                } // 다음 층 콘텐츠 생성 끝
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
                 stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
                 stage.SetActive(false); // 준비 중 화면 노출 방지
@@ -1066,6 +1306,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
                 } // 상위 객체 연결 끝
                 DungeonPresentation.Apply(nextRooms); // 새 층에도 생성 이미지와 두 배 타일 적용
+                AddContentMarkers(nextRooms, nextContent); // 다음 층 상자 표시 생성
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
                 AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
                 UpdateLockMarkers(nextLayout, nextRooms, nextLocks); // 새 층 잠긴 문 표시
@@ -1100,6 +1341,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 state = new RoomTransitionState(0, 0); // 새 층 시작 방 좌표
                 entryDoor = null; // 이전 층의 방 연결 해제
                 floorProgress.Complete(true); // 다음 층 번호 확정
+                if (nextContent != null) // 실제 방 콘텐츠 활성 검사
+                { // 콘텐츠 확정 시작
+                    currentContent = nextContent; // 다음 층 콘텐츠 연결
+                    roomContents.Add(nextContent); // 이전 층 콘텐츠를 보존한 새 층 추가
+                } // 콘텐츠 확정 끝
                 AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
             catch (Exception exception) // 새 층 준비 실패 처리

@@ -94,7 +94,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 조우 대상 조회
                 var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
                 var grouped = travel != null && travel.IsGroupEncounter; // 실제 다수 조우 여부
-                var enemyImage = travel != null && travel.CurrentMonsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : travel != null && travel.CurrentMonsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 초상화
+                var enemyImage = travel != null && travel.CurrentMonsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : travel != null && travel.CurrentMonsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : travel != null && travel.CurrentMonsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 초상화
                 var firstEnemyPanel = AddBattlePanel(canvas.transform, "EnemySlotPanel1", new Vector2(grouped ? -250f : 0f, 180f), new Vector2(420f, 410f)); // 첫 상대의 상단 슬롯 배경
                 RectTransform secondEnemyPanel = null; // 선택적인 두 번째 적 슬롯
                 if (grouped) // 두 번째 상대 슬롯 검사
@@ -645,6 +645,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 승리 조건 시작
                 var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+                if (travel != null && travel.IsCurrentMimic) // 상자 미믹 승리 검사
+                { // 미믹 승리 시작
+                    if (!owner.TryFinishMimic(out var mimicMessage)) // 승리와 후보의 저장 검사
+                    { // 오류 시작
+                        notice.text = mimicMessage; // 저장 실패 안내
+                    } // 오류 끝
+                    return; // 일반 전투 보상 중복 차단
+                } // 미믹 승리 끝
                 if (travel != null && travel.CanCompleteCurrentEncounter()) // 실제 미완료 조우 승리 검사
                 { // 실제 보상 준비 시작
                     if (pendingVictoryReward == null) // 아직 생성하지 않은 후보 검사

@@ -24,6 +24,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private EncounterTransitionView encounterTransition; // 자동 전투 진입 전환 화면
         public static bool? AutomaticEncounterTestOverride { get; set; } // 조우 방식의 독립 검증 설정
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
+        private ChestScreenView chestScreen; // 현재 상자 확인 화면
+        private readonly System.Random chestRandom = new System.Random(); // 상자와 함정 시험 난수
+        public static System.Func<int, int, int> ChestRollOverride { get; set; } // 자동 검증용 상자 난수
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
         private HistoryScreenView historyScreen; // 현재 회차 기록 화면
         private PauseScreenView pauseScreen; // 탐험 일시정지 메뉴
@@ -951,6 +954,279 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = success + " · 저장 완료"; // 실제 거래와 저장 결과 안내
             return true; // 안전한 거래 확정 완료
         } // 저장 끝
+        public ChestSaveData CurrentChest // 현재 방의 독립 상자 상태
+        { // 속성 시작
+            get // 현재 상자 조회
+            { // 조회 시작
+                var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+                var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+                return travel != null && travel.CurrentContent != null && travel.CurrentContent.TryGetChest(travel.RoomX, travel.RoomY, out var chest) ? chest.Snapshot() : null; // 현재 상자 또는 빈 상태
+            } // 조회 끝
+        } // 속성 끝
+        public bool OpenChest() // 현재 방의 실제 상자 확인 화면 열기
+        { // 열기 시작
+            var chest = CurrentChest; // 현재 방의 독립 상자 상태
+            if (chest == null || chest.completed || !Flow.TryOpenInventory()) // 상자와 탐험 화면 검사
+            { // 진입 오류 시작
+                return false; // 없는 상자와 중복 화면 차단
+            } // 진입 오류 끝
+            Input.SetPhase(GamePhase.Inventory); // 탐험 입력 잠금과 상자 UI 입력 활성화
+            try // 상자 화면 생성
+            { // 화면 생성 시작
+                chestScreen = ChestScreenView.Create(this); // 실제 상자와 보상 화면 연결
+                return true; // 상자 화면 진입 완료
+            } // 화면 생성 끝
+            catch (System.Exception exception) // 화면 준비 실패 검사
+            { // 오류 복구 시작
+                Flow.TryCloseInventory(); // 이전 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Chest screen failed: " + exception.Message); // 실제 화면 오류 기록
+                return false; // 불완전한 상자 화면 차단
+            } // 오류 복구 끝
+        } // 열기 끝
+        public void CloseChest() // 상자 화면을 닫고 탐험 복귀
+        { // 닫기 시작
+            if (chestScreen == null || !Flow.TryCloseInventory()) // 실제 상자 화면과 상태 검사
+            { // 닫기 거절 시작
+                return; // 다른 인벤토리 화면 차단
+            } // 닫기 거절 끝
+            chestScreen.gameObject.SetActive(false); // 이전 화면의 입력 차단
+            Destroy(chestScreen.gameObject); // 실제 상자 화면 정리
+            chestScreen = null; // 이전 화면 참조 해제
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 닫기 끝
+        private int ChestRoll(int minimum, int maximum) // 상자와 함정의 시험 주사위 조회
+        { // 주사위 시작
+            return ChestRollOverride == null ? chestRandom.Next(minimum, maximum) : ChestRollOverride(minimum, maximum); // 실제 난수 또는 검증 주사위
+        } // 주사위 끝
+        public bool TryUnlockChestWithKey(out string message) // 열쇠와 상자 잠금 해제의 단일 저장
+        { // 열쇠 사용 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 제어
+            if (Flow.Phase != GamePhase.Inventory || chestScreen == null || travel == null || !ChestState.TryRestore(CurrentChest, out var chest) || !chest.TryUnlockWithKey(Keys.Count, out var opened, out var remaining) || !travel.CurrentContent.TrySetChest(travel.RoomX, travel.RoomY, opened, out var next)) // 열쇠와 실제 상자 상태 검사
+            { // 사용 오류 시작
+                message = "열쇠를 사용할 수 없습니다."; // 잘못된 열쇠 사용 안내
+                return false; // 기존 열쇠와 상자 보존
+            } // 사용 오류 끝
+            return TryCommitRoomContent(travel, next, PlayerHealth, remaining, Inventory, null, "열쇠로 잠금 해제", out message); // 안전한 저장 후 열쇠와 상자 적용
+        } // 열쇠 사용 끝
+        public bool TryForceChest(out string message) // 이벤트 공격력 기반의 단일 강제 개방
+        { // 강제 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 제어
+            if (Flow.Phase != GamePhase.Inventory || chestScreen == null || travel == null || !ChestState.TryRestore(CurrentChest, out var chest) || !chest.TryForce(50, 50, ChestRoll(1, 21), ChestRoll(1, 21), out var opened, out var success) || !travel.CurrentContent.TrySetChest(travel.RoomX, travel.RoomY, opened, out var next)) // 시험 공격과 난이도 및 단일 시도 검사
+            { // 판정 오류 시작
+                message = "강제 개방을 시도할 수 없습니다."; // 재시도 불가 안내
+                return false; // 기존 상자 보존
+            } // 판정 오류 끝
+            return TryCommitRoomContent(travel, next, PlayerHealth, Keys.Count, Inventory, null, success ? "강제 개방 성공" : "강제 개방 실패 · 열쇠 사용 가능", out message); // 실제 시도 결과를 안전하게 저장
+        } // 강제 끝
+        public bool TryRevealChest(out string message) // 상자의 미믹과 보상 후보 사전 확정
+        { // 판정 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 제어
+            var saved = CurrentChest; // 현재 상자의 독립 저장본
+            if (Flow.Phase != GamePhase.Inventory || chestScreen == null || travel == null || !ChestState.TryRestore(saved, out var chest)) // 실제 상자 화면과 상태 검사
+            { // 상태 오류 시작
+                message = "상자를 확인할 수 없습니다."; // 상자 오류 안내
+                return false; // 잘못된 후보 생성 차단
+            } // 상태 오류 끝
+            var grade = (ChestGrade)saved.grade; // 실제 상자 등급
+            var roll = ChestRoll(0, 100); // 등급별 미믹 주사위
+            var minimum = grade == ChestGrade.Common ? 1 : grade == ChestGrade.Advanced ? 2 : 3; // 기획의 등급별 최소 보상 수
+            var baseCount = ChestRoll(minimum, minimum + 2); // 기획 범위의 기본 보상 수
+            if (roll < 0 || roll >= 100 || !ChestRules.TryRewardCount(grade, baseCount, saved.wasLocked, roll < ChestRules.MimicChance(grade), out var count)) // 미믹 난수와 기획 수량 검사
+            { // 판정 오류 시작
+                message = "상자 보상을 결정할 수 없습니다."; // 시험 판정 오류 안내
+                return false; // 잘못된 후보와 재화 차단
+            } // 판정 오류 끝
+            var rewards = new ChestRewardCandidateData[count]; // 실제 고정 아이템 후보 목록
+            var kinds = new[] { "trial-small-potion", "trial-large-potion", "trial-mana-potion" }; // 정식 분포 미정의 시험 소비품
+            for (var index = 0; index < count; index++) // 확정 보상 수 순회
+            { // 후보 생성 시작
+                var choice = ChestRoll(0, kinds.Length); // 시험 소비품 종류 추첨
+                if (choice < 0 || choice >= kinds.Length) // 시험 난수 범위 검사
+                { // 난수 오류 시작
+                    message = "상자 보상을 결정할 수 없습니다."; // 잘못된 난수 안내
+                    return false; // 후보 사전 저장 차단
+                } // 난수 오류 끝
+                rewards[index] = new ChestRewardCandidateData { candidateId = System.Guid.NewGuid().ToString("N"), itemId = kinds[choice], quantity = 1 }; // 개별 고정 시험 보상
+            } // 후보 생성 끝
+            if (!chest.TryReveal(roll, baseCount, System.Guid.NewGuid().ToString("N"), rewards, out var revealed) || !travel.CurrentContent.TrySetChest(travel.RoomX, travel.RoomY, revealed, out var next)) // 고정 후보와 상자 전이 검사
+            { // 전이 오류 시작
+                message = "상자를 열 수 없습니다."; // 상자 상태 오류 안내
+                return false; // 미확정 상자 보존
+            } // 전이 오류 끝
+            if (!TryCommitRoomContent(travel, next, PlayerHealth, Keys.Count, Inventory, null, "상자 판정 저장", out message)) // 후보의 화면 표시 전 저장 검사
+            { // 저장 오류 시작
+                return false; // 후보 노출과 재추첨 충돌 차단
+            } // 저장 오류 끝
+            if (revealed.Snapshot().mimicState == 2) // 확정된 미믹 검사
+            { // 미믹 조우 시작
+                CloseChest(); // 기존 상자 화면 종료
+                if (!StartEncounter()) // 실제 전투 전 조우 연출 요청
+                { // 조우 오류 시작
+                    message = "미믹 조우를 시작하지 못했습니다. 상자를 다시 확인하세요."; // 저장된 후보의 재시도 안내
+                    return false; // 확정한 미믹 상태 보존
+                } // 조우 오류 끝
+            } // 미믹 조우 끝
+            return true; // 확정된 상자 또는 미믹 처리 완료
+        } // 판정 끝
+        private bool TryCommitRoomContent(RoomTravelController travel, FloorRoomContent next, int health, int keys, InventoryState inventory, ExperienceProgress growth, string success, out string message) // 방 콘텐츠와 회차의 원자적 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 안내 초기화
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 회차 식별자
+            if (travel == null || next == null || runStorage == null || savedId != null && savedId != CurrentRunId || health <= 0 || keys < 0 || inventory == null) // 회차와 변경 상태 검사
+            { // 오류 시작
+                message = "기존 저장 또는 방 상태를 확인해 주세요."; // 안전한 저장 안내
+                return false; // 다른 회차와 잘못된 상태 보호
+            } // 오류 끝
+            var data = Flow.Phase == GamePhase.Inventory ? travel.CaptureInventoryRun() : Flow.Phase == GamePhase.Combat ? travel.CaptureBattleRewardRun() : travel.CaptureRun(); // 현재 단계의 독립 저장본
+            var contents = travel.RoomContentSnapshotsWith(next); // 변경된 층을 포함한 독립 기록
+            if (data == null || contents == null) // 안정된 위치와 층 기록 검사
+            { // 오류 시작
+                message = "현재 방을 저장할 수 없습니다."; // 위치 저장 실패 안내
+                return false; // 원본 상태 보존
+            } // 오류 끝
+            data.roomContents = contents; // 변경된 층별 기록
+            data.health = health; // 변경된 체력
+            data.keys = keys; // 변경된 열쇠
+            data.slots = inventory.SaveSlots(); // 변경된 인벤토리
+            if (growth != null) // 경험치 지급 검사
+            { // 성장 시작
+                data.level = growth.Level; // 성장 후 레벨
+                data.experience = growth.CurrentExperience; // 성장 후 경험치
+                data.statPoints += growth.GainedStatPoints; // 추가 스탯 포인트
+            } // 성장 끝
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 전체 저장 검증과 실제 기록
+            { // 저장 실패 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 안내 시작
+                    message = "방 상태를 저장할 수 없습니다."; // 기본 저장 오류
+                } // 안내 끝
+                return false; // 저장 실패 시 실제 상태 보존
+            } // 저장 실패 끝
+            travel.ApplyRoomContent(next); // 저장된 방 기록 적용
+            PlayerHealth = health; // 저장된 체력 적용
+            Keys = new DoorKeyRing(); // 저장된 열쇠 묶음 생성
+            if (keys > 0) // 보유 열쇠 검사
+            { // 열쇠 복원 시작
+                Keys.Add(keys); // 저장된 열쇠 수량 복원
+            } // 열쇠 복원 끝
+            Inventory = inventory; // 저장된 소지품 적용
+            Level = data.level; // 저장된 레벨 적용
+            Experience = data.experience; // 저장된 경험치 적용
+            StatPoints = data.statPoints; // 저장된 스탯 포인트 적용
+            savedRun = data; // 마지막 정상 저장 갱신
+            savedRunValid = true; // 저장 회차 재개 허용
+            message = success + " · 저장 완료"; // 실제 저장 결과 안내
+            return true; // 안전한 확정 완료
+        } // 저장 끝
+        public bool TryClaimChest(int[] selectedIndices, int replaceIndex, out string message) // 선택한 상자 보상의 단일 확정
+        { // 확정 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            var saved = CurrentChest; // 저장된 상자 상태
+            if (Flow.Phase != GamePhase.Inventory || chestScreen == null || travel == null || selectedIndices == null || !ChestState.TryRestore(saved, out var chest) || saved.completed || saved.mimicState == 0 || saved.mimicState == 2 && !saved.mimicDefeated || replaceIndex >= 0 && selectedIndices.Length != 1) // 화면과 후보의 지급 가능 여부
+            { // 오류 시작
+                message = "상자 보상을 확정할 수 없습니다."; // 보상 오류 안내
+                return false; // 잘못된 지급 차단
+            } // 오류 끝
+            var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 실제 소지품의 독립 복사
+            var seen = new System.Collections.Generic.HashSet<int>(); // 중복 후보 검사
+            if (inventory == null || saved.rewards == null) // 유효한 인벤토리와 후보 검사
+            { // 오류 시작
+                message = "상자 보상을 확인할 수 없습니다."; // 데이터 오류 안내
+                return false; // 지급 차단
+            } // 오류 끝
+            foreach (var index in selectedIndices) // 선택된 후보 순회
+            { // 후보 처리 시작
+                if (index < 0 || index >= saved.rewards.Length || !seen.Add(index)) // 후보 범위와 중복 검사
+                { // 오류 시작
+                    message = "선택한 보상을 확인할 수 없습니다."; // 후보 오류 안내
+                    return false; // 중복 지급 차단
+                } // 오류 끝
+                var reward = saved.rewards[index]; // 고정된 개별 후보
+                var item = TrialConsumableRules.Find(reward.itemId); // 지원하는 소비품 정의
+                var added = reward.equipment != null ? replaceIndex >= 0 ? inventory.TryReplaceWithEquipment(replaceIndex, reward.equipment) : inventory.TryAddEquipment(reward.equipment) : item != null && (replaceIndex >= 0 ? inventory.TryReplace(replaceIndex, item.Id, item.Name, reward.quantity, item.StackLimit) : inventory.Add(item.Id, item.Name, reward.quantity, item.StackLimit).Remaining == 0); // 선택 후보의 전체 수용
+                if (!added) // 공간과 아이템 검사
+                { // 오류 시작
+                    message = "가방 공간 또는 보상을 확인해 주세요."; // 원본 보존 안내
+                    return false; // 부분 지급 차단
+                } // 오류 끝
+            } // 후보 처리 끝
+            if (!chest.TryComplete(out var completed) || !travel.CurrentContent.TrySetChest(travel.RoomX, travel.RoomY, completed, out var next) || !ExperienceRules.TryAdvance(Level, Experience, saved.experience, out var growth)) // 상자 완료와 경험치 검증
+            { // 오류 시작
+                message = "상자 경험치를 계산할 수 없습니다."; // 성장 오류 안내
+                return false; // 상자와 소지품 보존
+            } // 오류 끝
+            if (!TryCommitRoomContent(travel, next, PlayerHealth, Keys.Count, inventory, growth, "상자 보상 확정", out message)) // 지급과 완료의 단일 저장
+            { // 오류 시작
+                return false; // 저장 전 실제 지급 차단
+            } // 오류 끝
+            CloseChest(); // 확정된 화면 종료
+            return true; // 실제 보상 완료
+        } // 확정 끝
+        public bool TryPersistMimicHealth(FloorRoomContent next, out string message) // 도망 전 미믹 체력 저장
+        { // 저장 시작
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            return TryCommitRoomContent(travel, next, PlayerHealth, Keys.Count, Inventory, null, "미믹 체력 보존", out message); // 도망 전 전투 상태 저장
+        } // 저장 끝
+        public bool TryFinishMimic(out string message) // 미믹 승리와 상자 복구
+        { // 승리 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            if (travel == null || !travel.IsCurrentMimic || !ChestState.TryRestore(CurrentChest, out var chest) || !ExperienceRules.TryCalculateVictory(travel.Floor, 1, 0, out var experience) || !chest.TryWinMimic(experience, out var won) || !travel.CurrentContent.TrySetChest(travel.RoomX, travel.RoomY, won, out var next)) // 미믹과 승리 경험치 검사
+            { // 오류 시작
+                message = "미믹 승리를 확인할 수 없습니다."; // 승리 오류 안내
+                return false; // 잘못된 승리 차단
+            } // 오류 끝
+            if (!TryCommitRoomContent(travel, next, PlayerHealth, Keys.Count, Inventory, null, "미믹 승리", out message)) // 승리와 후보의 사전 저장
+            { // 오류 시작
+                return false; // 저장 실패 시 승리 화면 유지
+            } // 오류 끝
+            EndCombat(); // 전투 화면 종료
+            if (!OpenChest()) // 저장된 상자 보상 화면 검사
+            { // 화면 오류 시작
+                message = "상자를 다시 확인해 보상을 받으세요."; // 저장된 보상의 재시도 안내
+            } // 화면 오류 끝
+            return true; // 저장된 승리 처리 완료
+        } // 승리 끝
+        public bool TryApplyTrap(RoomTravelController travel, out string message) // 최초 진입 함정의 안전한 확정
+        { // 판정 시작
+            message = string.Empty; // 기본 안내 초기화
+            var content = travel == null || travel.CurrentContent == null ? null : travel.CurrentContent.Snapshot(); // 현재 층의 독립 기록
+            if (Flow.Phase != GamePhase.Exploration || content == null || content.trapCompleted || content.trapX != travel.RoomX || content.trapY != travel.RoomY || !TrialTrapState.Untriggered.TryTrigger(40, ChestRoll(0, 100), ChestRoll(10, 19), out _, out var result)) // 함정 좌표와 시험 판정 검사
+            { // 오류 시작
+                message = "함정을 확인할 수 없습니다."; // 함정 오류 안내
+                return false; // 잘못된 피해 차단
+            } // 오류 끝
+            if (PlayerHealth <= result.Damage) // 치명 피해 검사
+            { // 종료 시작
+                if (runStorage == null || !runStorage.TryMarkEnded(CurrentRunId, out message)) // 실제 회차 종료 저장
+                { // 오류 시작
+                    return false; // 저장 실패 시 회차 보존
+                } // 오류 끝
+                savedRun = runStorage.Load(out var warning); // 다른 회차의 저장 보존
+                savedRunValid = savedRun != null && RunRestoreRules.IsValid(savedRun); // 남은 회차 재개 검사
+                RunSaveMessage = warning; // 실제 저장 안내
+                message = "함정으로 회차 종료"; // 실제 결과 안내
+                ReturnToTitle(); // 종료 후 타이틀 복귀
+                return true; // 회차 종료 완료
+            } // 종료 끝
+            if (!travel.CurrentContent.TryCompleteTrap(out var next)) // 미완료 함정의 완료 검사
+            { // 오류 시작
+                message = "함정을 저장할 수 없습니다."; // 함정 오류 안내
+                return false; // 피해 미적용
+            } // 오류 끝
+            return TryCommitRoomContent(travel, next, PlayerHealth - result.Damage, Keys.Count, Inventory, null, result.Avoided ? "함정 회피" : "함정 피해 " + result.Damage, out message); // 피해와 함정 완료의 단일 저장
+        } // 판정 끝
         public ShopStockData[] ShopStocksSnapshot() // 전체 방문 상점의 독립 저장본
         { // 저장본 생성 시작
             return CopyShopStocks(shopStocks); // 원본을 보호하는 전체 상점 복사
@@ -1099,7 +1375,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 조우 대상
                     var monsterId = travel == null ? string.Empty : travel.CurrentMonsterId; // 실제 상대 식별자
                     var name = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 상대 이름
-                    var portrait = monsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : monsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 출현 초상화
+                    var portrait = monsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : monsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : monsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 출현 초상화
                     encounterTransition = EncounterTransitionView.Create(name, portrait); // 출현과 화면 전환 생성
                     StartCoroutine(TransitionIntoCombat(encounterTransition)); // 조우 연출 후 자동 전투 시작
                     return true; // 자동 전환 요청 성공

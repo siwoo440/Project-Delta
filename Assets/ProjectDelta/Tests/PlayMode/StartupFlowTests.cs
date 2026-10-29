@@ -22,6 +22,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 전 준비 표시
         public void RouteTestInputToGame() // 자동 실행의 입력 전달 준비
         { // 검증 시작
+            RoomTravelController.RoomContentTestOverride = false; // 시작 흐름의 시험 방 콘텐츠 제외
             originalBackgroundBehavior = InputSystem.settings.backgroundBehavior; // 기존 입력 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 실행 창 포커스 영향 제외
 #if UNITY_EDITOR // 편집기 입력 전달 설정
@@ -114,6 +115,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 실행 후 정리 표시
         public IEnumerator Cleanup() // 검증 객체 정리
         { // 정리 시작
+            RoomTravelController.RoomContentTestOverride = null; // 시험 방 콘텐츠 설정 복구
             if (mouse != null && mouse.added) // 남은 검증 마우스 검사
             { // 마우스 정리 시작
                 InputSystem.RemoveDevice(mouse); // 검증 마우스 정리

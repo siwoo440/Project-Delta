@@ -310,6 +310,30 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 후보 장비 정리 시작
                 data.pendingReward.equipment = NormalizeVariant(data.pendingReward.equipment); // 빈 보상 장비 객체 정리
             } // 후보 장비 정리 끝
+            if (data.roomContents != null) // 저장된 층별 상자 검사
+            { // 방 콘텐츠 순회 시작
+                foreach (var floor in data.roomContents) // 층별 콘텐츠 순회
+                { // 층 검사 시작
+                    if (floor == null || floor.chests == null) // 누락된 층과 상자 목록 검사
+                    { // 누락 분기 시작
+                        continue; // 손상 여부는 저장 검증에서 처리
+                    } // 누락 분기 끝
+                    foreach (var entry in floor.chests) // 상자 목록 순회
+                    { // 상자 검사 시작
+                        if (entry == null || entry.chest == null || entry.chest.rewards == null) // 누락된 상자와 후보 검사
+                        { // 누락 분기 시작
+                            continue; // 손상 여부는 저장 검증에서 처리
+                        } // 누락 분기 끝
+                        foreach (var reward in entry.chest.rewards) // 실제 고정 후보 순회
+                        { // 후보 정리 시작
+                            if (reward != null) // 실제 후보 검사
+                            { // 장비 정리 시작
+                                reward.equipment = NormalizeVariant(reward.equipment); // 빈 후보 장비 객체 정리
+                            } // 장비 정리 끝
+                        } // 후보 정리 끝
+                    } // 상자 검사 끝
+                } // 층 검사 끝
+            } // 방 콘텐츠 순회 끝
             if (data.shopStocks != null) // 저장된 층별 상점 검사
             { // 상점 순회 시작
                 foreach (var shop in data.shopStocks) // 개별 상점 순회

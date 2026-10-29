@@ -129,6 +129,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 검증 준비 표시
         public void PrepareInput() // 입력 포커스 설정
         { // 준비 시작
+            RoomTravelController.RoomContentTestOverride = false; // 기존 검증의 시험 방 콘텐츠 제외
             RoomTravelController.TutorialEncounterTestOverride = false; // 기존 방 이동의 독립 검증
             AppRoot.AutomaticEncounterTestOverride = false; // 기존 조우 선택의 독립 검증
             RoomTravelController.GenerationSeedOverride = 0; // 기존 방 이동 시험의 재현 가능한 방 구조
@@ -404,6 +405,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator Cleanup() // 가상 장치와 설정 복구
         { // 정리 시작
             RunStorage.TestDirectoryOverride = null; // 시험 저장 경로 해제
+            RoomTravelController.RoomContentTestOverride = null; // 시험 방 콘텐츠 설정 복구
+            AppRoot.ChestRollOverride = null; // 시험 상자 난수 설정 복구
             RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 시험 설정 해제
             AppRoot.AutomaticEncounterTestOverride = null; // 자동 조우 시험 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증용 생성 시드 해제
