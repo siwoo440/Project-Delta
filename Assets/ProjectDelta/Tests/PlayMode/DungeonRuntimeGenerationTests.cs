@@ -177,6 +177,18 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(door.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonDoor")); // 생성한 문 이미지 적용
             Assert.That(Camera.main.GetComponent("DungeonCameraMotion"), Is.Not.Null); // 플레이어 추적 카메라 제공 확인
         } // 검증 끝
+        [UnityTest] // 던전 안내 가독성과 입력 통과 검증
+        public IEnumerator DungeonHud_HasReadableNonBlockingBackgrounds() // 안내 배경과 게임 입력 보존
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var header = GameObject.Find("DungeonHeaderBackground"); // 상단 안내 배경
+            var controls = GameObject.Find("DungeonControlsBackground"); // 하단 안내 배경
+            Assert.That(header, Is.Not.Null); // 상단 배경 표시 확인
+            Assert.That(controls, Is.Not.Null); // 하단 배경 표시 확인
+            Assert.That(header.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 상단 배경 입력 통과 확인
+            Assert.That(controls.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 하단 배경 입력 통과 확인
+            Assert.That(controls.GetComponent<UnityEngine.UI.Image>().color.a, Is.GreaterThan(0.7f)); // 바닥과 글씨 분리 확인
+        } // 검증 끝
         [UnityTest] // 실제 주인공 이미지와 방향 표시 검증
         public IEnumerator DungeonPlayer_UsesAnimeSpriteAndVisibleDirection() // 탐험 주인공과 방향 표시 확인
         { // 검증 시작
