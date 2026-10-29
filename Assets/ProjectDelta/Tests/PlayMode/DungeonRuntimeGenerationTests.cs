@@ -847,7 +847,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 전투 진입
             yield return null; // 전투 화면 준비 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실제 전투 상태 확인
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 첫 상대 선행 공격 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 첫 상대 선행 공격 확인
             var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 라운드 안내
             Assert.That(roundText.text, Does.Contain("1라운드")); // 첫 라운드 표시
             Assert.That(roundText.text, Does.Contain("플레이어")); // 상대 후 플레이어 차례
@@ -860,7 +860,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 화면 캡처 끝
             GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 플레이어 공격
             yield return null; // 다음 라운드 처리 대기
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(88)); // 다음 라운드 상대 선행 공격 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(98)); // 다음 라운드 상대 선행 공격 확인
             Assert.That(roundText.text, Does.Contain("2라운드")); // 두 번째 라운드 표시
             Assert.That(roundText.text, Does.Contain("플레이어")); // 다음 플레이어 차례 확인
         } // 검증 끝
@@ -1499,7 +1499,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var enemyHealth = GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>(); // 상대 체력 표시 조회
             var playerHealth = GameObject.Find("PlayerHealth").GetComponent<UnityEngine.UI.Text>(); // 플레이어 체력 표시 조회
             Assert.That(enemyHealth.text, Does.Contain("27/70")); // 기존 공식으로 적 체력 감소 확인
-            Assert.That(playerHealth.text, Does.Contain("94/100")); // 자동 적 공격 후 체력 감소 확인
+            Assert.That(playerHealth.text, Does.Contain("99/100")); // 자동 적 공격 후 체력 감소 확인
             var noticeText = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 공격 결과 안내
             Assert.That(noticeText.text, Does.Contain("플레이어 공격")); // 플레이어 공격 결과 유지 확인
             Assert.That(noticeText.text, Does.Contain("상위 개체 공격")); // 상대 공격 결과 함께 표시
@@ -1526,7 +1526,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(player.X, Is.EqualTo(0)); // 플레이어 가로 칸 보존
             Assert.That(player.Y, Is.EqualTo(1)); // 플레이어 세로 칸 보존
             Assert.That(travel.Discovery, Is.SameAs(savedDiscovery)); // 기존 방문 기록 보존
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 전투 후 현재 체력 보존
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 전투 후 현재 체력 보존
             Assert.That(root.transform.Find("EncounterMarker"), Is.Null); // 승리한 조우 대상 제거 확인
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.A)); // 기존 포착 범위 내 이동
             InputSystem.Update(); // 실제 이동 입력 반영
@@ -1677,7 +1677,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var notice = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 결과 안내 조회
             Assert.That(notice.text, Does.Contain("플레이어 공격 · 빗나감")); // 플레이어 빗나감 결과 보존
             Assert.That(notice.text, Does.Contain("상위 개체 공격")); // 적 공격 결과 함께 표시
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 적 공격에 따른 실제 체력 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 적 공격에 따른 실제 체력 확인
         } // 검증 끝
         [UnityTest] // 같은 프레임의 중복 공격 방지 검증
         public IEnumerator Combat_DuplicateActionInOneFrame_IsIgnored() // 한 프레임의 두 번 공격 차단
@@ -1828,8 +1828,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
             yield return null; // 해제 반영 대기
             Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(1)); // 회복약 한 개 소비
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(69)); // 체력 25 회복 후 상대 피해 반영
-            Assert.That(GameObject.Find("PlayerHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("69/100")); // 실제 전투 체력 표시
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(74)); // 체력 25 회복 후 최소 피해 반영
+            Assert.That(GameObject.Find("PlayerHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("74/100")); // 실제 전투 체력 표시
             Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("2라운드")); // 한 행동과 상대 차례 소모
             Assert.That(GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("회복")); // 실제 회복 결과 표시
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
@@ -1894,7 +1894,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
             yield return null; // 해제 반영 대기
             Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 마지막 회복약 소비
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(69)); // 회복 후 상대 피해 반영
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(74)); // 회복 후 상대 최소 피해 반영
         } // 검증 끝
         [UnityTest] // 전투 종료 후 회복약 차단 검증
         public IEnumerator CombatPotion_AfterVictory_IsDisabled() // 승리 후 아이템과 체력 보존
@@ -2977,7 +2977,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 방어 입력 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
             yield return null; // 상대 행동과 다음 차례 대기
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(97)); // 게임패드 방어 피해 감소
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 게임패드 방어 후 최소 피해
             Assert.That(GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("방어")); // 방어 결과 표시
         } // 검증 끝
         [UnityTest] // 실제 방어 선택과 턴 처리 검증
@@ -3006,10 +3006,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
             yield return null; // 상대 행동과 다음 차례 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 방어 후 전투 유지
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(97)); // 6 피해의 방어 감소 결과
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 방어 중 최소 피해 결과
             var notice = GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>(); // 실제 행동 결과 표시
             Assert.That(notice.text, Does.Contain("방어")); // 방어 행동 결과 안내
-            Assert.That(notice.text, Does.Contain("3 피해")); // 감소된 상대 피해 표시
+            Assert.That(notice.text, Does.Contain("1 피해")); // 최소 피해 표시
             Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("2라운드")); // 방어 행동 후 다음 라운드
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
@@ -3024,7 +3024,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var defending = typeof(CombatFighter).GetProperty("IsDefending"); // 방어 상태 조회
             Assert.That((bool)defending.GetValue(fighter), Is.False); // 다음 플레이어 차례의 방어 해제
             GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 다음 차례 기본 공격
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(91)); // 방어 해제 후 적의 원래 피해
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(98)); // 방어 해제 후 적의 최소 피해
         } // 검증 끝
         [UnityTest] // 강제 개방 실패와 열쇠 사용 검증
         public IEnumerator ForceDoor_KeyboardFailure_AllowsKeyAndBlocksRetry() // 실제 키보드 실패와 게임패드 재시도
@@ -3235,7 +3235,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실패 후 전투 유지
             Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("2라운드")); // 후퇴 실패의 행동 소모
             Assert.That(GameObject.Find("Notice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("후퇴 실패")); // 실제 실패 안내
-            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 상대 행동의 실제 피해
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(99)); // 상대 행동의 실제 피해
             Assert.That(rolls.Count, Is.Zero); // 두 후퇴 주사위 사용 확인
         } // 검증 끝
         [UnityTest] // 실제 전투 후퇴와 재진입 검증

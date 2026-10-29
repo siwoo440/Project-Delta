@@ -135,9 +135,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 new BattleActor("플레이어", TrialPlayerSpeed, true, 0), // 시험 플레이어 속도
                 new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) // 실제 상대의 시험 속도
             }; // 목록 끝
-            player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
+            player = new CombatFighter(participants[0], 100, 50, 40, 0, 40, owner.PlayerHealth); // 시험 플레이어와 명중 보정 0
             var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
-            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 85, 8, enemyHealth); // 현재 방의 시험 상위 개체
+            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, enemyHealth); // 시험 상대와 명중 보정 0
             round = new BattleRound(participants); // 참가자별 라운드 생성
             if (!round.TryStartRound() || !round.TryNext(out current)) // 첫 라운드와 행동자 검사
             { // 준비 실패 조건 시작
@@ -174,7 +174,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 잘못된 방어 행동 차단
             } // 방어 거절 조건 끝
             lastActionFrame = Time.frameCount; // 같은 프레임의 재요청 차단
-            notice.text = "방어 · 피해 감소 " + CombatRules.DefenseReduction(player.Defense) + "%"; // 방어 행동과 감소율 표시
+            notice.text = "방어 · 방어력 +10"; // 방어 행동의 적용 방어력 안내
             CompletePlayerTurn(); // 방어 행동 소모와 상대 행동
         } // 방어 끝
         private void UsePotion() // 플레이어의 시험 회복약 사용 행동
@@ -286,8 +286,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private bool ResolveAttack(CombatFighter attacker, CombatFighter defender) // 한 참가자의 기본 공격 처리
         { // 공격 시작
             var hitRoll = Roll(0, 100); // 기존 명중 난수
-            var varianceRoll = Roll(0, 11); // 기존 피해 편차 난수
-            if (!CombatRules.TryAttack(attacker, defender, hitRoll, varianceRoll, out var applied)) // 기본 공격 유효성 검사
+            if (!CombatRules.TryAttack(attacker, defender, hitRoll, out var applied)) // 편차 없는 기본 공격 검사
             { // 공격 거절 조건 시작
                 notice.text = "공격할 수 없습니다"; // 잘못된 행동 안내
                 return false; // 잘못된 공격 차단
