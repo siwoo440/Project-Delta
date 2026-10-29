@@ -1,3 +1,4 @@
+using System.Collections.Generic; // 최근 탐험 기록 보관
 using ProjectDelta.Core; // 생성된 방 역할
 using UnityEngine; // 화면 배치 도구
 using UnityEngine.UI; // 방 이름 표시
@@ -7,6 +8,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private Text status; // 현재 방 이름 표시
         private Text playerHealth; // 현재 플레이어 체력 표시
+        private Text explorationLog; // 최근 탐험 기록 표시
+        private readonly Queue<string> recentEvents = new Queue<string>(); // 최근 탐험 기록 목록
         private Text doorNotice; // 잠긴 문과 열쇠 안내
         private RoomTravelController travel; // 실제 방 이동과 역할 정보
         private void Start() // 기본 안내 화면 구성
@@ -14,9 +17,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var canvas = UiFactory.CreateCanvas("DungeonCanvas"); // 던전 안내 화면 생성
             canvas.transform.SetParent(transform, false); // 씬 화면 아래 배치
             CreateBackground(canvas.transform, "DungeonPlayerBackground", new Vector2(-750f, 410f), new Vector2(300f, 130f)); // 왼쪽 플레이어 상태 배경
+            CreateBackground(canvas.transform, "DungeonLogBackground", new Vector2(750f, -40f), new Vector2(420f, 240f)); // 오른쪽 최근 기록 배경
             CreateBackground(canvas.transform, "DungeonHeaderBackground", new Vector2(0f, 410f), new Vector2(510f, 155f)); // 상단 안내의 어두운 배경
             CreateBackground(canvas.transform, "DungeonControlsBackground", new Vector2(0f, -405f), new Vector2(1780f, 215f)); // 하단 조작 안내의 어두운 배경
             var mint = new Color(0.62f, 0.87f, 0.79f); // 안내 강조 색상
+            UiFactory.CreateText(canvas.transform, "LogTitle", "최근 기록", 24, new Vector2(750f, 45f), new Vector2(380f, 45f), Color.white); // 탐험 기록 제목
+            explorationLog = UiFactory.CreateText(canvas.transform, "ExplorationLog", "", 20, new Vector2(750f, -65f), new Vector2(380f, 150f), new Color(0.88f, 0.93f, 0.92f)); // 최근 탐험 기록 내용
+            explorationLog.alignment = TextAnchor.UpperLeft; // 최근 기록의 왼쪽 정렬
             playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 28, new Vector2(-750f, 410f), new Vector2(280f, 80f), Color.white); // 실제 플레이어 체력 안내
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 38, new Vector2(0f, 450f), new Vector2(1000f, 90f), Color.white); // 던전 진입 결과 표시
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
@@ -78,7 +85,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void UpdateDoorNotice(string message) // 문 상호작용 안내 갱신
         { // 갱신 시작
             doorNotice.text = message; // 실제 안내 문구 표시
+            AppendLog(message); // 실제 문 상호작용 기록
         } // 갱신 끝
+        private void AppendLog(string message) // 최근 탐험 기록 추가
+        { // 기록 시작
+            if (explorationLog == null || string.IsNullOrWhiteSpace(message)) // 화면과 실제 기록 검사
+            { // 빈 기록 조건 시작
+                return; // 빈 안내의 기록 제외
+            } // 빈 기록 조건 끝
+            recentEvents.Enqueue(message); // 실제 탐험 사건 보관
+            while (recentEvents.Count > 4) // 최근 기록 수 제한 검사
+            { // 오래된 기록 정리 시작
+                recentEvents.Dequeue(); // 가장 오래된 기록 제거
+            } // 오래된 기록 정리 끝
+            explorationLog.text = string.Join("\n", recentEvents.ToArray()); // 최근 기록을 순서대로 표시
+        } // 기록 끝
         private void UpdateRoom() // 현재 방의 역할 표시
         { // 갱신 시작
             var room = travel.Layout.GetRoom(travel.RoomX, travel.RoomY); // 실제 현재 방 정보 조회
@@ -102,6 +123,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     break; // 역할 선택 종료
             } // 역할 선택 끝
             status.text = travel.Floor + "층 · " + status.text; // 현재 층과 방 함께 표시
+            AppendLog(status.text.Replace("현재 위치: ", "") + " 진입"); // 실제 도착 방의 최근 기록
         } // 갱신 끝
     } // 클래스 끝
 } // 이름 공간 끝

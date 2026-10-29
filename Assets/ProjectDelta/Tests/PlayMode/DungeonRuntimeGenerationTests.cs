@@ -2497,6 +2497,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var notice = GameObject.Find("DoorNotice").GetComponent<UnityEngine.UI.Text>(); // 실제 문 결과 안내
             Assert.That(notice.text, Does.Contain("실패")); // 강제 개방 실패 안내
             Assert.That(notice.text, Does.Contain("50")); // 시험 공격력과 난이도 안내
+            var recentLog = GameObject.Find("ExplorationLog").GetComponent<UnityEngine.UI.Text>(); // 실제 탐험 기록
+            Assert.That(recentLog.text, Does.Contain("강제 개방 실패")); // 실제 문 실패의 기록 확인
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
             { // 캡처 조건 시작
@@ -2517,6 +2519,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.Update(); // 해제 반영
             yield return null; // 재시도 안내 대기
             Assert.That(notice.text, Does.Contain("이미")); // 같은 문의 재시도 차단 안내
+            Assert.That(recentLog.text.Split('\n').Length, Is.LessThanOrEqualTo(4)); // 최근 네 개 기록 제한 확인
             Assert.That(rolls.Count, Is.Zero); // 재시도 시 추가 주사위 없음
             Assert.That(AppRoot.Instance.Keys.Add(1), Is.True); // 실패 이후 시험 열쇠 획득
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열쇠로 실제 문 이동

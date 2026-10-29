@@ -195,6 +195,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         { // 검증 시작
             yield return EnterDungeon(); // 실제 던전 진입
             var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어 조회
+            var explorationLog = GameObject.Find("ExplorationLog"); // 탐험 중 최근 기록
+            Assert.That(explorationLog, Is.Not.Null); // 탐험 기록 화면 확인
+            var logText = explorationLog.GetComponent<Text>(); // 실제 기록 글자
+            Assert.That(logText.text, Does.Contain("시작 방")); // 시작 방 진입 기록 확인
             var start = GameObject.Find("DungeonMiniMap/MapContent/Room_0_0"); // 시작 방 지도 칸
             var neighbor = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0"); // 연결된 두 번째 방 지도 칸
             Assert.That(start, Is.Not.Null, "Starting room must appear on the minimap."); // 시작 방 표시 확인
@@ -206,6 +210,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(start.transform.Find("CurrentDirection").GetComponent<Text>().text, Is.EqualTo("▶")); // 실제 이동 방향과 지도 방향 일치
             yield return TapKey(Key.E); // 두 번째 방 진입
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Not.Null); // 새로 확인한 위쪽 방 표시
+            Assert.That(logText.text, Does.Contain("일반 방")); // 실제 다음 방 진입 기록 확인
+            var logCapturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 탐험 화면 저장 경로
+            if (!string.IsNullOrEmpty(logCapturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                while (player.IsRoomTransitionLocked) // 부드러운 방 전환 완료 대기
+                { // 전환 대기 시작
+                    yield return null; // 다음 프레임 대기
+                } // 전환 대기 끝
+                var capture = typeof(DungeonRuntimeGenerationTests).GetMethod("CaptureScreen", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic); // 실제 탐험 화면 캡처 도구
+                var image = (Texture2D)capture.Invoke(null, new object[] { "DungeonCanvas" }); // 최근 기록이 보이는 탐험 화면
+                System.IO.File.WriteAllBytes(logCapturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.Not.EqualTo(connectedColor)); // 방문 방의 표시 변경
             var currentRect = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<RectTransform>(); // 새 현재 방의 지도 위치
             var previousRect = GameObject.Find("DungeonMiniMap/MapContent/Room_0_0").GetComponent<RectTransform>(); // 이전 방의 지도 위치
@@ -224,7 +241,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(GameObject.Find("ThirdDungeonGrid"), Is.Not.Null); // 세 번째 방 표시 확인
             Assert.That(GameObject.Find("RoomTravel").GetComponent<RoomTravelController>().RoomY, Is.EqualTo(1)); // 현재 방 세로 좌표 확인
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 검증 도구에서 전달한 캡처 경로
-            if (!string.IsNullOrEmpty(capturePath)) // 스크린샷 저장 요청 검사
+            if (!string.IsNullOrEmpty(capturePath) && !System.IO.File.Exists(capturePath)) // 아직 캡처하지 않은 화면 검사
             { // 화면 저장 조건 시작
                 Texture2D screenshot; // 실제 플레이 화면 이미지
                 if (Application.isBatchMode) // 화면 조작 없는 자동 실행 검사
