@@ -90,5 +90,24 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(round.TryEndRound(), Is.True); // 사망자 제외 후 라운드 종료
             Assert.That(new BattleRound(null).TryStartRound(), Is.False); // 참가자 없는 라운드 차단
         } // 검증 끝
+        [Test] // 속도 변경의 라운드 경계 검증
+        public void Round_SpeedChangesApplyAtNextRound() // 기존 순서 유지와 다음 정렬 확인
+        { // 검증 시작
+            var player = new BattleActor("플레이어", 10, true, 0); // 처음 빠른 플레이어
+            var enemy = new BattleActor("적", 5, false, 1); // 처음 느린 상대
+            var round = new BattleRound(new[] { player, enemy }); // 시험 라운드 생성
+            Assert.That(round.TryStartRound(), Is.True); // 첫 라운드 시작
+            enemy.Speed = 20; // 라운드 중 상대 속도 변경
+            Assert.That(round.TryNext(out var first), Is.True); // 첫 행동 선택
+            Assert.That(first, Is.SameAs(player)); // 기존 라운드 순서 유지
+            Assert.That(round.TryCompleteAction(), Is.True); // 플레이어 행동 종료
+            Assert.That(round.TryNext(out var second), Is.True); // 두 번째 행동 선택
+            Assert.That(second, Is.SameAs(enemy)); // 상대의 기존 순서 유지
+            Assert.That(round.TryCompleteAction(), Is.True); // 상대 행동 종료
+            Assert.That(round.TryEndRound(), Is.True); // 첫 라운드 종료
+            Assert.That(round.TryStartRound(), Is.True); // 다음 라운드 시작
+            Assert.That(round.TryNext(out var next), Is.True); // 새 라운드 첫 행동 선택
+            Assert.That(next, Is.SameAs(enemy)); // 변경 속도의 다음 라운드 반영
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝

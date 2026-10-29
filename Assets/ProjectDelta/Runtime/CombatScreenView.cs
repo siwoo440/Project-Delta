@@ -28,6 +28,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private CombatOutcome outcome; // 현재 전투 승패 상태
         private int lastActionFrame = -1; // 같은 프레임의 중복 행동 차단
         private bool pendingRetreat; // 성공 후 안전한 방 이동을 기다리는 후퇴
+        public static int? TrialEnemySpeedOverride // 검증용 상대 속도 지정
+        { // 속성 시작
+            get; // 지정 속도 조회
+            set; // 검증 속도 설정
+        } // 속성 끝
         public static System.Func<int, int, int> RandomOverride // 자동 검증용 난수 지정
         { // 속성 시작
             get; // 지정 난수 조회
@@ -90,7 +95,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
                 canvas.gameObject.AddComponent<CombatActionLayout>().Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion); // 화면 너비별 행동 버튼 배치
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
-                EventSystem.current.SetSelectedGameObject(view.advance.gameObject); // 기본 공격 버튼 선택 지정
+                if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
+                { // 기본 선택 시작
+                    EventSystem.current.SetSelectedGameObject(view.advance.gameObject); // 기본 공격 버튼 선택 지정
+                } // 기본 선택 끝
                 return view; // 준비된 화면 전달
             } // 화면 구성 끝
             catch // 화면 준비 실패 정리
@@ -125,7 +133,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             participants = new[] // 시험 참가자 목록
             { // 목록 시작
                 new BattleActor("플레이어", TrialPlayerSpeed, true, 0), // 시험 플레이어 속도
-                new BattleActor(enemyName, TrialEnemySpeed, false, 1) // 실제 상대의 시험 속도
+                new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) // 실제 상대의 시험 속도
             }; // 목록 끝
             player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
             var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
@@ -135,7 +143,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 준비 실패 조건 시작
                 throw new System.InvalidOperationException("Trial round could not start."); // 잘못된 전투 화면 차단
             } // 준비 실패 조건 끝
-            UpdateDisplay(); // 첫 행동자와 체력 표시
+            ContinueUntilPlayer(); // 빠른 상대 행동과 첫 플레이어 차례 처리
         } // 준비 끝
         private void Advance() // 플레이어 기본 공격과 적 기본 행동
         { // 행동 시작
@@ -236,33 +244,45 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void CompletePlayerTurn() // 플레이어 행동 후 적 행동과 다음 라운드
         { // 턴 진행 시작
             round.TryCompleteAction(); // 플레이어 행동 완료
-            if (round.TryNext(out current)) // 적 행동 순서 확인
-            { // 적 행동 조건 시작
-                if (!current.IsPlayer) // 상대의 새 행동 차례 검사
-                { // 상대 방어 해제 시작
-                    enemy.EndDefense(); // 상대의 이전 방어 상태 해제
-                } // 상대 방어 해제 끝
-                if (!current.IsPlayer && ResolveAttack(enemy, player)) // 적의 기본 공격 처리
-                { // 적 공격 성공 조건 시작
-                    owner.UpdatePlayerHealth(player.Health); // 공격 후 현재 탐험 체력 반영
-                    if (FinishIfNeeded()) // 적 공격 후 승패 검사
-                    { // 전투 종료 조건 시작
-                        return; // 종료된 전투의 추가 행동 차단
-                    } // 전투 종료 조건 끝
-                    round.TryCompleteAction(); // 적 행동 완료
-                } // 적 공격 성공 조건 끝
-            } // 적 행동 조건 끝
-            if (!round.TryEndRound() || !round.TryStartRound() || !round.TryNext(out current)) // 다음 라운드 준비 검사
+            if (!SelectNextActor()) // 다음 행동자 준비 검사
             { // 다음 라운드 실패 조건 시작
                 roundText.text = "행동 가능한 참가자가 없습니다"; // 더 진행할 참가자 없음
                 return; // 잘못된 행동자 표시 방지
             } // 다음 라운드 실패 조건 끝
-            if (current.IsPlayer) // 새 플레이어 행동 차례 검사
-            { // 플레이어 방어 해제 시작
-                player.EndDefense(); // 이전 방어 상태 종료
-            } // 플레이어 방어 해제 끝
-            UpdateDisplay(); // 현재 라운드와 체력 갱신
+            ContinueUntilPlayer(); // 다음 플레이어 차례까지 상대 행동 처리
         } // 행동 끝
+        private bool SelectNextActor() // 다음 행동자 또는 새 라운드 선택
+        { // 선택 시작
+            if (round.TryNext(out current)) // 현재 라운드의 다음 행동자 검사
+            { // 기존 라운드 조건 시작
+                return true; // 다음 행동자 선택 성공
+            } // 기존 라운드 조건 끝
+            return round.TryEndRound() && round.TryStartRound() && round.TryNext(out current); // 완료된 라운드 뒤 새 행동자 선택
+        } // 선택 끝
+        private void ContinueUntilPlayer() // 상대 자동 행동과 플레이어 차례 준비
+        { // 처리 시작
+            while (current != null && !current.IsPlayer) // 상대의 선행 행동 검사
+            { // 상대 행동 시작
+                enemy.EndDefense(); // 상대의 이전 방어 상태 해제
+                if (!ResolveAttack(enemy, player)) // 상대 기본 공격 검사
+                { // 공격 실패 시작
+                    return; // 잘못된 행동 진행 차단
+                } // 공격 실패 끝
+                owner.UpdatePlayerHealth(player.Health); // 공격 후 탐험 체력 반영
+                if (FinishIfNeeded()) // 상대 공격 후 승패 검사
+                { // 전투 종료 조건 시작
+                    return; // 종료된 전투의 추가 행동 차단
+                } // 전투 종료 조건 끝
+                round.TryCompleteAction(); // 상대 행동 완료
+                if (!SelectNextActor()) // 다음 행동자 선택 검사
+                { // 선택 실패 시작
+                    roundText.text = "행동 가능한 참가자가 없습니다"; // 행동 불가 안내
+                    return; // 잘못된 행동자 표시 차단
+                } // 선택 실패 끝
+            } // 상대 행동 끝
+            player.EndDefense(); // 플레이어의 이전 방어 상태 해제
+            UpdateDisplay(); // 현재 라운드와 체력 갱신
+        } // 처리 끝
         private bool ResolveAttack(CombatFighter attacker, CombatFighter defender) // 한 참가자의 기본 공격 처리
         { // 공격 시작
             var hitRoll = Roll(0, 100); // 기존 명중 난수

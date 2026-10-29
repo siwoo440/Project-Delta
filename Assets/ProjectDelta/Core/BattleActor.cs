@@ -9,6 +9,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public int Speed // 행동 순서 기준 속도
         { // 속성 시작
             get; // 속도 조회
+            set; // 현재 속도 변경
         } // 속성 끝
         public bool IsPlayer // 플레이어 여부
         { // 속성 시작

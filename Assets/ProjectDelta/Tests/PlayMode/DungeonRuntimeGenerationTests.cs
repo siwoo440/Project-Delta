@@ -729,6 +729,41 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.TutorialCompleted, Is.True); // 완료 상태의 저장 복원
             Assert.That(app.Observations.Contains("MON_SLIME"), Is.True); // 슬라임 영구 관찰 기록 복원
         } // 검증 끝
+        [UnityTest] // 빠른 상대의 선행 행동 검증
+        public IEnumerator Combat_FasterEnemyActsBeforeEachPlayerTurn() // 첫 행동과 다음 라운드 순서 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 실제 첫 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.TrialEnemySpeedOverride = 20; // 플레이어보다 빠른 시험 상대
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 재현 가능한 명중과 피해
+            yield return EnterDungeon(); // 새 게임 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            yield return UseDoor(travel, player, first); // 첫 조우 진입
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실제 전투 상태 확인
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(94)); // 첫 상대 선행 공격 확인
+            var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 라운드 안내
+            Assert.That(roundText.text, Does.Contain("1라운드")); // 첫 라운드 표시
+            Assert.That(roundText.text, Does.Contain("플레이어")); // 상대 후 플레이어 차례
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 플레이 화면 캡처 요청
+            { // 화면 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 전투 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 화면 캡처 끝
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 플레이어 공격
+            yield return null; // 다음 라운드 처리 대기
+            Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(88)); // 다음 라운드 상대 선행 공격 확인
+            Assert.That(roundText.text, Does.Contain("2라운드")); // 두 번째 라운드 표시
+            Assert.That(roundText.text, Does.Contain("플레이어")); // 다음 플레이어 차례 확인
+        } // 검증 끝
         [UnityTest] // 첫 슬라임 조우 단계 도망 검증
         public IEnumerator FirstSlime_EscapeReturnsToPreviousRoom() // 조우 도망과 재등장 확인
         { // 검증 시작
@@ -3403,6 +3438,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         { // 정리 시작
             RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 시험 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
+            CombatScreenView.TrialEnemySpeedOverride = null; // 시험 상대 속도 설정 해제
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             typeof(CombatScreenView).GetProperty("RetreatRollOverride")?.SetValue(null, null); // 검증용 후퇴 주사위 해제
             typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
