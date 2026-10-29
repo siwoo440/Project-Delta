@@ -38,6 +38,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 MapPointerButton.Create(canvas.transform, "MapOpenButton", "전체 지도", new Vector2(750f, 190f), AppRoot.Instance.OpenFullMap); // 마우스 지도 열기 버튼
                 AppRoot.Instance.InventoryClosed += ClearDoorNotice; // 인벤토리 복귀 시 안내 초기화
                 AppRoot.Instance.ExplorationEvent += AppendLog; // 성공한 탐험 행동 기록 연결
+                foreach (var entry in AppRoot.Instance.ExplorationHistory.Entries) // 현재 회차의 기존 기록 순회
+                { // 기존 기록 복원 시작
+                    AppendLog(entry); // 최근 기록 화면 복원
+                } // 기존 기록 복원 끝
             } // 인벤토리 연결 끝
             if (travel != null && travel.IsReady) // 생성된 방 구조와 실제 상태 검사
             { // 방 정보 연결 시작
@@ -87,7 +91,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void UpdateDoorNotice(string message) // 문 상호작용 안내 갱신
         { // 갱신 시작
             doorNotice.text = message; // 실제 안내 문구 표시
-            AppendLog(message); // 실제 문 상호작용 기록
+            AppRoot.Instance.RecordExplorationEvent(message); // 실제 문 상호작용 보관
         } // 갱신 끝
         private void AppendLog(string message) // 최근 탐험 기록 추가
         { // 기록 시작
@@ -125,7 +129,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     break; // 역할 선택 종료
             } // 역할 선택 끝
             status.text = travel.Floor + "층 · " + status.text; // 현재 층과 방 함께 표시
-            AppendLog(status.text.Replace("현재 위치: ", "") + " 진입"); // 실제 도착 방의 최근 기록
+            AppRoot.Instance.RecordExplorationEvent(status.text.Replace("현재 위치: ", "") + " 진입"); // 실제 도착 방의 회차 기록
         } // 갱신 끝
     } // 클래스 끝
 } // 이름 공간 끝

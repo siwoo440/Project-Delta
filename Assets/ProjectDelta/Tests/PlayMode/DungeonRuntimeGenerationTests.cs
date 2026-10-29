@@ -332,6 +332,22 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(controls.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 하단 배경 입력 통과 확인
             Assert.That(controls.GetComponent<UnityEngine.UI.Image>().color.a, Is.GreaterThan(0.7f)); // 바닥과 글씨 분리 확인
         } // 검증 끝
+        [UnityTest] // 전체 회차 기록과 최근 화면 표시 검증
+        public IEnumerator ExplorationHistory_RetainsOlderEventsWhileHudShowsFour() // 전체 기록과 최근 표시 분리 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 6; index++) // 여섯 개의 실제 기록 요청
+            { // 기록 순회 시작
+                AppRoot.Instance.RecordExplorationEvent("시험 기록 " + index); // 시간순 기록 전달
+            } // 기록 순회 끝
+            var entries = AppRoot.Instance.ExplorationHistory.Entries; // 현재 회차의 전체 기록
+            var text = GameObject.Find("ExplorationLog").GetComponent<UnityEngine.UI.Text>().text; // 실제 최근 기록 화면
+            Assert.That(entries.Count, Is.GreaterThanOrEqualTo(7)); // 시작과 여섯 기록 모두 보관
+            Assert.That(entries[1], Is.EqualTo("시험 기록 0")); // 오래된 기록의 시간순 보관
+            Assert.That(text, Does.Not.Contain("시험 기록 0")); // 화면에서 오래된 기록 제외
+            Assert.That(text, Does.Contain("시험 기록 5")); // 화면의 최신 기록 확인
+            Assert.That(text.Split('\n').Length, Is.EqualTo(4)); // 화면의 최근 네 개 제한
+        } // 검증 끝
         [UnityTest] // 실제 주인공 이미지와 방향 표시 검증
         public IEnumerator DungeonPlayer_UsesAnimeSpriteAndVisibleDirection() // 탐험 주인공과 방향 표시 확인
         { // 검증 시작

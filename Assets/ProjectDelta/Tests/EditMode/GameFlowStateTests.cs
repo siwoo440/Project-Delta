@@ -102,6 +102,17 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 상태 복구
             Assert.That(flow.TryCloseFullMap(), Is.False); // 중복 닫기 차단
         } // 검증 끝
+        [Test] // 현재 회차 탐험 기록 보관 검증
+        public void ExplorationHistory_PreservesEventsAndIgnoresEmptyMessages() // 기록 순서와 빈 기록 확인
+        { // 검증 시작
+            var history = new ExplorationHistory(); // 새 회차의 빈 기록
+            Assert.That(history.Add("시작 방 진입"), Is.True); // 실제 시작 기록 추가
+            Assert.That(history.Add("  "), Is.False); // 빈 내용의 기록 차단
+            Assert.That(history.Add("회복약 획득"), Is.True); // 실제 획득 기록 추가
+            Assert.That(history.Entries.Count, Is.EqualTo(2)); // 유효한 기록 수 확인
+            Assert.That(history.Entries[0], Is.EqualTo("시작 방 진입")); // 최초 기록 순서 확인
+            Assert.That(history.Entries[1], Is.EqualTo("회복약 획득")); // 이후 기록 순서 확인
+        } // 검증 끝
         private static GameFlowState CreateTitleState() // 타이틀 검증 준비
         { // 준비 시작
             var flow = new GameFlowState(); // 초기 상태 생성

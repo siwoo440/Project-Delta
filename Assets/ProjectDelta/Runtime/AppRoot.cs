@@ -15,6 +15,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
+        public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
+        { // 속성 시작
+            get; // 탐험 기록 조회
+            private set; // 새 회차 기록 교체
+        } = new ExplorationHistory(); // 초기 빈 탐험 기록
         public InventoryState Inventory // 현재 게임의 아이템 상태
         { // 속성 시작
             get; // 인벤토리 조회
@@ -104,6 +109,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
             { // 새 게임 조건 시작
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
+                ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
                 Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
             } // 새 게임 조건 끝
@@ -210,11 +216,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             ObservationSaveMessage = string.Empty; // 이전 저장 오류 안내 해제
             return true; // 실제 영구 기록 성공
         } // 저장 끝
+        public void RecordExplorationEvent(string message) // 현재 회차의 실제 탐험 사건 기록
+        { // 기록 시작
+            if (ExplorationHistory.Add(message)) // 유효한 사건 기록 검사
+            { // 기록 알림 시작
+                ExplorationEvent?.Invoke(message); // 화면에 실제 기록 추가 알림
+            } // 기록 알림 끝
+        } // 기록 끝
         public void RecordPotionAcquisition() // 실제 회복약 획득의 탐험 기록 전달
         { // 기록 시작
             if (Flow.Phase == GamePhase.Inventory) // 탐험 인벤토리 상태 검사
             { // 기록 조건 시작
-                ExplorationEvent?.Invoke("시험 소형 회복약 1개 획득"); // 확인된 획득 결과 알림
+                RecordExplorationEvent("시험 소형 회복약 1개 획득"); // 확인된 획득 결과 보관
             } // 기록 조건 끝
         } // 기록 끝
         public bool TryUseTrialPotion(out string message) // 탐험 인벤토리의 시험 회복약 사용
@@ -251,7 +264,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var amount = recovered - PlayerHealth; // 실제 회복한 체력
             UpdatePlayerHealth(recovered); // 최대 체력 안에서 회복 적용
             message = "체력 " + amount + " 회복 · 소형 회복약 1개 사용"; // 실제 회복과 소비 안내
-            ExplorationEvent?.Invoke(message); // 실제 회복 성공의 탐험 기록 전달
+            RecordExplorationEvent(message); // 실제 회복 성공의 탐험 기록 보관
             return true; // 체력 회복과 아이템 소비 완료
         } // 사용 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영

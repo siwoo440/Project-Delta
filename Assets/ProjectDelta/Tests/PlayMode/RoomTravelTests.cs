@@ -211,6 +211,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return TapKey(Key.E); // 두 번째 방 진입
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Not.Null); // 새로 확인한 위쪽 방 표시
             Assert.That(logText.text, Does.Contain("일반 방")); // 실제 다음 방 진입 기록 확인
+            Assert.That(AppRoot.Instance.ExplorationHistory.Entries.Count, Is.GreaterThanOrEqualTo(2)); // 실제 회차의 이전 방 기록 보관
             var logCapturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 탐험 화면 저장 경로
             if (!string.IsNullOrEmpty(logCapturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
             { // 캡처 조건 시작
@@ -267,6 +268,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return WaitForPhase(GamePhase.Exploration); // 새 던전 진입 대기
             yield return null; // 새 지도 화면 준비 대기
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Null); // 새 게임의 세 번째 방 가림
+            Assert.That(AppRoot.Instance.ExplorationHistory.Entries.Count, Is.EqualTo(1)); // 새 회차에서 이전 탐험 기록 초기화
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.EqualTo(connectedColor)); // 이전 방문 기록 초기화
         } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
