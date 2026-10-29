@@ -44,7 +44,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 표시할 체력이 없는 경우 유지
             } // 누락 조건 끝
             var health = AppRoot.Instance.PlayerHealth; // 현재 플레이어 체력
-            playerHealth.text = "체력 " + health + " / 100"; // 현재 체력과 시험 최대 체력
+            playerHealth.text = "체력 " + health + " / 100" + (health <= 25 ? " ! 위험" : string.Empty); // 현재 체력과 낮은 체력 경고
             playerHealth.color = health <= 25 ? new Color(1f, 0.48f, 0.42f) : Color.white; // 낮은 체력의 경고 색상
         } // 갱신 끝
         private static void CreateBackground(Transform parent, string name, Vector2 position, Vector2 size) // 안내 문구용 입력 통과 배경

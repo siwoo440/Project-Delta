@@ -192,6 +192,17 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 경고 표시 갱신 대기
             Assert.That(text.text, Does.Contain("12 / 100")); // 낮은 체력 수치 표시 확인
             Assert.That(text.color.r, Is.GreaterThan(text.color.g)); // 낮은 체력의 경고 색상 확인
+            Assert.That(text.text, Does.Contain("위험")); // 낮은 체력 경고 문구 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 플레이 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 낮은 체력 경고의 실제 게임 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            AppRoot.Instance.UpdatePlayerHealth(50); // 체력 회복 상태 설정
+            yield return null; // 회복 표시 갱신 대기
+            Assert.That(text.text, Does.Not.Contain("위험")); // 체력 회복 후 경고 해제 확인
         } // 검증 끝
         [UnityTest] // 던전 안내 가독성과 입력 통과 검증
         public IEnumerator DungeonHud_HasReadableNonBlockingBackgrounds() // 안내 배경과 게임 입력 보존
