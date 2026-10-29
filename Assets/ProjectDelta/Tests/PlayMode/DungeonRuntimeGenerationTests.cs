@@ -141,12 +141,14 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             app.OpenPause(); // 안정된 탐험의 메뉴 진입
             Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 일시정지 상태 확인
             var originalInventory = app.Inventory; // 기존 인벤토리 참조
+            var originalRunId = app.CurrentRunId; // 기존 회차 식별자
             var flags = BindingFlags.Instance | BindingFlags.NonPublic; // 내부 복구 상태 조회 범위
             typeof(AppRoot).GetField("loadRollbackInventory", flags).SetValue(app, app.Inventory); // 실제 복구용 인벤토리 설정
             typeof(AppRoot).GetField("loadRollbackKeys", flags).SetValue(app, app.Keys); // 실제 복구용 열쇠 설정
             typeof(AppRoot).GetField("loadRollbackHistory", flags).SetValue(app, app.ExplorationHistory); // 실제 복구용 기록 설정
             typeof(AppRoot).GetField("loadRollbackHealth", flags).SetValue(app, app.PlayerHealth); // 실제 복구용 체력 설정
             typeof(AppRoot).GetField("loadRollbackMana", flags).SetValue(app, app.PlayerMana); // 실제 복구용 마나 설정
+            typeof(AppRoot).GetField("loadRollbackRunId", flags).SetValue(app, app.CurrentRunId); // 실제 복구용 회차 식별자 설정
             app.UpdatePlayerHealth(80); // 불러오기 중 임시 적용된 체력
             app.UpdatePlayerMana(12); // 불러오기 중 임시 적용된 마나
             Assert.That(app.Flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 메뉴에서 씬 전환 시작
@@ -158,6 +160,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(app.PlayerHealth, Is.EqualTo(51)); // 전환 전 체력 복원 확인
             Assert.That(app.PlayerMana, Is.EqualTo(31)); // 전환 전 마나 복원 확인
             Assert.That(app.Inventory, Is.SameAs(originalInventory)); // 기존 인벤토리 보존 확인
+            Assert.That(app.CurrentRunId, Is.EqualTo(originalRunId)); // 기존 회차 식별자 보존 확인
             Assert.That(app.Input.IsUiEnabled, Is.True); // 메뉴 입력 복구 확인
         } // 검증 끝
         [UnityTest] // 타이틀 미관찰 도감과 실제 입력 검증
@@ -1816,16 +1819,66 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 행동 처리 대기
             var roundText = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 라운드 안내 조회
             Assert.That(roundText.text, Does.Contain("2라운드")); // 게임패드 공격과 적 행동 확인
-            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadDown)); // 종료 버튼 방향 입력
-            yield return null; // 방향 입력 처리 대기
-            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
-            yield return null; // 해제 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 두 번째 공격 입력
+            yield return null; // 승리 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 공격 버튼 해제
+            yield return null; // 승리 화면 선택 대기
+            Assert.That(roundText.text, Does.Contain("승리")); // 모든 적 처치 확인
             InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 게임패드 종료 선택
             yield return null; // 실제 종료 입력 처리 대기
             InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
             yield return null; // 종료 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 탐험 복귀 확인
             Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구 확인
+        } // 검증 끝
+        [UnityTest] // 항복 취소와 영구 기록 검증
+        public IEnumerator Combat_Surrender_CancelPreservesTurnAndConfirmEndsRun() // 실제 항복 확인 흐름
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "SurrenderTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 종료 대상 회차 저장
+            Assert.That(app.StartCombat(), Is.True); // 실제 전투 진입
+            yield return null; // 전투 화면 대기
+            var round = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 행동 순서
+            var before = round.text; // 항복 전 라운드
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 항복 확인 열기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CancelSurrender")); // 기본 취소 선택
+            Assert.That(GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 확인 중 공격 차단
+            yield return null; // 실제 확인 화면 표시 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 화면 캡처 검사
+            { // 화면 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 항복 확인 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 화면 캡처 끝
+            GameObject.Find("CancelSurrender").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 항복 취소
+            Assert.That(round.text, Is.EqualTo(before)); // 취소 시 행동 차례 보존
+            Assert.That(GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 공격 선택 복구
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 항복 확인 재진입
+            GameObject.Find("ConfirmSurrender").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 항복 확정
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 복귀 대기
+            Assert.That(app.CanContinueRun, Is.False); // 종료한 회차 재개 차단
+            var storage = new DefeatHistoryStorage(RunStorage.TestDirectoryOverride, id => id == "trial-elite" || MonsterCatalog.Find(id) != null); // 독립 패배 기록 조회
+            var records = storage.Load(out var warning); // 영구 기록 재읽기
+            Assert.That(warning, Is.Empty); // 정상 저장 확인
+            Assert.That(records.Count, Is.EqualTo(1)); // 단일 항복 기록 확인
+            Assert.That(records[0].Reason, Is.EqualTo(BattleDefeatReason.Surrender)); // 실제 항복 원인 확인
+        } // 검증 끝
+        [UnityTest] // 기록 후 중단된 종료 복구 검증
+        public IEnumerator DefeatRecovery_EndsSavedRunAfterInterruptedCommit() // 영구 기록 이후의 중단 복구
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "DefeatRecoveryTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 현재 회차 저장
+            var storage = new DefeatHistoryStorage(RunStorage.TestDirectoryOverride, id => id == "trial-elite"); // 별도 패배 기록 저장소
+            storage.Load(out _); // 최초 기록 상태 조회
+            Assert.That(storage.TryAppend(app.CurrentRunId, "trial-elite", BattleDefeatReason.HealthZero, out _, out error), Is.True, error); // 종료 직전 중단 상태 생성
+            typeof(AppRoot).GetMethod("ReconcileDefeatedRun", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(app, null); // 재시작의 기록 복구 처리
+            Assert.That(app.CanContinueRun, Is.False); // 패배한 회차 재개 차단
+            Assert.That(new RunStorage(RunStorage.TestDirectoryOverride).Load(out _), Is.Null); // 영구 종료 표시 재읽기
         } // 검증 끝
         [UnityTest] // 실제 전투 패배 흐름 검증
         public IEnumerator Combat_PlayerDefeat_ReturnsToTitle() // 체력 소진 후 패배 화면과 타이틀 복귀

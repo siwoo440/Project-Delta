@@ -12,6 +12,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
         private RunStorage runStorage; // 현재 회차 저장 기능
+        private DefeatHistoryStorage defeatStorage; // 독립된 영구 패배 기록
         private RunSaveData savedRun; // 마지막으로 확인한 저장 회차
         private bool savedRunValid; // 마지막 회차의 복원 가능 여부
         public RunSaveData PendingRun { get; private set; } // 씬에 전달할 복원 대기 회차
@@ -28,6 +29,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private ExplorationHistory loadRollbackHistory; // 불러오기 실패 시 이전 기록
         private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
         private int loadRollbackMana; // 불러오기 실패 시 이전 마나
+        private string loadRollbackRunId; // 불러오기 실패 시 이전 회차 식별자
+        public string CurrentRunId { get; private set; } = System.Guid.NewGuid().ToString("N"); // 현재 회차의 고유 식별자
         public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
         { // 속성 시작
             get; // 탐험 기록 조회
@@ -110,9 +113,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             try // 회차 저장 읽기
             { // 저장 읽기 시작
                 runStorage = new RunStorage(RunStorage.ResolveDirectory()); // 독립 회차 저장 경로
+                defeatStorage = new DefeatHistoryStorage(RunStorage.ResolveDirectory(), id => id == "trial-elite" || MonsterCatalog.Find(id) != null); // 실제 상대만 허용하는 패배 기록
                 savedRun = runStorage.Load(out var runWarning); // 현재 회차 데이터 읽기
                 savedRunValid = savedRun != null && savedRun.encounterHealth <= CombatScreenView.TrialEnemyHealth; // 실제 적 체력 범위 검사
                 RunSaveMessage = runWarning; // 저장 오류 안내 보관
+                ReconcileDefeatedRun(); // 기록 후 중단된 회차 종료 복구
             } // 저장 읽기 끝
             catch (System.Exception) // 저장 경로 오류
             { // 경로 오류 시작
@@ -141,6 +146,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
             { // 새 게임 조건 시작
                 PendingRun = null; // 이전 복원 요청 해제
+                CurrentRunId = System.Guid.NewGuid().ToString("N"); // 새 회차의 고유 식별자 생성
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
                 PlayerMana = 50; // 새 회차 기본 마나 초기화
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
@@ -194,12 +200,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 loadRollbackHistory = ExplorationHistory; // 기존 기록 보관
                 loadRollbackHealth = PlayerHealth; // 기존 체력 보관
                 loadRollbackMana = PlayerMana; // 기존 마나 보관
+                loadRollbackRunId = CurrentRunId; // 기존 회차 식별자 보관
             } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
             Keys = restoredKeys; // 복원한 열쇠 적용
             ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
             PlayerHealth = savedRun.health; // 저장된 체력 적용
             PlayerMana = savedRun.version < 5 ? 50 : savedRun.mana; // 이전 저장의 기본 마나와 새 저장 복원
+            CurrentRunId = savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 이전 저장의 안정 식별자와 새 저장 복원
             PendingRun = savedRun; // 던전 씬에 복원 상태 전달
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 탐험 재개 요청
             return true; // 재개 요청 승인
@@ -232,6 +240,58 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        private void ReconcileDefeatedRun() // 패배 기록과 저장 회차의 중단 복구
+        { // 복구 시작
+            var records = defeatStorage.Load(out var warning); // 검증된 패배 기록 조회
+            if (defeatStorage.IsBlocked) // 손상된 패배 기록 검사
+            { // 보호 시작
+                savedRunValid = false; // 종료 여부가 불명확한 회차 재개 차단
+                RunSaveMessage = warning; // 기록 복구 안내
+                return; // 기존 파일 보존
+            } // 보호 끝
+            if (savedRun == null) // 저장 회차 존재 검사
+            { // 회차 없음 시작
+                return; // 비교할 회차 없음
+            } // 회차 없음 끝
+            var runId = savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 저장 회차의 안정적인 식별자
+            foreach (var record in records) // 검증된 패배 기록 순회
+            { // 기록 비교 시작
+                if (record.TransactionId != runId) // 다른 회차 기록 검사
+                { // 다른 회차 시작
+                    continue; // 다음 기록 검사
+                } // 다른 회차 끝
+                savedRunValid = false; // 패배한 회차의 재개 차단
+                if (!runStorage.TryMarkEnded(runId, out var error)) // 중단된 종료 표시 재시도
+                { // 종료 오류 시작
+                    RunSaveMessage = error; // 원본 보존과 재시도 안내
+                    return; // 저장 회차 보존
+                } // 종료 오류 끝
+                savedRun = null; // 종료된 회차의 복원 상태 해제
+                RunSaveMessage = "패배한 회차의 종료를 복구했습니다."; // 중단 복구 안내
+                return; // 중복 종료 차단
+            } // 기록 비교 끝
+        } // 복구 끝
+        public bool TryRecordDefeat(string targetId, BattleDefeatReason reason, out string error) // 영구 패배 기록과 해당 회차 종료
+        { // 기록 시작
+            error = string.Empty; // 기본 오류 없음
+            if (defeatStorage == null || runStorage == null || !defeatStorage.TryAppend(CurrentRunId, targetId, reason, out _, out error)) // 패배 기록의 영구 저장 검사
+            { // 기록 실패 시작
+                if (string.IsNullOrEmpty(error)) // 저장소 누락 검사
+                { // 누락 안내 시작
+                    error = "패배 기록 저장소를 사용할 수 없습니다."; // 저장소 오류 안내
+                } // 누락 안내 끝
+                return false; // 회차 저장 보존
+            } // 기록 실패 끝
+            if (!runStorage.TryMarkEnded(CurrentRunId, out error)) // 영구 기록 후 해당 회차 종료 검사
+            { // 종료 실패 시작
+                savedRunValid = false; // 종료 대기 회차의 재개 차단
+                return false; // 기존 회차 보존과 재시도 허용
+            } // 종료 실패 끝
+            savedRun = runStorage.Load(out var warning); // 다른 회차가 있으면 보존한 상태 확인
+            savedRunValid = savedRun != null && RunRestoreRules.IsValid(savedRun); // 보존된 다른 회차 재개 상태
+            RunSaveMessage = warning; // 실제 저장 상태 안내
+            return true; // 기록과 종료 완료
+        } // 기록 끝
         public void OpenPause() // 탐험 중 일시정지 메뉴 열기
         { // 열기 시작
             var room = GameObject.Find("RoomTravel"); // 현재 던전 조회
@@ -283,6 +343,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             savedRun = data; // 확인한 최신 회차 보관
             savedRunValid = true; // 회차 재개 허용
             RunSaveMessage = warning; // 저장 복구 안내 보관
+            ReconcileDefeatedRun(); // 패배 기록과 재개 가능 상태 확인
+            if (!savedRunValid) // 종료되었거나 검증되지 않은 회차 검사
+            { // 불러오기 차단 시작
+                error = RunSaveMessage; // 실제 저장 상태 안내
+                return false; // 패배 회차의 재개 차단
+            } // 불러오기 차단 끝
             return ContinueRun(); // 검증된 회차 재개
         } // 불러오기 끝
         public void OpenHistory() // 탐험 중 회차 기록 화면 열기
@@ -596,6 +662,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     ExplorationHistory = loadRollbackHistory; // 이전 회차 기록 복원
                     PlayerHealth = loadRollbackHealth; // 이전 체력 복원
                     PlayerMana = loadRollbackMana; // 이전 마나 복원
+                    CurrentRunId = loadRollbackRunId; // 이전 회차 식별자 복원
                     PendingRun = null; // 실패한 회차 복원 요청 해제
                     ClearLoadRollback(); // 복구 대상 해제
                 } // 기존 회차 복구 끝
@@ -607,6 +674,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             loadRollbackInventory = null; // 이전 인벤토리 참조 해제
             loadRollbackKeys = null; // 이전 열쇠 참조 해제
             loadRollbackHistory = null; // 이전 기록 참조 해제
+            loadRollbackRunId = null; // 이전 회차 식별자 참조 해제
         } // 해제 끝
         private void OnDestroy() // 공통 객체 해제
         { // 해제 시작

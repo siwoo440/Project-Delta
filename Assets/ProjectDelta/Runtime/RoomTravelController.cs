@@ -102,6 +102,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             return new RunSaveData // 현재 회차의 독립 데이터
             { // 저장 데이터 시작
                 version = RunSaveData.CurrentVersion, // 회차 형식 버전
+                runId = AppRoot.Instance.CurrentRunId, // 현재 회차의 고유 식별자
                 seed = Seed, // 최초 던전 생성 시드
                 generationVersion = generationVersion, // 현재 회차의 생성 규칙
                 tutorialCompleted = tutorialCompleted, // 첫 슬라임 조우 완료 상태

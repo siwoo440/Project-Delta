@@ -42,8 +42,9 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 6; // 다수 조우를 포함한 회차 저장 버전
+        public const int CurrentVersion = 7; // 회차 식별자를 포함한 저장 버전
         public int version; // 회차 저장 버전
+        public string runId; // 중복 종료를 막는 회차 식별자
         public int seed; // 회차 최초 던전 시드
         public int generationVersion; // 던전 생성 규칙 버전
         public bool tutorialCompleted; // 첫 슬라임 조우 완료 여부

@@ -18,6 +18,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly string root; // 회차 저장 폴더
         private readonly string current; // 현재 회차 저장 파일
         private string expectedHash; // 읽은 파일의 해시
+        private string recoveredHash; // 보호 중인 복구 파일 해시
+        public string LegacyRunId => (expectedHash ?? recoveredHash)?.Substring(0, 32); // 이전 저장의 안정적인 식별자
         private bool loaded; // 최초 읽기 완료 상태
         private bool blocked; // 손상이나 충돌 보호 상태
         public static string TestDirectoryOverride // 독립 검증의 저장 경로
@@ -44,8 +46,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             loaded = true; // 읽기 시도 기록
             blocked = false; // 이전 차단 초기화
             expectedHash = null; // 읽은 해시 초기화
+            recoveredHash = null; // 이전 복구 해시 초기화
             try // 파일과 형식 검사
             { // 검사 시작
+                if (File.Exists(current) && TryReadEnded(current, out _, out var endedHash)) // 정상 종료된 회차 표시 검사
+                { // 종료 기록 시작
+                    expectedHash = endedHash; // 새 회차 저장의 변경 검사 기준
+                    return null; // 종료한 회차와 이전 백업 재개 차단
+                } // 종료 기록 끝
                 if (File.Exists(current) && TryRead(current, out var data, out var hash)) // 현재 파일 무결성과 데이터 검사
                 { // 정상 파일 시작
                     expectedHash = hash; // 동시 변경 비교 기준
@@ -59,9 +67,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     candidates.Sort(CompareCandidates); // 최신 저장 시도 우선 정렬
                     foreach (var path in candidates) // 복구 후보 순회
                     { // 후보 검사 시작
-                        if (TryRead(path, out var recovered, out _)) // 후보 무결성과 회차 상태 검사
+                        if (TryRead(path, out var recovered, out var candidateHash)) // 후보 무결성과 회차 상태 검사
                         { // 복구 가능 조건 시작
                             blocked = true; // 원본과 복구 후보 보호
+                            recoveredHash = candidateHash; // 복구 회차의 안정 식별자 보관
                             warning = "회차 저장에 문제가 있어 복구 기록을 읽었습니다. 파일 확인 전에는 저장할 수 없습니다."; // 복구와 저장 차단 안내
                             return recovered; // 검증된 복구 회차
                         } // 복구 가능 조건 끝
@@ -94,7 +103,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 using (var gate = new FileStream(Path.Combine(root, "run.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) // 동시 저장 잠금
                 { // 잠금 시작
                     var exists = File.Exists(current); // 현재 파일 존재 여부
-                    if (exists != (expectedHash != null) || (exists && (!TryRead(current, out _, out var actualHash) || actualHash != expectedHash))) // 최초 읽기 이후 변경 검사
+                    if (exists != (expectedHash != null) || (exists && (!TryReadCurrentHash(current, out var actualHash) || actualHash != expectedHash))) // 최초 읽기 이후 변경 검사
                     { // 충돌 조건 시작
                         blocked = true; // 충돌 파일 덮어쓰기 차단
                         error = "회차 저장이 변경되었거나 손상되었습니다."; // 충돌 안내
@@ -141,6 +150,123 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 실패 상태 전달
             } // 오류 처리 끝
         } // 저장 끝
+        public bool TryMarkEnded(string runId, out string error) // 영구 기록 후 회차 종료 표시
+        { // 종료 시작
+            error = string.Empty; // 기본 오류 없음
+            if (!loaded || blocked || string.IsNullOrWhiteSpace(runId) || runId.Length > 128) // 저장 상태와 회차 식별자 검사
+            { // 종료 거절 시작
+                error = "회차 종료 상태를 기록할 수 없습니다."; // 종료 불가 안내
+                return false; // 기존 회차 보존
+            } // 종료 거절 끝
+            try // 회차 잠금과 안전한 종료 표시
+            { // 종료 처리 시작
+                Directory.CreateDirectory(root); // 회차 저장 폴더 준비
+                using (var gate = new FileStream(Path.Combine(root, "run.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) // 동시 저장 잠금
+                { // 잠금 시작
+                    var exists = File.Exists(current); // 현재 파일 존재 여부
+                    if (exists != (expectedHash != null) || (exists && (!TryReadCurrentHash(current, out var actualHash) || actualHash != expectedHash))) // 다른 실행의 변경 검사
+                    { // 충돌 처리 시작
+                        blocked = true; // 다른 실행의 저장 보호
+                        error = "회차 저장이 변경되었거나 손상되었습니다."; // 충돌 안내
+                        return false; // 기존 회차 보존
+                    } // 충돌 처리 끝
+                    if (exists && TryReadEnded(current, out var previousId, out _) && previousId == runId) // 같은 회차의 이미 완료된 종료 검사
+                    { // 중복 종료 시작
+                        return true; // 같은 종료의 중복 처리 방지
+                    } // 중복 종료 끝
+                    if (exists && TryRead(current, out var existingRun, out var existingHash)) // 다른 회차의 기존 저장 검사
+                    { // 회차 식별 검사 시작
+                        var existingId = existingRun.version < 7 ? existingHash.Substring(0, 32) : existingRun.runId; // 이전 저장과 새 저장의 식별자
+                        if (existingId != runId) // 다른 회차 저장 검사
+                        { // 다른 회차 보존 시작
+                            return true; // 다른 회차 파일과 백업 유지
+                        } // 다른 회차 보존 끝
+                    } // 회차 식별 검사 끝
+                    var payload = "ended:" + runId; // 종료한 회차 식별 내용
+                    var envelope = JsonUtility.ToJson(new Envelope { payload = payload, checksum = Hash(Encoding.UTF8.GetBytes(payload)) }); // 종료 내용과 무결성 값
+                    var temporary = Path.Combine(root, "end-" + Guid.NewGuid().ToString("N") + ".tmp"); // 다른 복구 후보와 구분한 임시 파일
+                    using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None)) // 종료 임시 파일 생성
+                    using (var writer = new StreamWriter(stream, new UTF8Encoding(false))) // 종료 기록 문자 인코딩
+                    { // 종료 임시 저장 시작
+                        writer.Write(envelope); // 종료 기록 쓰기
+                        writer.Flush(); // 문자 버퍼 반영
+                        stream.Flush(true); // 저장 장치 반영
+                    } // 종료 임시 저장 끝
+                    if (!TryReadEnded(temporary, out var writtenId, out _) || writtenId != runId) // 임시 종료 기록 검증
+                    { // 종료 기록 오류 시작
+                        error = "회차 종료 기록을 검증하지 못했습니다."; // 검증 실패 안내
+                        return false; // 기존 회차 보존
+                    } // 종료 기록 오류 끝
+                    var candidates = new List<string>(Directory.GetFiles(root, "run-*.tmp")); // 이전 회차의 임시 복구 후보
+                    candidates.AddRange(Directory.GetFiles(root, "run-backup-*.json")); // 이전 회차의 백업 복구 후보
+                    foreach (var candidate in candidates) // 기존 복구 후보 순회
+                    { // 안전한 보관 시작
+                        var retired = Path.Combine(root, "retired-" + Guid.NewGuid().ToString("N") + "-" + Path.GetFileName(candidate)); // 복구 대상에서 분리할 보관 경로
+                        File.Move(candidate, retired); // 원본 데이터를 삭제하지 않고 보관
+                    } // 안전한 보관 끝
+                    if (exists) // 기존 회차 존재 검사
+                    { // 기존 회차 보관 시작
+                        File.Copy(current, Path.Combine(root, "retired-" + Guid.NewGuid().ToString("N") + "-current.json"), false); // 종료 전 원본 보관
+                        File.Replace(temporary, current, null); // 종료 표시의 원자적 교체
+                    } // 기존 회차 보관 끝
+                    else // 기존 회차 파일 없음 분기
+                    { // 최초 종료 표시 시작
+                        File.Move(temporary, current); // 종료 표시의 원자적 생성
+                    } // 최초 종료 표시 끝
+                    if (!TryReadEnded(current, out var confirmedId, out expectedHash) || confirmedId != runId) // 종료 표시의 재검증
+                    { // 종료 검증 실패 시작
+                        blocked = true; // 추가 저장 차단
+                        error = "회차 종료 상태를 확인하지 못했습니다."; // 종료 검증 오류 안내
+                        return false; // 검증되지 않은 종료 보고
+                    } // 종료 검증 실패 끝
+                    return true; // 검증된 종료 완료
+                } // 잠금 끝
+            } // 종료 처리 끝
+            catch (Exception) // 저장 접근 또는 교체 오류
+            { // 오류 처리 시작
+                error = "회차 종료에 실패했습니다. 저장 파일을 확인해 주세요."; // 종료 실패 안내
+                return false; // 기존 자료 보존과 실패 전달
+            } // 오류 처리 끝
+        } // 종료 끝
+        private static bool TryReadCurrentHash(string path, out string hash) // 정상 회차 또는 종료 표시의 파일 해시 조회
+        { // 조회 시작
+            if (TryRead(path, out _, out hash)) // 정상 회차 검사
+            { // 회차 조건 시작
+                return true; // 정상 회차 해시 전달
+            } // 회차 조건 끝
+            return TryReadEnded(path, out _, out hash); // 검증된 종료 표시 해시 전달
+        } // 조회 끝
+        private static bool TryReadEnded(string path, out string runId, out string hash) // 종료 표시와 무결성 검사
+        { // 검사 시작
+            runId = null; // 기본 회차 식별자 없음
+            hash = null; // 기본 파일 해시 없음
+            try // 종료 표시 읽기
+            { // 읽기 시작
+                var info = new FileInfo(path); // 종료 파일 정보
+                if (!info.Exists || info.Length > 1024 * 1024) // 파일 존재와 크기 검사
+                { // 파일 오류 시작
+                    return false; // 잘못된 파일 차단
+                } // 파일 오류 끝
+                var bytes = File.ReadAllBytes(path); // 전체 종료 파일 읽기
+                var envelope = JsonUtility.FromJson<Envelope>(Encoding.UTF8.GetString(bytes)); // 종료 외피 해석
+                if (envelope == null || string.IsNullOrEmpty(envelope.payload) || !envelope.payload.StartsWith("ended:", StringComparison.Ordinal) || envelope.checksum != Hash(Encoding.UTF8.GetBytes(envelope.payload))) // 종료 형식과 무결성 검사
+                { // 형식 오류 시작
+                    return false; // 잘못된 종료 표시 차단
+                } // 형식 오류 끝
+                var id = envelope.payload.Substring(6); // 종료한 회차 식별자
+                if (string.IsNullOrWhiteSpace(id) || id.Length > 128) // 식별자 유효성 검사
+                { // 식별자 오류 시작
+                    return false; // 잘못된 종료 표시 차단
+                } // 식별자 오류 끝
+                runId = id; // 검증된 회차 식별자 전달
+                hash = Hash(bytes); // 전체 파일의 변경 검사 해시
+                return true; // 종료 표시 확인
+            } // 읽기 끝
+            catch (Exception) // 파일과 직렬화 오류
+            { // 오류 처리 시작
+                return false; // 손상된 종료 표시 차단
+            } // 오류 처리 끝
+        } // 검사 끝
         private static int CompareCandidates(string left, string right) // 복구 후보의 최신순 비교
         { // 비교 시작
             var order = CandidateTicks(right).CompareTo(CandidateTicks(left)); // 저장 시도 시각 비교

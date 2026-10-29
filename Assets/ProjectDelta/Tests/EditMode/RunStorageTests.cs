@@ -29,6 +29,45 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(warning, Is.Empty); // 정상 저장 안내 없음
             Assert.That(loaded.health, Is.EqualTo(42)); // 체력 복원 확인
         } // 검증 끝
+        [Test] // 종료 회차의 백업 재등장 방지 검증
+        public void EndedRun_IsNotRecoveredAndNewRunCanBeSaved() // 회차 종료와 새 저장 확인
+        { // 검증 시작
+            var store = new RunStorage(root); // 독립 회차 저장소
+            store.Load(out _); // 최초 저장 상태 읽기
+            Assert.That(store.TrySave(Snapshot(42), out _), Is.True); // 첫 회차 저장
+            Assert.That(store.TrySave(Snapshot(50), out _), Is.True); // 기존 회차 백업 생성
+            Assert.That(store.TryMarkEnded(store.LegacyRunId, out var error), Is.True, error); // 검증된 회차 종료 처리
+            var fresh = new RunStorage(root); // 새 실행의 저장소
+            Assert.That(fresh.Load(out var warning), Is.Null); // 종료된 회차 이어하기 차단
+            Assert.That(warning, Is.Empty); // 정상 종료의 손상 경고 없음
+            Assert.That(fresh.TrySave(Snapshot(60), out error), Is.True, error); // 새 회차 저장 가능
+            File.WriteAllText(Path.Combine(root, "run-v1.json"), "corrupt"); // 새 회차 현재 저장 손상
+            var recovery = new RunStorage(root); // 새 실행의 복구 저장소
+            Assert.That(recovery.Load(out _), Is.Null); // 종료된 이전 회차의 백업 부활 차단
+        } // 검증 끝
+        [Test] // 다른 실행의 저장 변경과 회차 종료 충돌 검증
+        public void EndedRun_RejectsConcurrentChangeWithoutReplacingIt() // 다른 실행의 저장 보존 확인
+        { // 검증 시작
+            var first = new RunStorage(root); // 첫 저장소
+            first.Load(out _); // 최초 상태 읽기
+            Assert.That(first.TrySave(Snapshot(42), out _), Is.True); // 첫 회차 저장
+            var other = new RunStorage(root); // 다른 실행 저장소
+            other.Load(out _); // 다른 실행의 현재 저장 읽기
+            Assert.That(other.TrySave(Snapshot(50), out _), Is.True); // 다른 실행의 회차 변경
+            Assert.That(first.TryMarkEnded("test-run", out _), Is.False); // 이전 실행의 종료 충돌 차단
+            Assert.That(new RunStorage(root).Load(out _).health, Is.EqualTo(50)); // 다른 실행의 저장 보존
+        } // 검증 끝
+        [Test] // 다른 회차 저장 보존 확인
+        public void EndedRun_PreservesDifferentSavedRun() // 저장되지 않은 다른 회차의 종료 검사
+        { // 검증 시작
+            var store = new RunStorage(root); // 독립 회차 저장소
+            store.Load(out _); // 최초 저장 상태 조회
+            Assert.That(store.TrySave(Snapshot(42), out var error), Is.True, error); // 기존 회차 저장
+            var previousId = store.LegacyRunId; // 기존 회차 식별자
+            Assert.That(store.TryMarkEnded(System.Guid.NewGuid().ToString("N"), out error), Is.True, error); // 다른 회차 종료 처리
+            Assert.That(new RunStorage(root).Load(out _).health, Is.EqualTo(42)); // 기존 회차의 재개 상태 보존
+            Assert.That(previousId, Is.Not.Null); // 기존 회차 식별자 확인
+        } // 검증 끝
         [Test] // 손상된 원본 보존 검증
         public void CorruptSave_IsNotOverwritten() // 손상 저장 덮어쓰기 거절
         { // 검증 시작

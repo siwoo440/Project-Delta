@@ -10,6 +10,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
+            if (data.version >= 7 && !Guid.TryParseExact(data.runId, "N", out _)) // 새 저장의 회차 식별자 검사
+            { // 식별자 오류 시작
+                return false; // 잘못된 회차 식별자 차단
+            } // 식별자 오류 끝
             foreach (var entry in data.history) // 저장된 탐험 기록 순회
             { // 기록 검사 시작
                 if (string.IsNullOrWhiteSpace(entry) || entry.Length > 1024) // 빈 기록과 길이 검사

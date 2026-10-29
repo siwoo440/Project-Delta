@@ -132,5 +132,21 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(RunRestoreRules.IsValid(data), Is.True); // 완료 조우 저장 허용
             Assert.That(RunRestoreRules.IsValid(ValidSnapshot()), Is.True); // 다수 조우 없는 기존 저장 허용
         } // 검증 끝
+        [Test] // 회차별 영구 기록 식별자 검증
+        public void Validate_RunIdentifierIsRequiredOnlyForNewVersion() // 새 회차 식별자와 기존 저장 확인
+        { // 검증 시작
+            var data = ValidSnapshot(); // 기존 회차 저장 준비
+            data.version = 7; // 회차 식별자를 포함하는 저장 버전
+            data.generationVersion = 1; // 기존 던전 생성 규칙
+            data.secretPassages = new SavedSecretPassage[0]; // 기존 구조의 비밀 기록
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(DungeonGenerator.Generate(data.seed)); // 기존 구조 지문
+            data.mana = 50; // 현재 마나
+            data.maxMana = 50; // 기본 최대 마나
+            data.runId = "invalid"; // 잘못된 회차 식별자
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 잘못된 식별자 차단
+            data.runId = System.Guid.NewGuid().ToString("N"); // 유효한 회차 식별자
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 정상 회차 식별자 허용
+            Assert.That(RunRestoreRules.IsValid(ValidSnapshot()), Is.True); // 식별자가 없는 기존 저장 허용
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝
