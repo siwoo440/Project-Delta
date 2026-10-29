@@ -1170,6 +1170,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(give, Is.Not.Null); // 회복약 지급 제공 확인
             Assert.That(use, Is.Not.Null); // 회복약 사용 제공 확인
             give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 회복약 지급
+            Assert.That(GameObject.Find("ExplorationLog").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("회복약 1개 획득")); // 실제 회복약 획득 기록 확인
             yield return null; // 중복 입력 방지 프레임 대기
             give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 회복약 지급
             Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(2)); // 동일 회복약 중첩 확인
@@ -1237,13 +1238,29 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var give = GameObject.Find("TrialPotionButton"); // 회복약 시험 지급 버튼
             Assert.That(give, Is.Not.Null); // 회복약 지급 제공 확인
             give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 없는 회복약 지급
+            var log = GameObject.Find("ExplorationLog").GetComponent<UnityEngine.UI.Text>(); // 실제 탐험 기록
+            Assert.That(log.text, Does.Not.Contain("회복약 1개 획득")); // 획득 전 성공 기록 방지
+            GameObject.Find("LeaveItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 부족의 회복약 포기
+            Assert.That(log.text, Does.Not.Contain("회복약 1개 획득")); // 포기한 아이템 기록 방지
+            yield return null; // 중복 지급 방지 프레임 대기
+            give.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 회복약 획득 다시 시도
             GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 아이템 교체 선택
             GameObject.Find("InventorySlotButton_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 슬롯 선택
             Assert.That(GameObject.Find("ReplaceConfirmMessage").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("회복약")); // 실제 새 아이템 표시
             GameObject.Find("ConfirmReplaceButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 최종 확인
             Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("trial-small-potion")); // 확인된 회복약 획득
+            Assert.That(log.text, Does.Contain("회복약 1개 획득")); // 확인된 교체 후 획득 기록
             Assert.That(AppRoot.Instance.Inventory.Slots[2].StackLimit, Is.EqualTo(5)); // 회복약 중첩 한도 보존
             Assert.That(AppRoot.Instance.Inventory.Slots[1].ItemId, Is.EqualTo("old-1")); // 다른 기존 슬롯 보존
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                AppRoot.Instance.CloseInventory(); // 획득 기록의 탐험 화면 복귀
+                yield return null; // 복귀 화면 갱신 대기
+                var image = CaptureScreen("DungeonCanvas"); // 실제 회복약 획득 기록 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
         } // 검증 끝
         [UnityTest] // 전투 회복약 사용과 상대 행동 검증
         public IEnumerator CombatPotion_Success_ConsumesTurnAndEnemyActs() // 실제 회복과 한 행동 소모

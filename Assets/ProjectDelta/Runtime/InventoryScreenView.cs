@@ -318,6 +318,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 offerPanel.transform.Find("FullOfferMessage").GetComponent<Text>().text = "아이템을 교체하지 못했습니다"; // 표시 중인 화면에 실패 안내
                 return; // 기존 아이템 보존
             } // 교체 실패 조건 끝
+            if (offeredId == AppRoot.TrialPotionId) // 확인된 회복약 교체 검사
+            { // 회복약 기록 시작
+                owner.RecordPotionAcquisition(); // 실제 회복약 획득 기록
+            } // 회복약 기록 끝
             var acquiredName = offeredName; // 획득한 아이템 이름 보관
             LeaveOffer(); // 교체 완료 후 인벤토리 복귀
             status.text = acquiredName + "을 획득했습니다"; // 실제 획득 결과 안내
@@ -375,6 +379,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             lastPotionFrame = Time.frameCount; // 회복약 지급 프레임 보관
             var result = owner.Inventory.Add(AppRoot.TrialPotionId, "시험 소형 회복약", 1, AppRoot.TrialPotionStackLimit); // 기획 수치의 시험 회복약 지급
             Refresh(); // 현재 슬롯과 체력 표시
+            if (result.Remaining == 0) // 실제 회복약 획득 성공 검사
+            { // 성공 기록 시작
+                owner.RecordPotionAcquisition(); // 성공한 회복약 획득 기록
+            } // 성공 기록 끝
             if (result.Remaining > 0) // 가방 공간 부족 검사
             { // 공간 부족 조건 시작
                 offeredId = AppRoot.TrialPotionId; // 대기할 회복약 식별자

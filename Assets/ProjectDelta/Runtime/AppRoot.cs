@@ -210,6 +210,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             ObservationSaveMessage = string.Empty; // 이전 저장 오류 안내 해제
             return true; // 실제 영구 기록 성공
         } // 저장 끝
+        public void RecordPotionAcquisition() // 실제 회복약 획득의 탐험 기록 전달
+        { // 기록 시작
+            if (Flow.Phase == GamePhase.Inventory) // 탐험 인벤토리 상태 검사
+            { // 기록 조건 시작
+                ExplorationEvent?.Invoke("시험 소형 회복약 1개 획득"); // 확인된 획득 결과 알림
+            } // 기록 조건 끝
+        } // 기록 끝
         public bool TryUseTrialPotion(out string message) // 탐험 인벤토리의 시험 회복약 사용
         { // 사용 시작
             message = "사용할 소형 회복약이 없습니다"; // 회복약 부재 안내
