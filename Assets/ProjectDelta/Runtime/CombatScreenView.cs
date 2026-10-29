@@ -38,6 +38,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private BattleActor lastInfluencer; // 마지막으로 영향을 준 상대
         private GameObject surrenderDialog; // 항복 확인 화면
         private bool surrenderConfirmed; // 실제 확인된 항복 여부
+        private SavedBattleReward pendingVictoryReward; // 한 번 생성한 승리 보상 후보
+        private bool confirmReplaceOtherRun; // 다른 회차 저장 교체의 명시적 확인 대기
+        private int rewardEligibleEnemies; // 이번 전투 시작 시 생존한 보상 대상 수
         public static int? TrialEnemySpeedOverride // 검증용 상대 속도 지정
         { // 속성 시작
             get; // 지정 속도 조회
@@ -52,6 +55,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 속성 시작
             get; // 지정 주사위 조회
             set; // 검증 주사위 설정
+        } // 속성 끝
+        public static System.Func<int, int, int> RewardRollOverride // 자동 검증용 보상 주사위 지정
+        { // 속성 시작
+            get; // 지정 난수 조회
+            set; // 검증 난수 설정
         } // 속성 끝
         public static CombatScreenView Create(AppRoot owner) // 실제 시험 전투 화면 생성
         { // 생성 시작
@@ -181,6 +189,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
                 enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, enemyHealth); // 시험 상대와 명중 보정 0
             } // 단일 전투 준비 끝
+            if (groupFighters == null) // 단일 조우 검사
+            { // 단일 보상 준비 시작
+                rewardEligibleEnemies = enemy.Actor.IsAlive ? 1 : 0; // 이번 전투의 생존 상대 수
+            } // 단일 보상 준비 끝
+            else // 다수 적 분기
+            { // 다수 보상 준비 시작
+                foreach (var fighter in groupFighters) // 현재 전투의 적 순회
+                { // 보상 대상 검사 시작
+                    rewardEligibleEnemies += fighter.Actor.IsAlive ? 1 : 0; // 이전 후퇴에서 제거한 적 제외
+                } // 보상 대상 검사 끝
+            } // 다수 보상 준비 끝
             round = new BattleRound(participants); // 참가자별 라운드 생성
             if (!round.TryStartRound() || !round.TryNext(out current)) // 첫 라운드와 행동자 검사
             { // 준비 실패 조건 시작
@@ -452,7 +471,44 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 승리 조건 시작
                 var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
-                travel?.CompleteCurrentEncounter(); // 승리한 방의 조우 완료
+                if (travel != null && travel.CanCompleteCurrentEncounter()) // 실제 미완료 조우 승리 검사
+                { // 실제 보상 준비 시작
+                    if (pendingVictoryReward == null) // 아직 생성하지 않은 후보 검사
+                    { // 후보 생성 시작
+                        var elite = travel.CurrentMonsterId == "trial-elite" ? 1 : 0; // 시험 상위 개체 수
+                        var normal = elite == 0 ? rewardEligibleEnemies : 0; // 이번 전투 시작 시 생존한 일반 적 수
+                        if (!ExperienceRules.TryCalculateVictory(travel.Floor, normal, elite, out var experience)) // 실제 적별 경험치 검사
+                        { // 경험치 오류 시작
+                            notice.text = "경험치를 계산할 수 없습니다."; // 실제 계산 오류 안내
+                            return; // 잘못된 보상 차단
+                        } // 경험치 오류 끝
+                        var potions = 0; // 실제 드롭 후보 수
+                        for (var index = 0; index < normal + elite; index++) // 승리한 실제 적 순회
+                        { // 개별 드롭 시작
+                            var roll = RewardRollOverride == null ? random.Next(0, 100) : RewardRollOverride(0, 100); // 보상 전용 난수
+                            if (roll < (elite > 0 ? 70 : 30)) // 기획의 개별 소비 아이템 확률
+                            { // 아이템 후보 시작
+                                potions++; // 시험 회복약 후보 추가
+                            } // 아이템 후보 끝
+                        } // 개별 드롭 끝
+                        pendingVictoryReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = normal, eliteEnemies = elite, experience = experience, gold = 10 * normal + 30 * elite, potionCount = potions }; // 고유 거래와 시험 골드 후보
+                    } // 후보 생성 끝
+                    if (!owner.TryStageVictoryReward(pendingVictoryReward, confirmReplaceOtherRun, out var error)) // 후보의 사전 저장 검사
+                    { // 저장 실패 시작
+                        confirmReplaceOtherRun = error.StartsWith("다른 회차의 저장이 있습니다.", System.StringComparison.Ordinal); // 다른 회차 교체 확인 대기
+                        notice.text = error; // 저장 실패 또는 기존 회차 안내
+                        if (confirmReplaceOtherRun) // 명시적 교체 선택 검사
+                        { // 교체 선택 표시 시작
+                            exit.transform.Find("Label").GetComponent<Text>().text = "기존 저장 교체 후 보상 준비"; // 별도 교체 선택 안내
+                        } // 교체 선택 표시 끝
+                        return; // 저장 전 보상 화면 차단
+                    } // 저장 실패 끝
+                    if (!owner.OpenRewardScreen()) // 저장된 후보 화면 표시 검사
+                    { // 표시 실패 시작
+                        notice.text = "보상 화면을 열지 못했습니다. 다시 선택하세요."; // 저장된 후보 재시도 안내
+                    } // 표시 실패 끝
+                    return; // 보상 화면에서 완료 처리
+                } // 실제 보상 준비 끝
             } // 승리 조건 끝
             owner.EndCombat(); // 보존된 탐험으로 복귀
         } // 완료 끝

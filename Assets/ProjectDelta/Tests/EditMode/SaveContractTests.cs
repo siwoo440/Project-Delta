@@ -13,7 +13,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 회차 버전과 체력 검증
         public void Run_RejectsUnknownVersionAndInvalidHealth() // 버전과 체력 오류 거절
         { // 검증 시작
-            var run = new RunSaveData { version = 8, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
+            var run = new RunSaveData { version = 9, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
             Assert.That(run.IsValid(), Is.False); // 새 버전 거절 확인
             run.version = 1; // 지원 버전 설정
             run.health = 2; // 최대치 초과 체력
@@ -21,6 +21,32 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             run.health = 1; // 정상 체력 설정
             run.floor = 0; // 잘못된 층 번호
             Assert.That(run.IsValid(), Is.False); // 잘못된 층 거절 확인
+        } // 검증 끝
+        [Test] // 성장과 보상 후보 저장 검증
+        public void Run_RejectsInvalidGrowthAndRewardCandidate() // 보상 복원의 잘못된 상태 거절
+        { // 검증 시작
+            var run = new RunSaveData { version = 8, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, experience = 0, statPoints = 5, gold = 0, slots = new SaveItemSlot[0] }; // 정상 성장 저장
+            Assert.That(run.IsValid(), Is.True); // 정상 성장 허용
+            run.experience = 100; // 이미 레벨이 올라야 하는 경험치
+            Assert.That(run.IsValid(), Is.False); // 정규화되지 않은 성장 차단
+            run.experience = 0; // 정상 경험치 복구
+            run.gold = -1; // 음수 골드
+            Assert.That(run.IsValid(), Is.False); // 잘못된 골드 차단
+            run.gold = 0; // 정상 골드 복구
+            run.pendingReward = new SavedBattleReward { transactionId = "invalid", experience = 60, gold = 10, potionCount = 1 }; // 잘못된 거래 식별자
+            run.hasPendingReward = true; // 실제 미완료 후보 표시
+            Assert.That(run.IsValid(), Is.False); // 복구 불가능한 후보 차단
+        } // 검증 끝
+        [Test] // 보상 거래 중복 저장 검증
+        public void Run_RejectsCompletedAndPendingSameReward() // 완료 거래의 재지급 차단
+        { // 검증 시작
+            var id = System.Guid.NewGuid().ToString("N"); // 고유 전투 거래 식별자
+            var run = new RunSaveData { version = 8, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, statPoints = 5, slots = new SaveItemSlot[0], hasPendingReward = true, pendingReward = new SavedBattleReward { transactionId = id, normalEnemies = 1, experience = 60, gold = 10 }, rewardReceipts = new[] { new SavedRewardReceipt { transactionId = id, tookPotion = false } } }; // 같은 거래가 완료와 대기에 동시에 있는 저장
+            Assert.That(run.IsValid(), Is.False); // 완료된 거래의 재지급 거절
+            run.hasPendingReward = false; // 미완료 후보 해제
+            Assert.That(run.IsValid(), Is.True); // 단일 완료 거래 허용
+            run.rewardReceipts = new[] { new SavedRewardReceipt { transactionId = id }, new SavedRewardReceipt { transactionId = id } }; // 중복 완료 거래
+            Assert.That(run.IsValid(), Is.False); // 중복 보상 거래 거절
         } // 검증 끝
         [Test] // 아이템 수량과 빈 칸 검증
         public void Run_RejectsInvalidSlots() // 잘못된 아이템 거절

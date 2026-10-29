@@ -82,8 +82,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public MoveDirection Facing => player.Facing; // 현재 플레이어의 이동 방향
         public bool IsReady => state != null && Layout != null && Discovery != null && player != null; // 생성과 화면 연결 준비 상태
         public RunSaveData CaptureRun() // 확정된 탐험 상태의 저장본
+        { // 탐험 저장 시작
+            return CaptureRun(false); // 일반 탐험과 메뉴 상태 검사
+        } // 탐험 저장 끝
+        public RunSaveData CaptureBattleRewardRun() // 승리 보상 준비를 위한 저장본
+        { // 보상 저장 시작
+            return CaptureRun(true); // 실제 전투 중 안정된 위치 허용
+        } // 보상 저장 끝
+        private RunSaveData CaptureRun(bool allowCombat) // 확정된 현재 위치의 저장본
         { // 저장본 생성 시작
-            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Exploration && AppRoot.Instance.Flow.Phase != GamePhase.Pause)) // 안정된 탐험과 메뉴 상태 검사
+            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Exploration && AppRoot.Instance.Flow.Phase != GamePhase.Pause && (!allowCombat || AppRoot.Instance.Flow.Phase != GamePhase.Combat))) // 안정된 탐험과 승리 전투 상태 검사
             { // 저장 불가 조건 시작
                 return null; // 이동이나 다른 화면의 저장 차단
             } // 저장 불가 조건 끝
@@ -103,6 +111,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 저장 데이터 시작
                 version = RunSaveData.CurrentVersion, // 회차 형식 버전
                 runId = AppRoot.Instance.CurrentRunId, // 현재 회차의 고유 식별자
+                level = AppRoot.Instance.Level, // 현재 회차 레벨
+                experience = AppRoot.Instance.Experience, // 현재 레벨의 진행 경험치
+                statPoints = AppRoot.Instance.StatPoints, // 분배하지 않은 스탯 포인트
+                gold = AppRoot.Instance.Gold, // 현재 회차 골드
+                rewardReceipts = (SavedRewardReceipt[])AppRoot.Instance.RewardReceipts.Clone(), // 완료한 보상 거래 복사
                 seed = Seed, // 최초 던전 생성 시드
                 generationVersion = generationVersion, // 현재 회차의 생성 규칙
                 tutorialCompleted = tutorialCompleted, // 첫 슬라임 조우 완료 상태
@@ -585,6 +598,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 표시 제거 끝
             return true; // 조우 완료 성공
         } // 완료 끝
+        public bool PrepareCompletedEncounter(RunSaveData data) // 현재 조우 완료를 독립 저장본에 반영
+        { // 저장본 수정 시작
+            if (data == null || !CanCompleteCurrentEncounter() || data.floor != Floor || data.roomX != RoomX || data.roomY != RoomY) // 현재 조우와 저장 위치 검사
+            { // 완료 거절 시작
+                return false; // 잘못된 조우 상태 차단
+            } // 완료 거절 끝
+            if (IsGroupEncounter) // 시험 다수 조우 검사
+            { // 다수 완료 시작
+                data.groupEncounterCompleted = true; // 다수 조우 완료 기록
+                data.groupEnemyHealth = new int[0]; // 완료한 적의 이전 체력 제거
+            } // 다수 완료 끝
+            else if (IsTutorialRoom() && !tutorialCompleted) // 첫 조우 검사
+            { // 첫 완료 시작
+                data.tutorialCompleted = true; // 첫 조우 완료 기록
+                data.tutorialHealth = 0; // 완료한 적의 이전 체력 제거
+            } // 첫 완료 끝
+            else // 현재 층 상위 개체 분기
+            { // 상위 완료 시작
+                data.encounterCompleted = true; // 상위 조우 완료 기록
+                data.encounterHealth = 0; // 완료한 적의 이전 체력 제거
+            } // 상위 완료 끝
+            return true; // 독립 저장본 준비 완료
+        } // 저장본 수정 끝
         private string EncounterKey() // 층과 방으로 조우 기록 구분
         { // 식별 시작
             return Floor + ":" + state.RoomX + ":" + state.RoomY; // 현재 층의 고유 방 식별자

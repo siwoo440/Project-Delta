@@ -39,12 +39,35 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             return !string.IsNullOrWhiteSpace(itemId) && itemId.Length <= 128 && quantity > 0 && stackLimit > 0 && quantity <= stackLimit; // 유효한 아이템과 수량
         } // 검사 끝
     } // 클래스 끝
+    [Serializable] // 승리 보상 후보 직렬화
+    public sealed class SavedBattleReward // 확인과 지급을 기다리는 보상 후보
+    { // 클래스 시작
+        public string transactionId; // 개별 전투 거래 식별자
+        public int normalEnemies; // 승리한 일반 적 수
+        public int eliteEnemies; // 승리한 상위 적 수
+        public int experience; // 확인된 경험치
+        public int gold; // 확인된 시험 골드
+        public int potionCount; // 확인된 시험 회복약 수량
+    } // 클래스 끝
+    [Serializable] // 완료된 보상 기록 직렬화
+    public sealed class SavedRewardReceipt // 확정된 전투별 보상 거래
+    { // 클래스 시작
+        public string transactionId; // 완료된 전투 거래 식별자
+        public bool tookPotion; // 소비 아이템 획득 여부
+    } // 클래스 끝
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 7; // 회차 식별자를 포함한 저장 버전
+        public const int CurrentVersion = 8; // 성장과 보상 후보를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
+        public int level; // 현재 회차 레벨
+        public int experience; // 현재 레벨의 진행 경험치
+        public int statPoints; // 사용 가능한 스탯 포인트
+        public int gold; // 현재 회차 골드
+        public bool hasPendingReward; // 미완료 보상 후보 존재 여부
+        public SavedBattleReward pendingReward; // 확인과 지급을 기다리는 보상
+        public SavedRewardReceipt[] rewardReceipts; // 획득 또는 포기한 거래 기록
         public int seed; // 회차 최초 던전 시드
         public int generationVersion; // 던전 생성 규칙 버전
         public bool tutorialCompleted; // 첫 슬라임 조우 완료 여부
@@ -84,6 +107,29 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 마나 오류 시작
                 return false; // 잘못된 마나 저장 거절
             } // 마나 오류 끝
+            if (version >= 8 && (gold < 0 || statPoints < 0 || statPoints > 18 || !ExperienceRules.TryAdvance(level, experience, 0, out _))) // 성장과 재화 범위 검사
+            { // 성장 오류 시작
+                return false; // 잘못된 성장 저장 거절
+            } // 성장 오류 끝
+            if (version >= 8 && hasPendingReward && (pendingReward == null || !Guid.TryParseExact(pendingReward.transactionId, "N", out _) || !ExperienceRules.TryCalculateVictory(floor, pendingReward.normalEnemies, pendingReward.eliteEnemies, out var expectedExperience) || pendingReward.experience != expectedExperience || pendingReward.gold < 0 || pendingReward.potionCount < 0 || pendingReward.potionCount > pendingReward.normalEnemies + pendingReward.eliteEnemies)) // 미확정 보상 후보 검사
+            { // 후보 오류 시작
+                return false; // 잘못된 보상 저장 거절
+            } // 후보 오류 끝
+            if (version >= 8 && rewardReceipts != null) // 완료된 보상 거래 목록 검사
+            { // 거래 검사 시작
+                if (rewardReceipts.Length > 10000) // 보상 기록 수 범위 검사
+                { // 기록 수 오류 시작
+                    return false; // 지나치게 많은 거래 차단
+                } // 기록 수 오류 끝
+                var seenRewards = new HashSet<string>(StringComparer.Ordinal); // 보상 거래 식별자 중복 검사
+                foreach (var receipt in rewardReceipts) // 완료된 거래 순회
+                { // 거래 검사 시작
+                    if (receipt == null || !Guid.TryParseExact(receipt.transactionId, "N", out _) || !seenRewards.Add(receipt.transactionId) || (hasPendingReward && receipt.transactionId == pendingReward.transactionId)) // 거래 식별과 미완료 후보 충돌 검사
+                    { // 거래 오류 시작
+                        return false; // 중복 또는 잘못된 보상 기록 차단
+                    } // 거래 오류 끝
+                } // 거래 검사 끝
+            } // 거래 검사 끝
             foreach (var slot in slots) // 저장 슬롯 순회
             { // 순회 시작
                 if (slot == null || !slot.IsValid()) // 누락 또는 잘못된 슬롯 검사

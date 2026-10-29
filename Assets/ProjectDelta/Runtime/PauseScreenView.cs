@@ -31,7 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Panel(canvas.transform, "PauseRecordPanel", new Vector2(250f, 0f), new Vector2(1300f, 850f), new Color(0.04f, 0.09f, 0.10f, 0.98f)); // 오른쪽 회차 기록 상자
                 UiFactory.CreateText(canvas.transform, "PauseTitle", "메뉴", 42, new Vector2(-690f, 345f), new Vector2(380f, 70f), Color.white); // 왼쪽 메뉴 제목
                 UiFactory.CreateText(canvas.transform, "PauseRecordTitle", "현재 회차 기록", 42, new Vector2(250f, 345f), new Vector2(1150f, 70f), Color.white); // 오른쪽 기록 제목
-                view.runStatus = UiFactory.CreateText(canvas.transform, "PauseRunStatus", "", 24, new Vector2(250f, 275f), new Vector2(1120f, 48f), new Color(0.62f, 0.87f, 0.79f)); // 층과 체력 등 현재 회차 상태
+                view.runStatus = UiFactory.CreateText(canvas.transform, "PauseRunStatus", "", 24, new Vector2(250f, 265f), new Vector2(1120f, 72f), new Color(0.62f, 0.87f, 0.79f)); // 층과 성장 등 현재 회차 상태
                 var resume = UiFactory.CreateButton(canvas.transform, "PauseResumeButton", "계속하기", new Vector2(-690f, 200f)); // 탐험 복귀 버튼
                 resume.onClick.AddListener(owner.ClosePause); // 탐험 복귀 연결
                 var save = UiFactory.CreateButton(canvas.transform, "PauseSaveButton", "저장", new Vector2(-690f, 90f)); // 현재 회차 저장 버튼
@@ -113,6 +113,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var room = GameObject.Find("RoomTravel"); // 현재 던전 객체 조회
             var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방과 층 조회
             runStatus.text = travel == null ? "체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50" : travel.Floor + "층 · 방 (" + travel.RoomX + ", " + travel.RoomY + ") · 체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50 · 열쇠 " + owner.Keys.Count; // 실제 회차 상태 표시
+            runStatus.text += "\n레벨 " + owner.Level + " · 경험치 " + owner.Experience + " · 골드 " + owner.Gold + " · 스탯 포인트 " + owner.StatPoints; // 실제 성장과 보유 재화 표시
             var total = Math.Max(1, (history.Count + PageSize - 1) / PageSize); // 기록 페이지 수
             page = Mathf.Clamp(page, 0, total - 1); // 페이지 범위 보호
             var lines = new List<string>(); // 현재 페이지 기록 목록

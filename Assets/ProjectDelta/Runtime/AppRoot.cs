@@ -19,6 +19,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public string RunSaveMessage { get; private set; } = string.Empty; // 회차 저장 안내
         public bool CanContinueRun => savedRunValid; // 마지막 검증의 복원 가능 여부
         private CombatScreenView combatScreen; // 시험 전투 화면
+        private BattleRewardScreenView rewardScreen; // 저장된 승리 보상 화면
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
@@ -30,7 +31,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
         private int loadRollbackMana; // 불러오기 실패 시 이전 마나
         private string loadRollbackRunId; // 불러오기 실패 시 이전 회차 식별자
+        private int loadRollbackLevel; // 불러오기 실패 시 이전 레벨
+        private int loadRollbackExperience; // 불러오기 실패 시 이전 경험치
+        private int loadRollbackStatPoints; // 불러오기 실패 시 이전 스탯 포인트
+        private int loadRollbackGold; // 불러오기 실패 시 이전 골드
+        private SavedRewardReceipt[] loadRollbackRewards; // 불러오기 실패 시 이전 보상 거래
         public string CurrentRunId { get; private set; } = System.Guid.NewGuid().ToString("N"); // 현재 회차의 고유 식별자
+        public int Level { get; private set; } = 1; // 현재 회차 레벨
+        public int Experience { get; private set; } // 현재 레벨의 진행 경험치
+        public int StatPoints { get; private set; } = 5; // 분배하지 않은 스탯 포인트
+        public int Gold { get; private set; } // 현재 회차 골드
+        public SavedRewardReceipt[] RewardReceipts { get; private set; } = new SavedRewardReceipt[0]; // 완료한 보상 거래 기록
         public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
         { // 속성 시작
             get; // 탐험 기록 조회
@@ -147,6 +158,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 새 게임 조건 시작
                 PendingRun = null; // 이전 복원 요청 해제
                 CurrentRunId = System.Guid.NewGuid().ToString("N"); // 새 회차의 고유 식별자 생성
+                Level = 1; // 새 회차 기본 레벨
+                Experience = 0; // 새 회차 경험치 초기화
+                StatPoints = 5; // 새 회차 기본 스탯 포인트
+                Gold = 0; // 새 회차 시험 골드 초기화
+                RewardReceipts = new SavedRewardReceipt[0]; // 새 회차의 빈 보상 거래
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
                 PlayerMana = 50; // 새 회차 기본 마나 초기화
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
@@ -201,6 +217,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 loadRollbackHealth = PlayerHealth; // 기존 체력 보관
                 loadRollbackMana = PlayerMana; // 기존 마나 보관
                 loadRollbackRunId = CurrentRunId; // 기존 회차 식별자 보관
+                loadRollbackLevel = Level; // 기존 레벨 보관
+                loadRollbackExperience = Experience; // 기존 경험치 보관
+                loadRollbackStatPoints = StatPoints; // 기존 포인트 보관
+                loadRollbackGold = Gold; // 기존 골드 보관
+                loadRollbackRewards = RewardReceipts; // 기존 보상 거래 보관
             } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
             Keys = restoredKeys; // 복원한 열쇠 적용
@@ -208,14 +229,163 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             PlayerHealth = savedRun.health; // 저장된 체력 적용
             PlayerMana = savedRun.version < 5 ? 50 : savedRun.mana; // 이전 저장의 기본 마나와 새 저장 복원
             CurrentRunId = savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 이전 저장의 안정 식별자와 새 저장 복원
+            Level = savedRun.version < 8 ? 1 : savedRun.level; // 이전 저장의 기본 레벨과 현재 레벨
+            Experience = savedRun.version < 8 ? 0 : savedRun.experience; // 이전 저장의 기본 경험치와 현재 경험치
+            StatPoints = savedRun.version < 8 ? 5 : savedRun.statPoints; // 이전 저장의 기본 포인트와 현재 포인트
+            Gold = savedRun.version < 8 ? 0 : savedRun.gold; // 이전 저장의 기본 골드와 현재 골드
+            RewardReceipts = savedRun.version < 8 || savedRun.rewardReceipts == null ? new SavedRewardReceipt[0] : savedRun.rewardReceipts; // 이전 저장과 현재 보상 거래 복원
             PendingRun = savedRun; // 던전 씬에 복원 상태 전달
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 탐험 재개 요청
             return true; // 재개 요청 승인
         } // 재개 끝
         public void FinishRunRestore() // 던전 복원 요청 소모
         { // 소모 시작
+            if (PendingRun != null && PendingRun.pendingReward != null) // 미완료 승리 보상 검사
+            { // 보상 복원 준비 시작
+                StartCoroutine(OpenRestoredReward()); // 씬 전환 후 저장된 후보 화면 복원
+            } // 보상 복원 준비 끝
             PendingRun = null; // 재복원 방지
         } // 소모 끝
+        private IEnumerator OpenRestoredReward() // 저장된 승리 보상 화면 복원
+        { // 복원 시작
+            while (Flow.Phase == GamePhase.Loading) // 씬 전환 완료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            if (Flow.Phase == GamePhase.Exploration && savedRun != null && savedRun.pendingReward != null) // 미완료 보상과 탐험 상태 검사
+            { // 화면 복원 시작
+                if (!OpenRewardScreen()) // 저장된 후보 화면 복원 검사
+                { // 복원 실패 보호 시작
+                    RejectRunRestore(); // 저장된 후보 보존과 타이틀 복귀
+                } // 복원 실패 보호 끝
+            } // 화면 복원 끝
+        } // 복원 끝
+        public bool TryStageVictoryReward(SavedBattleReward reward, bool replaceOtherRun, out string error) // 승리 보상 후보의 사전 저장
+        { // 준비 시작
+            error = string.Empty; // 기본 오류 없음
+            var room = GameObject.Find("RoomTravel"); // 현재 방 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 조우 상태
+            if (Flow.Phase != GamePhase.Combat || runStorage == null || travel == null || !travel.CanCompleteCurrentEncounter() || reward == null) // 실제 승리 조우와 저장 상태 검사
+            { // 준비 오류 시작
+                error = "보상을 준비할 수 없습니다."; // 준비 오류 안내
+                return false; // 잘못된 조우 보상 차단
+            } // 준비 오류 끝
+            if (savedRun != null && savedRun.pendingReward != null && savedRun.pendingReward.transactionId == reward.transactionId) // 같은 보상 후보의 재시도 검사
+            { // 중복 준비 시작
+                return true; // 이미 검증된 후보 재사용
+            } // 중복 준비 끝
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 기존 저장 회차 식별자
+            if (savedId != null && savedId != CurrentRunId && !replaceOtherRun) // 다른 회차 저장 덮어쓰기 확인
+            { // 기존 저장 보호 시작
+                error = "다른 회차의 저장이 있습니다. 기존 저장 교체를 선택해야 보상을 저장할 수 있습니다."; // 명시적 교체 안내
+                return false; // 기존 회차 저장 보존
+            } // 기존 저장 보호 끝
+            var data = travel.CaptureBattleRewardRun(); // 전투 위치의 독립 저장본
+            if (data == null) // 안정된 전투 위치 검사
+            { // 저장본 오류 시작
+                error = "현재 전투 위치를 저장할 수 없습니다."; // 저장본 오류 안내
+                return false; // 후보 표시 차단
+            } // 저장본 오류 끝
+            data.pendingReward = reward; // 확인 전 고정된 보상 후보
+            data.hasPendingReward = true; // 저장된 미완료 후보 표시
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out error)) // 후보와 현재 회차의 원자적 저장 검사
+            { // 저장 오류 시작
+                if (string.IsNullOrEmpty(error)) // 검증 실패 검사
+                { // 오류 안내 시작
+                    error = "보상 후보를 검증할 수 없습니다."; // 후보 오류 안내
+                } // 오류 안내 끝
+                return false; // 저장 실패 시 후보 화면 차단
+            } // 저장 오류 끝
+            savedRun = data; // 검증된 후보와 회차 보관
+            savedRunValid = true; // 중단 후 후보 재개 허용
+            return true; // 후보 사전 저장 완료
+        } // 준비 끝
+        public bool OpenRewardScreen() // 저장된 승리 보상 표시
+        { // 표시 시작
+            if (savedRun == null || savedRun.pendingReward == null || rewardScreen != null) // 미완료 후보 검사
+            { // 표시 거절 시작
+                return false; // 중복 화면 차단
+            } // 표시 거절 끝
+            var resumed = Flow.Phase == GamePhase.Exploration; // 저장 재개 중 보상 표시 여부
+            if (resumed && !Flow.TryStartCombat()) // 복원된 보상 화면의 입력 잠금
+            { // 잠금 오류 시작
+                return false; // 잘못된 상태 차단
+            } // 잠금 오류 끝
+            try // 실제 보상 화면 생성
+            { // 생성 시작
+                rewardScreen = BattleRewardScreenView.Create(this, savedRun.pendingReward); // 저장된 후보 표시
+                if (combatScreen != null) // 기존 승리 화면 검사
+                { // 승리 화면 정리 시작
+                    combatScreen.gameObject.SetActive(false); // 이전 화면 즉시 숨김
+                    Destroy(combatScreen.gameObject); // 이전 화면 정리
+                    combatScreen = null; // 이전 화면 참조 해제
+                } // 승리 화면 정리 끝
+                Input.SetPhase(GamePhase.Combat); // 보상 확인 중 탐험 입력 잠금
+                return true; // 보상 화면 표시 성공
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 오류
+            { // 오류 복구 시작
+                if (resumed) // 복원 중 생성 실패 검사
+                { // 복원 상태 복구 시작
+                    Flow.TryEndCombat(); // 탐험 상태 복구
+                    Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                } // 복원 상태 복구 끝
+                Debug.LogError("Reward screen failed: " + exception.Message); // 실제 화면 오류 기록
+                return false; // 저장된 후보 보존
+            } // 오류 복구 끝
+        } // 표시 끝
+        public bool TryResolveVictoryReward(bool takePotion, out string error) // 보상 획득 또는 아이템 포기의 원자적 확정
+        { // 확정 시작
+            error = string.Empty; // 기본 오류 없음
+            var room = GameObject.Find("RoomTravel"); // 현재 방 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 조우 상태
+            if (Flow.Phase != GamePhase.Combat || runStorage == null || savedRun == null || savedRun.pendingReward == null || travel == null || !travel.CanCompleteCurrentEncounter()) // 저장된 후보와 실제 조우 검사
+            { // 확정 거절 시작
+                error = "보상을 확정할 수 없습니다."; // 확정 오류 안내
+                return false; // 잘못된 거래 차단
+            } // 확정 거절 끝
+            var reward = savedRun.pendingReward; // 사전 저장된 후보
+            var inventory = InventoryState.FromSavedSlots(savedRun.slots); // 저장된 소지품의 독립 복사
+            if (inventory == null || !ExperienceRules.TryAdvance(savedRun.level, savedRun.experience, reward.experience, out var growth) || (long)savedRun.gold + reward.gold > int.MaxValue) // 소지품과 성장 및 재화 범위 검사
+            { // 계산 오류 시작
+                error = "보상 상태를 계산할 수 없습니다."; // 계산 오류 안내
+                return false; // 원본과 후보 보존
+            } // 계산 오류 끝
+            if (takePotion && reward.potionCount > 0 && inventory.Add(TrialPotionId, "소형 회복약", reward.potionCount, TrialPotionStackLimit).Remaining > 0) // 회복약 전체 수용 검사
+            { // 공간 부족 시작
+                error = "인벤토리 공간이 부족합니다. 아이템을 포기할 수 있습니다."; // 명시적 선택 안내
+                return false; // 기존 인벤토리와 후보 보존
+            } // 공간 부족 끝
+            var data = JsonUtility.FromJson<RunSaveData>(JsonUtility.ToJson(savedRun)); // 저장 후보의 독립 복사
+            data.level = growth.Level; // 적용한 레벨
+            data.experience = growth.CurrentExperience; // 적용한 현재 레벨 경험치
+            data.statPoints += growth.GainedStatPoints; // 도달 레벨의 스탯 포인트
+            data.gold += reward.gold; // 시험 골드 지급
+            data.slots = inventory.SaveSlots(); // 획득 또는 포기한 아이템 상태
+            data.pendingReward = null; // 완료된 후보 화면 재진입 차단
+            data.hasPendingReward = false; // 보상 처리 완료 표시
+            var receipts = new System.Collections.Generic.List<SavedRewardReceipt>(data.rewardReceipts ?? new SavedRewardReceipt[0]); // 기존 보상 거래의 독립 목록
+            receipts.Add(new SavedRewardReceipt { transactionId = reward.transactionId, tookPotion = takePotion && reward.potionCount > 0 }); // 실제 획득 또는 포기 기록
+            data.rewardReceipts = receipts.ToArray(); // 완료한 거래 목록 저장
+            if (!travel.PrepareCompletedEncounter(data) || !RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out error)) // 보상과 조우 완료의 단일 저장 검사
+            { // 저장 오류 시작
+                if (string.IsNullOrEmpty(error)) // 검증 오류 검사
+                { // 안내 시작
+                    error = "보상 완료 상태를 저장할 수 없습니다."; // 저장 오류 안내
+                } // 안내 끝
+                return false; // 저장된 후보와 기존 상태 보존
+            } // 저장 오류 끝
+            savedRun = data; // 검증된 완료 저장 보관
+            Level = data.level; // 확정한 레벨 반영
+            Experience = data.experience; // 확정한 경험치 반영
+            StatPoints = data.statPoints; // 확정한 스탯 포인트 반영
+            Gold = data.gold; // 확정한 골드 반영
+            RewardReceipts = data.rewardReceipts; // 확정한 보상 거래 반영
+            Inventory = inventory; // 확정한 인벤토리 반영
+            travel.CompleteCurrentEncounter(); // 검증된 저장 뒤 실제 조우 완료
+            EndCombat(); // 보상 확정 후 탐험 복귀
+            return true; // 보상 지급 완료
+        } // 확정 끝
         public void RejectRunRestore() // 잘못된 재개 상태 보호
         { // 복원 거절 시작
             PendingRun = null; // 잘못된 복원 요청 해제
@@ -633,6 +803,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Destroy(combatScreen.gameObject); // 시험 전투 화면 정리
                 combatScreen = null; // 화면 참조 해제
             } // 화면 정리 끝
+            if (rewardScreen != null) // 보상 화면 존재 검사
+            { // 보상 화면 정리 시작
+                rewardScreen.gameObject.SetActive(false); // 보상 화면 즉시 숨김
+                Destroy(rewardScreen.gameObject); // 완료된 보상 화면 정리
+                rewardScreen = null; // 보상 화면 참조 해제
+            } // 보상 화면 정리 끝
             Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
         } // 복귀 끝
         private void RequestTransition(GamePhase destination, string sceneName) // 전환 승인과 입력 잠금
@@ -663,6 +839,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     PlayerHealth = loadRollbackHealth; // 이전 체력 복원
                     PlayerMana = loadRollbackMana; // 이전 마나 복원
                     CurrentRunId = loadRollbackRunId; // 이전 회차 식별자 복원
+                    Level = loadRollbackLevel; // 이전 레벨 복원
+                    Experience = loadRollbackExperience; // 이전 경험치 복원
+                    StatPoints = loadRollbackStatPoints; // 이전 스탯 포인트 복원
+                    Gold = loadRollbackGold; // 이전 골드 복원
+                    RewardReceipts = loadRollbackRewards; // 이전 보상 거래 복원
                     PendingRun = null; // 실패한 회차 복원 요청 해제
                     ClearLoadRollback(); // 복구 대상 해제
                 } // 기존 회차 복구 끝
@@ -675,6 +856,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             loadRollbackKeys = null; // 이전 열쇠 참조 해제
             loadRollbackHistory = null; // 이전 기록 참조 해제
             loadRollbackRunId = null; // 이전 회차 식별자 참조 해제
+            loadRollbackRewards = null; // 이전 보상 거래 참조 해제
         } // 해제 끝
         private void OnDestroy() // 공통 객체 해제
         { // 해제 시작

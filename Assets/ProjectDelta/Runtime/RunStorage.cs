@@ -314,6 +314,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     return false; // 손상 파일 거절
                 } // 손상 조건 끝
                 var candidate = JsonUtility.FromJson<RunSaveData>(envelope.payload); // 회차 데이터 해석
+                if (candidate != null && !candidate.hasPendingReward) // 직렬화된 빈 보상 객체 검사
+                { // 빈 후보 정리 시작
+                    candidate.pendingReward = null; // 완료 또는 이전 저장의 빈 후보 정리
+                } // 빈 후보 정리 끝
                 if (!RunRestoreRules.IsValid(candidate)) // 버전과 던전 상태 검사
                 { // 형식 오류 시작
                     return false; // 지원하지 않는 회차 거절
