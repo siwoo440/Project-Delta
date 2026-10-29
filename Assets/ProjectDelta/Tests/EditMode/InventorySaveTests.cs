@@ -4,6 +4,41 @@ namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
     public sealed class InventorySaveTests // 인벤토리 저장 복원 검증
     { // 클래스 시작
+        [Test] // 개별 장비의 이동과 저장 보존 검증
+        public void VariantEquipment_PreservesIndependentStateThroughMovementAndRestore() // 개별 옵션 복사와 이동 확인
+        { // 검증 시작
+            var inventory = new InventoryState(); // 빈 인벤토리 준비
+            var item = new EquipmentVariantData { instanceId = "12345678901234567890123456789012", definitionId = EquipmentCatalog.BasicSwordId, grade = EquipmentVariantRules.Common, options = new[] { new EquipmentOptionData { optionId = TrialEquipmentTraits.Attack, value = 3 } }, curseEffects = new EquipmentOptionData[0] }; // 시험 개별 장비 준비
+            Assert.That(inventory.TryAddEquipment(item), Is.True); // 개별 장비 추가 확인
+            item.options[0].value = 99; // 원본 옵션 변경
+            Assert.That(inventory.Slots[0].Equipment.options[0].value, Is.EqualTo(3)); // 저장된 개별 옵션 독립성
+            var returned = inventory.Slots[0].Equipment; // 외부 조회 장비 복사
+            returned.options[0].value = 42; // 외부 조회값 변경
+            Assert.That(inventory.Slots[0].Equipment.options[0].value, Is.EqualTo(3)); // 내부 장비 변경 방지
+            Assert.That(inventory.TryResize(12), Is.True); // 확장 슬롯 준비
+            inventory.TrySwap(0, 11); // 장비를 후반 슬롯으로 이동
+            Assert.That(inventory.TryResize(10), Is.True); // 장비 보존 축소
+            var saved = inventory.SaveSlots(); // 장비 저장본 준비
+            var restored = InventoryState.FromSavedSlots(saved); // 독립 인벤토리 복원
+            Assert.That(restored.Slots[0].Equipment.options[0].value, Is.EqualTo(3)); // 확정 옵션 보존 확인
+            saved[0].equipment.options[0].value = 77; // 외부 저장본 옵션 변경
+            Assert.That(restored.Slots[0].Equipment.options[0].value, Is.EqualTo(3)); // 복원본 독립성 확인
+            Assert.That(restored.Remove(0, 1, out _), Is.True); // 실제 장비 제거
+            Assert.That(restored.Slots[0].Equipment, Is.Null); // 빈 슬롯의 개별 정보 제거
+        } // 검증 끝
+        [Test] // 장비 중복과 잘못된 저장 검사
+        public void VariantEquipment_RejectsDuplicateAndMismatchedIds() // 개별 장비 식별 검증
+        { // 검증 시작
+            var inventory = new InventoryState(); // 빈 인벤토리 준비
+            var item = new EquipmentVariantData { instanceId = "12345678901234567890123456789012", definitionId = EquipmentCatalog.BasicSwordId, grade = EquipmentVariantRules.Common, options = new[] { new EquipmentOptionData { optionId = TrialEquipmentTraits.Attack, value = 3 } }, curseEffects = new EquipmentOptionData[0] }; // 단일 시험 장비 준비
+            Assert.That(inventory.TryAddEquipment(item), Is.True); // 첫 장비 추가 확인
+            Assert.That(inventory.TryAddEquipment(item), Is.False); // 동일 인스턴스 중복 거절
+            var saved = inventory.SaveSlots(); // 검증할 저장본 준비
+            saved[1] = new SaveItemSlot { itemId = EquipmentCatalog.BasicAxeId, name = "기본 도끼", quantity = 1, stackLimit = 1, equipment = item }; // 장비 정의와 슬롯 불일치
+            Assert.That(InventoryState.FromSavedSlots(saved), Is.Null); // 잘못된 장비 저장 거절
+            saved[1].itemId = EquipmentCatalog.BasicSwordId; // 장비 정의 일치 수정
+            Assert.That(InventoryState.FromSavedSlots(saved), Is.Null); // 중복 인스턴스 저장 거절
+        } // 검증 끝
         [Test] // 확장과 안전한 축소 검증
         public void Resize_PreservesLateSlotsAndRejectsOverflow() // 축소 시 아이템 보존 확인
         { // 검증 시작

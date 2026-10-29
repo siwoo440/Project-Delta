@@ -30,12 +30,17 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public string name; // 아이템 표시 이름
         public int quantity; // 아이템 수량
         public int stackLimit; // 최대 중첩 수량
+        public EquipmentVariantData equipment; // 개별 장비의 등급과 확정 옵션
         public bool IsValid() // 아이템 저장 범위 검사
         { // 검사 시작
             if (string.IsNullOrEmpty(itemId)) // 빈 슬롯 검사
             { // 빈 슬롯 시작
-                return quantity == 0 && stackLimit == 1; // 빈 슬롯 기본값 확인
+                return quantity == 0 && stackLimit == 1 && equipment == null; // 빈 슬롯과 장비 정보 기본값 확인
             } // 빈 슬롯 끝
+            if (equipment != null && (quantity != 1 || stackLimit != 1 || equipment.definitionId != itemId || !TrialEquipmentTraits.IsValid(equipment))) // 개별 장비의 종류와 단일 수량 및 옵션 검사
+            { // 개별 장비 오류 시작
+                return false; // 손상된 장비 아이템 차단
+            } // 개별 장비 오류 끝
             return !string.IsNullOrWhiteSpace(itemId) && itemId.Length <= 128 && quantity > 0 && stackLimit > 0 && quantity <= stackLimit; // 유효한 아이템과 수량
         } // 검사 끝
     } // 클래스 끝
@@ -49,17 +54,19 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public int gold; // 확인된 시험 골드
         public int potionCount; // 확인된 시험 회복약 수량
         public string itemId; // 확인된 시험 소비품 식별자
+        public EquipmentVariantData equipment; // 저장된 개별 장비 보상 후보
     } // 클래스 끝
     [Serializable] // 완료된 보상 기록 직렬화
     public sealed class SavedRewardReceipt // 확정된 전투별 보상 거래
     { // 클래스 시작
         public string transactionId; // 완료된 전투 거래 식별자
         public bool tookPotion; // 소비 아이템 획득 여부
+        public bool tookEquipment; // 개별 장비 획득 여부
     } // 클래스 끝
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 11; // 장비와 확장 인벤토리를 포함한 저장 버전
+        public const int CurrentVersion = 12; // 개별 장비 특성을 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -103,6 +110,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public string armorId; // 장착한 방어구 식별자
         public string accessoryId; // 장착한 장신구 식별자
         public string bagId; // 장착한 가방 식별자
+        public EquipmentVariantData weaponVariant; // 장착한 무기의 개별 특성
+        public EquipmentVariantData armorVariant; // 장착한 방어구의 개별 특성
+        public EquipmentVariantData accessoryVariant; // 장착한 장신구의 개별 특성
+        public EquipmentVariantData bagVariant; // 장착한 가방의 개별 특성
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
@@ -113,6 +124,32 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 장비 저장 오류 시작
                 return false; // 알 수 없는 장비와 잘못된 용량 차단
             } // 장비 저장 오류 끝
+            if (version >= 12) // 개별 장비 저장 검사
+            { // 개별 장비 검사 시작
+                if (!EquipmentState.TryRestore(weaponId, armorId, accessoryId, bagId, weaponVariant, armorVariant, accessoryVariant, bagVariant, out _)) // 부위별 개별 장비와 기본 정의 일치 검사
+                { // 장착 오류 시작
+                    return false; // 잘못된 장착 장비 차단
+                } // 장착 오류 끝
+                var seenItems = new HashSet<string>(StringComparer.Ordinal); // 회차 전체 장비 인스턴스 중복 검사
+                foreach (var variant in new[] { weaponVariant, armorVariant, accessoryVariant, bagVariant }) // 장착 장비 순회
+                { // 장착 중복 검사 시작
+                    if (variant != null && !seenItems.Add(variant.instanceId)) // 동일한 장비의 중복 장착 검사
+                    { // 중복 오류 시작
+                        return false; // 중복 인스턴스 차단
+                    } // 중복 오류 끝
+                } // 장착 중복 검사 끝
+                if (hasPendingReward && pendingReward != null && pendingReward.equipment != null && !seenItems.Add(pendingReward.equipment.instanceId)) // 보상 후보와 이미 보유한 장비의 중복 검사
+                { // 후보 중복 오류 시작
+                    return false; // 이미 지급된 장비의 후보 차단
+                } // 후보 중복 오류 끝
+                foreach (var slot in slots) // 보유 슬롯의 개별 장비 순회
+                { // 소지 중복 검사 시작
+                    if (slot != null && slot.equipment != null && !seenItems.Add(slot.equipment.instanceId)) // 보유와 장착 및 슬롯 사이 중복 검사
+                    { // 중복 오류 시작
+                        return false; // 같은 장비의 중복 보유 차단
+                    } // 중복 오류 끝
+                } // 소지 중복 검사 끝
+            } // 개별 장비 검사 끝
             if (version >= 5 && (maxMana < 1 || mana < 0 || mana > maxMana)) // 새 저장의 마나 범위 검사
             { // 마나 오류 시작
                 return false; // 잘못된 마나 저장 거절
@@ -125,6 +162,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 후보 오류 시작
                 return false; // 잘못된 보상 저장 거절
             } // 후보 오류 끝
+            if (version >= 12 && hasPendingReward && pendingReward.equipment != null && (pendingReward.potionCount != 0 || !TrialEquipmentTraits.IsValid(pendingReward.equipment))) // 개별 장비 후보와 소비품 배타성 검사
+            { // 보상 장비 오류 시작
+                return false; // 손상된 장비와 중복 후보 차단
+            } // 보상 장비 오류 끝
             if (version >= 10 && hasPendingReward && pendingReward.potionCount > 0 && TrialConsumableRules.Find(pendingReward.itemId) == null) // 새 보상 후보의 실제 소비품 종류 검사
             { // 보상 종류 오류 시작
                 return false; // 알 수 없는 소비품 지급 차단

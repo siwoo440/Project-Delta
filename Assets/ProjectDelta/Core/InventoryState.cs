@@ -15,7 +15,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             for (var index = 0; index < slots.Count; index++) // 슬롯 순서 순회
             { // 슬롯 복사 시작
                 var slot = slots[index]; // 현재 아이템 묶음
-                result[index] = new SaveItemSlot { itemId = slot.ItemId, name = slot.Name, quantity = slot.Quantity, stackLimit = slot.StackLimit }; // 위치와 내용을 독립 복사
+                result[index] = new SaveItemSlot { itemId = slot.ItemId, name = slot.Name, quantity = slot.Quantity, stackLimit = slot.StackLimit, equipment = slot.Equipment }; // 위치와 개별 장비의 독립 복사
             } // 슬롯 복사 끝
             return result; // 저장 슬롯 전달
         } // 저장 끝
@@ -30,6 +30,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 확장 실패 시작
                 return null; // 잘못된 목록 거절
             } // 확장 실패 끝
+            var seenEquipment = new HashSet<string>(StringComparer.Ordinal); // 동일 장비 인스턴스 중복 검사
             for (var index = 0; index < saved.Length; index++) // 저장된 순서 순회
             { // 복원 순회 시작
                 var slot = saved[index]; // 저장된 슬롯 조회
@@ -37,10 +38,15 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 { // 슬롯 오류 시작
                     return null; // 불완전한 복원 거절
                 } // 슬롯 오류 끝
+                if (slot.equipment != null && (!ValidEquipmentIdentity(slot.equipment) || slot.itemId != slot.equipment.definitionId || slot.quantity != 1 || slot.stackLimit != 1 || !seenEquipment.Add(slot.equipment.instanceId))) // 장비 식별과 단일 보유 및 중복 검사
+                { // 장비 오류 시작
+                    return null; // 불일치와 중복 장비 저장 거절
+                } // 장비 오류 끝
                 result.slots[index].ItemId = slot.itemId ?? string.Empty; // 아이템 식별자 복원
                 result.slots[index].Name = slot.name ?? string.Empty; // 아이템 표시 이름 복원
                 result.slots[index].Quantity = slot.quantity; // 수량 복원
                 result.slots[index].StackLimit = slot.stackLimit; // 중첩 제한 복원
+                result.slots[index].Equipment = slot.equipment; // 개별 장비의 독립 복원
             } // 복원 순회 끝
             return result; // 검증된 인벤토리 전달
         } // 복원 끝
@@ -138,6 +144,98 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 새 묶음 채우기 끝
             return new InventoryAddResult(requested - remaining, remaining); // 실제 추가와 남은 수량 전달
         } // 획득 끝
+        public bool TryAddEquipment(EquipmentVariantData item) // 개별 장비의 안전한 단일 획득
+        { // 획득 시작
+            if (!ValidEquipmentIdentity(item) || !TrialEquipmentTraits.IsValid(item)) // 인스턴스와 등록 장비 및 시험 옵션 검사
+            { // 식별 오류 시작
+                return false; // 잘못된 장비 추가 차단
+            } // 식별 오류 끝
+            var definition = EquipmentCatalog.Find(item.definitionId); // 등록된 장비 정의 조회
+            InventorySlot empty = null; // 최초 빈 슬롯 보관
+            foreach (var slot in slots) // 기존 슬롯 순회
+            { // 슬롯 검사 시작
+                var existing = slot.Equipment; // 외부에 노출되지 않는 독립 장비 조회
+                if (existing != null && existing.instanceId == item.instanceId) // 동일 인스턴스 보유 검사
+                { // 중복 오류 시작
+                    return false; // 같은 장비 중복 획득 차단
+                } // 중복 오류 끝
+                if (empty == null && slot.IsEmpty) // 첫 빈 슬롯 검사
+                { // 빈 슬롯 발견 시작
+                    empty = slot; // 획득 위치 보관
+                } // 빈 슬롯 발견 끝
+            } // 슬롯 검사 끝
+            if (empty == null) // 수용 가능한 슬롯 검사
+            { // 공간 부족 시작
+                return false; // 기존 인벤토리 보존
+            } // 공간 부족 끝
+            empty.ItemId = definition.Id; // 실제 기본 장비 식별자
+            empty.Name = definition.Name; // 등록된 장비 이름
+            empty.Quantity = 1; // 단일 장비 수량
+            empty.StackLimit = 1; // 장비 중첩 차단
+            empty.Equipment = item; // 개별 옵션과 저주의 독립 복사
+            return true; // 안전한 장비 획득 성공
+        } // 획득 끝
+        private static bool ValidEquipmentIdentity(EquipmentVariantData item) // 개별 인스턴스와 기본 장비 식별 검사
+        { // 검사 시작
+            return item != null && !string.IsNullOrWhiteSpace(item.instanceId) && item.instanceId.Length <= 128 && EquipmentCatalog.Find(item.definitionId) != null; // 유효한 식별자와 등록 장비
+        } // 검사 끝
+        public bool TryReplaceWithEquipment(int index, EquipmentVariantData item) // 확인한 기존 슬롯을 다른 개별 장비로 교체
+        { // 교체 시작
+            if (index < 0 || index >= slots.Count || slots[index].IsEmpty || !TrialEquipmentTraits.IsValid(item)) // 대상과 새 시험 장비 검사
+            { // 입력 오류 시작
+                return false; // 기존 슬롯 보존
+            } // 입력 오류 끝
+            foreach (var slot in slots) // 다른 인벤토리 장비 순회
+            { // 중복 검사 시작
+                if (slot.Equipment != null && slot.Equipment.instanceId == item.instanceId) // 동일한 개별 장비 보유 검사
+                { // 중복 오류 시작
+                    return false; // 기존 장비 중복 차단
+                } // 중복 오류 끝
+            } // 중복 검사 끝
+            var definition = EquipmentCatalog.Find(item.definitionId); // 검증된 기본 장비 정의
+            slots[index] = new InventorySlot { ItemId = definition.Id, Name = definition.Name, Quantity = 1, StackLimit = 1, Equipment = item }; // 선택 슬롯에 개별 장비의 독립 복사
+            return true; // 검증된 단일 장비 교체 완료
+        } // 교체 끝
+        public bool TryReplaceEquipment(int index, EquipmentVariantData item) // 같은 인스턴스 장비의 확정 정보 교체
+        { // 교체 시작
+            if (index < 0 || index >= slots.Count || !ValidEquipmentIdentity(item) || !HasValidEquipmentShape(item)) // 슬롯 범위와 장비 형식 검사
+            { // 입력 오류 시작
+                return false; // 기존 슬롯 보존
+            } // 입력 오류 끝
+            var slot = slots[index]; // 현재 선택 슬롯
+            var previous = slot.Equipment; // 기존 장비의 독립 조회
+            if (slot.IsEmpty || slot.Quantity != 1 || slot.StackLimit != 1 || !ValidEquipmentIdentity(previous) || !HasValidEquipmentShape(previous) || slot.ItemId != previous.definitionId || item.definitionId != previous.definitionId || item.instanceId != previous.instanceId) // 기존 단일 장비와 동일 인스턴스 검사
+            { // 대상 오류 시작
+                return false; // 기존 장비와 위치 보존
+            } // 대상 오류 끝
+            slot.Equipment = item; // 입력 장비의 독립 심층 복사
+            return true; // 동일 인스턴스 정보 교체 성공
+        } // 교체 끝
+        private static bool HasValidEquipmentShape(EquipmentVariantData item) // 옵션 정책과 별개인 장비 형식 검사
+        { // 형식 검사 시작
+            var ids = new HashSet<string>(StringComparer.Ordinal); // 사용된 효과 식별자 목록
+            foreach (var effects in new[] { item.options, item.curseEffects, item.purification?.resultEffects }) // 모든 효과 목록 순회
+            { // 효과 목록 검사 시작
+                if (effects == null) // 누락 또는 미지정 목록 검사
+                { // 누락 목록 분기 시작
+                    continue; // 필수 목록 여부는 공통 규칙 검사
+                } // 누락 목록 분기 끝
+                foreach (var effect in effects) // 개별 효과 순회
+                { // 효과 식별 검사 시작
+                    if (effect == null || string.IsNullOrWhiteSpace(effect.optionId) || effect.optionId.Length > 128) // 효과 식별자 검사
+                    { // 효과 오류 시작
+                        return false; // 손상된 효과 차단
+                    } // 효과 오류 끝
+                    ids.Add(effect.optionId); // 형식 검사에 사용할 식별자 수집
+                } // 효과 식별 검사 끝
+            } // 효과 목록 검사 끝
+            var policies = new List<EquipmentOptionPolicy>(); // 형식 전용 임시 정책
+            foreach (var id in ids) // 수집한 효과 순회
+            { // 정책 생성 시작
+                policies.Add(new EquipmentOptionPolicy { optionId = id, allowDuplicate = true }); // 중복 정책을 확정하지 않는 형식 검사
+            } // 정책 생성 끝
+            return EquipmentVariantRules.IsValid(item, policies.ToArray()); // 공통 형식과 등급 및 저주 일관성 검사
+        } // 형식 검사 끝
         public bool TryReplace(int slotIndex, string itemId, string name, int quantity, int stackLimit) // 확인된 기존 묶음을 새 묶음으로 교체
         { // 교체 시작
             if (slotIndex < 0 || slotIndex >= slots.Count || slots[slotIndex].IsEmpty || string.IsNullOrWhiteSpace(itemId) || quantity <= 0 || stackLimit <= 0 || quantity > stackLimit) // 대상과 새 묶음의 유효성 검사
@@ -180,6 +278,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 slot.ItemId = string.Empty; // 아이템 식별자 비우기
                 slot.Name = string.Empty; // 표시 이름 비우기
                 slot.StackLimit = 1; // 기본 중첩 제한 복구
+                slot.Equipment = null; // 빈 슬롯의 개별 장비 정보 제거
             } // 빈 슬롯 조건 끝
             return true; // 유효한 제거 성공
         } // 제거 끝

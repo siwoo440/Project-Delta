@@ -10,14 +10,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly Text[] slots = new Text[23]; // 최대 슬롯 표시 목록
         private readonly Button[] slotButtons = new Button[23]; // 최대 슬롯 선택 버튼 목록
         private readonly Button[] equipmentButtons = new Button[10]; // 장비 지급과 장착 및 해제 버튼
+        private Button trialVariantButton; // 시험 희귀 저주 장비 지급 버튼
+        private Button purifyButton; // 선택 저주 장비 정화 버튼
         private Text equipmentText; // 현재 장착 장비 표시
+        private Text selectedDetails; // 선택 장비의 공개 효과 표시
         private enum OfferStage // 가득 찬 인벤토리 획득 단계
         { // 단계 시작
             None, // 일반 인벤토리
             Choice, // 새 아이템 획득 선택
             Select, // 기존 슬롯 선택
             Confirm, // 교체 최종 확인
-            Discard // 보유 아이템 버리기 확인
+            Discard, // 보유 아이템 버리기 확인
+            Preview, // 시험 장비의 획득 전 효과 확인
+            Purify // 선택 장비의 정화 확인
         } // 단계 끝
         private OfferStage offerStage; // 현재 획득 선택 단계
         private Transform canvasRoot; // 획득 안내를 표시할 화면
@@ -35,6 +40,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private string offeredId; // 공간 부족으로 대기 중인 아이템 식별자
         private string offeredName; // 대기 중인 아이템 이름
         private int offeredLimit; // 대기 중인 아이템 최대 중첩
+        private EquipmentVariantData offeredEquipment; // 확인한 시험 개별 장비
+        private string expectedEquipment; // 확인 당시 개별 장비의 전체 내용
         private int lastPotionFrame = -1; // 같은 프레임 회복약 중복 지급 차단
         private int lastUseFrame = -1; // 같은 프레임 회복약 중복 사용 차단
         private Button cancelTargetButton; // 교체 대상 선택 취소 버튼
@@ -90,7 +97,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     slotButton.gameObject.AddComponent<InventoryCancelRelay>().Initialize(view); // 슬롯 취소 입력 연결
                     slotButton.gameObject.AddComponent<InventorySlotDragHandler>().Initialize(view, slotIndex); // 마우스 드래그 연결
                 } // 슬롯 화면 생성 끝
-                UiFactory.CreateText(canvas.transform, "Notice", "슬롯 선택 후 이동 · 마우스 드래그 지원", 20, new Vector2(0f, -205f), new Vector2(1200f, 36f), accent); // 시험 기능 안내
+                view.selectedDetails = UiFactory.CreateText(canvas.transform, "SelectedEquipmentDetails", "슬롯 선택 후 이동 · 마우스 드래그 지원", 20, new Vector2(0f, -205f), new Vector2(1800f, 36f), accent); // 선택 장비의 공개 효과 안내
                 var pickup = UiFactory.CreateButton(canvas.transform, "TrialPickupButton", "시험 아이템 획득", new Vector2(-700f, -365f)); // 시험 획득 버튼
                 view.pickupButton = pickup; // 시험 획득 버튼 보관
                 pickup.onClick.AddListener(view.AddTrialItem); // 시험 아이템 획득 연결
@@ -142,10 +149,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.equipmentButtons[6] = view.CreateEquipmentAction("UnequipArmorButton", "방어구 해제", () => view.Unequip(EquipmentSlot.Armor)); // 방어구 해제 버튼
                 view.equipmentButtons[7] = view.CreateEquipmentAction("UnequipAccessoryButton", "장신구 해제", () => view.Unequip(EquipmentSlot.Accessory)); // 장신구 해제 버튼
                 view.equipmentButtons[8] = view.CreateEquipmentAction("UnequipBagButton", "가방 해제", () => view.Unequip(EquipmentSlot.Bag)); // 가방 해제 버튼
-                var controls = new[] { pickup, key, view.potionButton, view.usePotionButton, close, view.largePotionButton, view.manaPotionButton, view.useSelectedButton, view.discardButton, view.equipmentButtons[4], view.equipmentButtons[0], view.equipmentButtons[1], view.equipmentButtons[2], view.equipmentButtons[3], view.equipmentButtons[9], view.equipmentButtons[5], view.equipmentButtons[6], view.equipmentButtons[7], view.equipmentButtons[8] }; // 네 줄의 모든 행동 버튼
+                view.trialVariantButton = view.CreateEquipmentAction("TrialVariantButton", "시험 희귀 저주 검", view.ShowTrialVariant); // 시험 장비의 획득 전 확인
+                view.purifyButton = view.CreateEquipmentAction("PurifySelectedButton", "선택 장비 정화", view.ShowPurifyConfirmation); // 선택 장비의 정화 확인
+                var controls = new[] { pickup, key, view.potionButton, view.usePotionButton, close, view.largePotionButton, view.manaPotionButton, view.useSelectedButton, view.discardButton, view.equipmentButtons[4], view.equipmentButtons[0], view.equipmentButtons[1], view.equipmentButtons[2], view.equipmentButtons[3], view.equipmentButtons[9], view.equipmentButtons[5], view.equipmentButtons[6], view.equipmentButtons[7], view.equipmentButtons[8], view.trialVariantButton, view.purifyButton }; // 다섯 줄의 모든 행동 버튼
                 for (var index = 0; index < controls.Length; index++) // 행동 버튼 순회
                 { // 행동 버튼 배치 시작
-                    controls[index].GetComponent<RectTransform>().anchoredPosition = new Vector2(-760f + (index % 5) * 380f, -255f - (index / 5) * 72f); // 다섯 열 행동 버튼 배치
+                    controls[index].GetComponent<RectTransform>().anchoredPosition = new Vector2(-760f + (index % 5) * 380f, -245f - (index / 5) * 53f); // 다섯 열 다섯 줄 행동 버튼 배치
                     ResizeFooter(controls[index]); // 공통 버튼 크기 적용
                 } // 행동 버튼 배치 끝
                 view.cancelTargetButton.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -470f); // 교체 대상 선택 취소 위치
@@ -162,6 +171,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public void OnCancel(BaseEventData eventData) // 취소 또는 같은 단축키 처리
         { // 취소 시작
             eventData.Use(); // 중복 취소 전파 차단
+            if (offerStage == OfferStage.Preview || offerStage == OfferStage.Purify) // 장비 획득과 정화 확인 검사
+            { // 장비 확인 취소 시작
+                CancelEquipmentConfirmation(); // 기존 상태 보존과 확인 취소
+                return; // 다른 취소 처리 차단
+            } // 장비 확인 취소 끝
             if (offerStage == OfferStage.Discard) // 보유 아이템 버리기 확인 검사
             { // 버리기 취소 시작
                 CancelDiscard(); // 아이템 보존과 확인 취소
@@ -267,6 +281,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             manaPotionButton.interactable = footerEnabled; // 마나 회복약 지급 가능 여부
             useSelectedButton.interactable = footerEnabled; // 선택 소비품 사용 가능 여부
             discardButton.interactable = footerEnabled; // 선택 아이템 버리기 가능 여부
+            trialVariantButton.interactable = footerEnabled; // 시험 장비 지급 가능 여부
+            purifyButton.interactable = footerEnabled; // 장비 정화 가능 여부
             foreach (var button in equipmentButtons) // 장비 버튼 순회
             { // 장비 버튼 설정 시작
                 button.interactable = footerEnabled; // 모달 중 장비 행동 잠금
@@ -337,6 +353,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             expectedName = expectedSlot.Name; // 기존 아이템 이름 보관
             expectedQuantity = expectedSlot.Quantity; // 기존 아이템 수량 보관
             expectedLimit = expectedSlot.StackLimit; // 기존 중첩 한도 보관
+            expectedEquipment = EquipmentSnapshot(expectedSlot.Equipment); // 확인 당시 개별 장비 전체 내용
             offerStage = OfferStage.Confirm; // 최종 교체 확인 단계
             cancelTargetButton.gameObject.SetActive(false); // 대상 취소 버튼 숨김
             SetBaseButtons(false, false); // 확인 화면 아래 입력 잠금
@@ -357,13 +374,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 잘못된 교체 차단
             } // 잘못된 단계 조건 끝
             var current = owner.Inventory.Slots[replaceIndex]; // 현재 기존 슬롯 조회
-            if (!object.ReferenceEquals(current, expectedSlot) || current.ItemId != expectedId || current.Name != expectedName || current.Quantity != expectedQuantity || current.StackLimit != expectedLimit) // 확인 이후 대상 변경 검사
+            if (!object.ReferenceEquals(current, expectedSlot) || current.ItemId != expectedId || current.Name != expectedName || current.Quantity != expectedQuantity || current.StackLimit != expectedLimit || EquipmentSnapshot(current.Equipment) != expectedEquipment) // 확인 이후 대상과 개별 장비 변경 검사
             { // 대상 변경 조건 시작
                 ShowOfferChoice(); // 기존 아이템을 보존하고 선택 재시작
                 offerPanel.transform.Find("FullOfferMessage").GetComponent<Text>().text = "기존 아이템이 변경되어 교체를 취소했습니다"; // 표시 중인 화면에 변경 안내
                 return; // 예상하지 못한 기존 묶음 삭제 차단
             } // 대상 변경 조건 끝
-            if (!owner.Inventory.TryReplace(replaceIndex, offeredId, offeredName, 1, offeredLimit)) // 새 시험 아이템 교체 검사
+            var replaced = offeredEquipment == null ? owner.Inventory.TryReplace(replaceIndex, offeredId, offeredName, 1, offeredLimit) : owner.Inventory.TryReplaceWithEquipment(replaceIndex, offeredEquipment); // 확인된 개별 장비 또는 일반 아이템 교체
+            if (!replaced) // 실제 아이템 교체 검사
             { // 교체 실패 조건 시작
                 ShowOfferChoice(); // 원래 획득 선택 복구
                 offerPanel.transform.Find("FullOfferMessage").GetComponent<Text>().text = "아이템을 교체하지 못했습니다"; // 표시 중인 화면에 실패 안내
@@ -392,6 +410,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             offeredId = null; // 완료된 획득 아이템 식별자 해제
             offeredName = null; // 완료된 획득 아이템 이름 해제
             offeredLimit = 0; // 완료된 획득 중첩 한도 해제
+            offeredEquipment = null; // 완료된 시험 장비 해제
             cancelTargetButton.gameObject.SetActive(false); // 대상 취소 버튼 숨김
             SetBaseButtons(true, true); // 기존 인벤토리 버튼 복구
             Refresh(); // 실제 슬롯과 보유 상태 갱신
@@ -419,7 +438,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 획득 끝
         private static void ResizeFooter(Button button) // 다섯 행동 버튼의 크기 조정
         { // 크기 조정 시작
-            var size = new Vector2(340f, 62f); // 행동 버튼의 공통 크기
+            var size = new Vector2(340f, 46f); // 행동 버튼의 공통 크기
             button.GetComponent<RectTransform>().sizeDelta = size; // 실제 버튼 크기 적용
             var label = button.transform.Find("Label"); // 버튼 글자 객체
             label.GetComponent<RectTransform>().sizeDelta = size; // 글자 표시 영역 적용
@@ -436,6 +455,129 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 생성 시작
             equipmentButtons[index] = CreateEquipmentAction("TrialEquipmentButton_" + index, label, () => AddTrialEquipment(id)); // 실제 장비 정의 획득 연결
         } // 생성 끝
+        private static string EquipmentSnapshot(EquipmentVariantData item) // 확인 전후 개별 장비 비교값
+        { // 비교값 시작
+            return item == null ? string.Empty : JsonUtility.ToJson(item); // 전체 인스턴스와 옵션의 직렬화
+        } // 비교값 끝
+        private void ShowTrialVariant() // 시험 희귀 저주 검의 획득 전 확인
+        { // 확인 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || lastPickupFrame == Time.frameCount) // 다른 입력과 중복 생성 검사
+            { // 입력 거절 시작
+                return; // 중복 시험 장비 생성 차단
+            } // 입력 거절 끝
+            lastPickupFrame = Time.frameCount; // 현재 프레임 중복 생성 방지
+            offeredEquipment = TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, EquipmentVariantRules.Rare, true); // 공개할 시험 개별 장비 생성
+            if (offeredEquipment == null || !TrialEquipmentTraits.IsValid(offeredEquipment)) // 실제 시험 장비 정의 검사
+            { // 생성 오류 시작
+                offeredEquipment = null; // 불완전한 후보 정리
+                status.text = "시험 장비를 준비할 수 없습니다"; // 실제 오류 안내
+                return; // 잘못된 장비 표시 차단
+            } // 생성 오류 끝
+            var definition = EquipmentCatalog.Find(offeredEquipment.definitionId); // 실제 기본 장비 정의
+            offeredId = definition.Id; // 공개한 기본 장비 식별자
+            offeredName = definition.Name; // 공개한 기본 장비 이름
+            offeredLimit = 1; // 단일 장비 중첩 제한
+            offerStage = OfferStage.Preview; // 획득 전 공개 확인 단계
+            SetBaseButtons(false, false); // 확인 화면 아래 입력 잠금
+            offerPanel = CreateOfferPanel(); // 공개 확인 화면 생성
+            var details = offeredName + " · 기본 공격 " + definition.AttackBonus + " · 치명타 " + definition.CriticalChance + "% / " + definition.CriticalMultiplierPercent + "%\n" + TrialEquipmentTraits.Describe(offeredEquipment); // 기본 능력치와 모든 시험 효과
+            UiFactory.CreateText(offerPanel.transform, "TrialVariantDetails", "획득 전 확인 · 시험값\n" + details, 32, new Vector2(0f, 100f), new Vector2(1600f, 200f), Color.white); // 등급과 공개 저주 효과 표시
+            var cancel = UiFactory.CreateButton(offerPanel.transform, "CancelTrialVariantButton", "취소", new Vector2(-250f, -180f)); // 후보 포기 버튼
+            var confirm = UiFactory.CreateButton(offerPanel.transform, "AcceptTrialVariantButton", "획득", new Vector2(250f, -180f)); // 공개된 시험 장비 획득 버튼
+            cancel.onClick.AddListener(CancelEquipmentConfirmation); // 후보 취소 연결
+            confirm.onClick.AddListener(AcceptTrialVariant); // 실제 인벤토리 획득 연결
+            cancel.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 취소 입력 연결
+            confirm.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 획득 버튼 취소 입력 연결
+            EventSystem.current.SetSelectedGameObject(cancel.gameObject); // 취소 기본 선택
+        } // 확인 끝
+        private void AcceptTrialVariant() // 공개된 동일 시험 장비의 실제 획득
+        { // 획득 시작
+            if (offerStage != OfferStage.Preview || !TrialEquipmentTraits.IsValid(offeredEquipment)) // 확인 단계와 후보 상태 검사
+            { // 후보 오류 시작
+                return; // 잘못된 후보 획득 차단
+            } // 후보 오류 끝
+            if (!owner.Inventory.TryAddEquipment(offeredEquipment)) // 실제 수용 검사
+            { // 공간 부족 시작
+                ShowOfferChoice(); // 동일 장비를 보존한 교체 또는 포기 선택
+                return; // 새로운 장비 재생성 차단
+            } // 공간 부족 끝
+            var name = offeredName; // 실제 획득 이름 보관
+            owner.RecordExplorationEvent(name + " 시험 장비 획득"); // 확인된 장비 획득 기록
+            LeaveOffer(); // 후보 해제와 기존 화면 복구
+            status.text = name + " 시험 장비를 획득했습니다"; // 실제 획득 안내
+        } // 획득 끝
+        private void CancelEquipmentConfirmation() // 장비 획득 또는 정화 확인 취소
+        { // 취소 시작
+            if (offerStage != OfferStage.Preview && offerStage != OfferStage.Purify) // 실제 장비 확인 단계 검사
+            { // 단계 오류 시작
+                return; // 다른 선택 화면 차단
+            } // 단계 오류 끝
+            var button = offerStage == OfferStage.Preview ? trialVariantButton : purifyButton; // 확인 전 행동 버튼
+            RemoveOfferPanel(); // 확인 화면 제거
+            offerStage = OfferStage.None; // 일반 인벤토리 복구
+            offeredEquipment = null; // 미획득 후보 해제
+            offeredId = null; // 미획득 식별자 해제
+            offeredName = null; // 미획득 이름 해제
+            offeredLimit = 0; // 미획득 중첩 정보 해제
+            SetBaseButtons(true, true); // 기존 입력 복구
+            Refresh(); // 보존된 상태 갱신
+            EventSystem.current.SetSelectedGameObject(button.gameObject); // 확인 전 버튼 선택 복구
+        } // 취소 끝
+        private void ShowPurifyConfirmation() // 선택한 저주 장비의 정화 확인
+        { // 확인 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || selectedSlot < 0 || selectedSlot >= owner.Inventory.Slots.Count) // 실제 선택과 입력 상태 검사
+            { // 선택 오류 시작
+                status.text = "정화할 저주 장비를 선택하세요"; // 명시적인 대상 안내
+                return; // 잘못된 선택 차단
+            } // 선택 오류 끝
+            var slot = owner.Inventory.Slots[selectedSlot]; // 선택한 실제 보유 슬롯
+            var item = slot.Equipment; // 독립 개별 장비 조회
+            if (item == null || !item.cursed || !TrialEquipmentTraits.IsValid(item)) // 저주와 시험 장비 유효성 검사
+            { // 대상 오류 시작
+                status.text = "정화할 시험 저주 장비가 아닙니다"; // 정화 불가 안내
+                return; // 일반 장비와 손상 장비 차단
+            } // 대상 오류 끝
+            replaceIndex = selectedSlot; // 정화할 실제 슬롯 보관
+            expectedSlot = slot; // 확인 당시 슬롯 참조
+            expectedId = slot.ItemId; // 확인 당시 기본 식별자
+            expectedName = slot.Name; // 확인 당시 장비 이름
+            expectedQuantity = slot.Quantity; // 확인 당시 수량
+            expectedLimit = slot.StackLimit; // 확인 당시 중첩 한도
+            expectedEquipment = EquipmentSnapshot(item); // 확인 당시 개별 장비 전체 내용
+            offerStage = OfferStage.Purify; // 정화 확인 단계
+            SetBaseButtons(false, false); // 확인 화면 아래 입력 잠금
+            offerPanel = CreateOfferPanel(); // 정화 확인 화면 생성
+            UiFactory.CreateText(offerPanel.transform, "PurifyQuestion", "시험 정화 · " + slot.Name + "\n" + TrialEquipmentTraits.Describe(item) + "\n정화할까요?", 30, new Vector2(0f, 100f), new Vector2(1600f, 220f), Color.white); // 실제 장비와 시험 효과 표시
+            var cancel = UiFactory.CreateButton(offerPanel.transform, "CancelPurifyButton", "아니요", new Vector2(-250f, -180f)); // 정화 취소 버튼
+            var confirm = UiFactory.CreateButton(offerPanel.transform, "ConfirmPurifyButton", "정화", new Vector2(250f, -180f)); // 명시적인 정화 버튼
+            cancel.onClick.AddListener(CancelEquipmentConfirmation); // 원래 인벤토리 복귀
+            confirm.onClick.AddListener(ConfirmPurify); // 확인된 개별 장비 정화
+            cancel.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 취소 입력 연결
+            confirm.gameObject.AddComponent<InventoryCancelRelay>().Initialize(this); // 확인 버튼 취소 입력 연결
+            EventSystem.current.SetSelectedGameObject(cancel.gameObject); // 아니요 기본 선택
+        } // 확인 끝
+        private void ConfirmPurify() // 확인한 장비의 실제 정화
+        { // 정화 시작
+            if (offerStage != OfferStage.Purify || replaceIndex < 0 || replaceIndex >= owner.Inventory.Slots.Count) // 확인 단계와 현재 슬롯 검사
+            { // 단계 오류 시작
+                return; // 잘못된 정화 차단
+            } // 단계 오류 끝
+            var current = owner.Inventory.Slots[replaceIndex]; // 확인 시점의 현재 보유 슬롯
+            if (!object.ReferenceEquals(current, expectedSlot) || current.ItemId != expectedId || current.Name != expectedName || current.Quantity != expectedQuantity || current.StackLimit != expectedLimit || EquipmentSnapshot(current.Equipment) != expectedEquipment) // 원본 슬롯과 전체 장비 변경 검사
+            { // 변경 감지 시작
+                CancelEquipmentConfirmation(); // 기존 아이템 보존과 확인 종료
+                status.text = "장비가 변경되어 정화를 취소했습니다"; // 변경 충돌 안내
+                return; // 예상하지 못한 장비 변경 차단
+            } // 변경 감지 끝
+            var success = owner.TryPurifyInventoryItem(replaceIndex, out var message); // 확인된 개체의 저장 포함 정화
+            CancelEquipmentConfirmation(); // 확인 화면 정리
+            if (success) // 실제 정화 성공 검사
+            { // 선택 해제 시작
+                selectedSlot = -1; // 이전 개별 장비 선택 해제
+                Refresh(); // 실제 정화 상태 표시
+            } // 선택 해제 끝
+            status.text = message; // 저장 실패 또는 정화 결과 안내
+        } // 정화 끝
         private void AddTrialEquipment(string id) // 등록된 시험 장비 획득
         { // 획득 시작
             if (offerStage != OfferStage.None || draggedSlot >= 0 || lastPickupFrame == Time.frameCount) // 모달과 중복 획득 검사
@@ -564,6 +706,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             expectedName = expectedSlot.Name; // 확인 당시 아이템 이름
             expectedQuantity = expectedSlot.Quantity; // 확인 당시 묶음 수량
             expectedLimit = expectedSlot.StackLimit; // 확인 당시 중첩 한도
+            expectedEquipment = EquipmentSnapshot(expectedSlot.Equipment); // 확인 당시 개별 장비 전체 내용
             offerStage = OfferStage.Discard; // 버리기 확인 단계
             SetBaseButtons(false, false); // 확인 화면 아래 입력 잠금
             offerPanel = CreateOfferPanel(); // 전체 확인 화면 생성
@@ -595,7 +738,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 잘못된 삭제 차단
             } // 단계 오류 끝
             var current = owner.Inventory.Slots[replaceIndex]; // 현재 선택된 실제 묶음
-            if (!object.ReferenceEquals(current, expectedSlot) || current.ItemId != expectedId || current.Name != expectedName || current.Quantity != expectedQuantity || current.StackLimit != expectedLimit) // 확인 이후의 슬롯 변경 검사
+            if (!object.ReferenceEquals(current, expectedSlot) || current.ItemId != expectedId || current.Name != expectedName || current.Quantity != expectedQuantity || current.StackLimit != expectedLimit || EquipmentSnapshot(current.Equipment) != expectedEquipment) // 확인 이후의 슬롯과 장비 변경 검사
             { // 대상 변경 시작
                 CancelDiscard(); // 기존 인벤토리 보존과 확인 종료
                 status.text = "아이템이 변경되어 버리기를 취소했습니다"; // 변경 충돌 안내
@@ -664,6 +807,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 슬롯 표시 끝
             healthText.text = "체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50"; // 현재 체력과 마나 표시 갱신
             equipmentText.text = "무기 " + (owner.Equipment.Get(EquipmentSlot.Weapon)?.Name ?? "없음") + " · 방어구 " + (owner.Equipment.Get(EquipmentSlot.Armor)?.Name ?? "없음") + " · 장신구 " + (owner.Equipment.Get(EquipmentSlot.Accessory)?.Name ?? "없음") + " · 가방 " + (owner.Equipment.Get(EquipmentSlot.Bag)?.Name ?? "없음"); // 실제 장착 장비 표시
+            var selectedEquipment = selectedSlot < 0 ? null : owner.Inventory.Slots[selectedSlot].Equipment; // 선택한 개별 장비 조회
+            selectedDetails.text = selectedEquipment == null ? "슬롯 선택 후 이동 · 마우스 드래그 지원" : owner.Inventory.Slots[selectedSlot].Name + " · " + TrialEquipmentTraits.Describe(selectedEquipment); // 실제 등급과 모든 시험 효과 표시
             status.text = selectedSlot >= 0 ? "아이템 선택됨 · 다른 칸으로 이동 또는 행동 선택" : "가방 " + occupied + " / " + capacity + " · 열쇠 " + owner.Keys.Count; // 이동 안내 또는 현재 슬롯 표시
         } // 갱신 끝
     } // 클래스 끝

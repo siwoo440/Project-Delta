@@ -2,6 +2,12 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
 { // 이름 공간 시작
     public sealed class InventorySlot // 아이템 한 묶음의 슬롯
     { // 클래스 시작
+        private EquipmentVariantData equipment; // 내부 개별 장비 정보
+        public EquipmentVariantData Equipment // 외부 변경을 차단하는 개별 장비 조회
+        { // 속성 시작
+            get => EquipmentVariantRules.Copy(equipment); // 독립 장비 복사 반환
+            internal set => equipment = EquipmentVariantRules.Copy(value); // 외부 입력의 독립 복사 보관
+        } // 속성 끝
         public string ItemId // 아이템 식별자
         { // 속성 시작
             get; // 식별자 조회

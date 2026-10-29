@@ -147,6 +147,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 armorId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Armor)?.Id, // 장착한 방어구 식별자
                 accessoryId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Accessory)?.Id, // 장착한 장신구 식별자
                 bagId = AppRoot.Instance.Equipment.Get(EquipmentSlot.Bag)?.Id, // 장착한 가방 식별자
+                weaponVariant = AppRoot.Instance.Equipment.GetVariant(EquipmentSlot.Weapon), // 장착한 무기의 개별 특성
+                armorVariant = AppRoot.Instance.Equipment.GetVariant(EquipmentSlot.Armor), // 장착한 방어구의 개별 특성
+                accessoryVariant = AppRoot.Instance.Equipment.GetVariant(EquipmentSlot.Accessory), // 장착한 장신구의 개별 특성
+                bagVariant = AppRoot.Instance.Equipment.GetVariant(EquipmentSlot.Bag), // 장착한 가방의 개별 특성
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
                 doorLock = lockData, // 현재 층의 잠금 기록
                 hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부

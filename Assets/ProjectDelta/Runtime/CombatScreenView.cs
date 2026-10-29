@@ -59,6 +59,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 지정 주사위 조회
             set; // 검증 주사위 설정
         } // 속성 끝
+        public static bool? TrialEquipmentDropOverride // 검증용 시험 장비 드롭 지정
+        { // 속성 시작
+            get; // 지정 여부 조회
+            set; // 검증 설정 변경
+        } // 속성 끝
         public static System.Func<int, int, int> RewardRollOverride // 자동 검증용 보상 주사위 지정
         { // 속성 시작
             get; // 지정 난수 조회
@@ -672,7 +677,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                             } // 선택 오류 끝
                             itemId = kinds[itemRoll]; // 보관할 실제 소비품 종류
                         } // 종류 선택 끝
-                        pendingVictoryReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = normal, eliteEnemies = elite, experience = experience, gold = 10 * normal + 30 * elite, potionCount = potions, itemId = itemId }; // 고유 거래와 시험 소비품 후보
+                        EquipmentVariantData equipment = null; // 기본 장비 후보 없음
+                        if (potions == 0 && (TrialEquipmentDropOverride ?? random.Next(0, 100) < 10)) // 소비품이 없는 시험 장비 당첨 검사
+                        { // 시험 장비 후보 시작
+                            var grades = new[] { EquipmentVariantRules.Common, EquipmentVariantRules.Uncommon, EquipmentVariantRules.Rare, EquipmentVariantRules.Legendary }; // 시험용 균등 등급 후보
+                            var grade = TrialEquipmentDropOverride == true ? EquipmentVariantRules.Rare : grades[random.Next(0, grades.Length)]; // 검증용 희귀 또는 임시 등급 추첨
+                            var cursed = TrialEquipmentDropOverride == true || random.Next(0, 100) < 20; // 검증용 저주 또는 임시 저주 확률
+                            equipment = TrialEquipmentDropOverride == true ? TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, grade, cursed) : TrialEquipmentTraits.CreateRandom(EquipmentCatalog.BasicSwordId, grade, cursed, random); // 저장할 고유 시험 검과 확정된 무작위 효과
+                        } // 시험 장비 후보 끝
+                        pendingVictoryReward = new SavedBattleReward { transactionId = System.Guid.NewGuid().ToString("N"), normalEnemies = normal, eliteEnemies = elite, experience = experience, gold = 10 * normal + 30 * elite, potionCount = potions, itemId = itemId, equipment = equipment }; // 고유 거래와 확정된 시험 보상 후보
                     } // 후보 생성 끝
                     if (!owner.TryStageVictoryReward(pendingVictoryReward, confirmReplaceOtherRun, out var error)) // 후보의 사전 저장 검사
                     { // 저장 실패 시작

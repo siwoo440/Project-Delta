@@ -45,6 +45,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public void PrepareInput() // 가상 입력을 실제 게임에 전달
         { // 준비 시작
             RoomTravelController.TutorialEncounterTestOverride = false; // 기존 던전 기능의 독립 검증
+            CombatScreenView.TrialEquipmentDropOverride = false; // 기존 보상 검증의 시험 장비 드롭 차단
             AppRoot.AutomaticEncounterTestOverride = false; // 기존 조우 선택 규칙의 독립 검증
             ObservationStorage.TestDirectoryOverride = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "ObservationPlayModeTests", System.Guid.NewGuid().ToString("N"))); // 개별 시험의 독립 저장 경로
             originalBackground = InputSystem.settings.backgroundBehavior; // 기존 입력 설정 보관
@@ -1086,6 +1087,100 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(app.Inventory.Slots.Any(slot => slot.ItemId == "trial-mana-potion" && slot.Quantity == 1), Is.True); // 실제 마나 회복약 한 개 획득
             saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 확정된 보상 재읽기
             Assert.That(saved.pendingReward, Is.Null); // 완료된 후보의 중복 지급 차단
+        } // 검증 끝
+        [UnityTest] // 개별 장비 보상 후보의 재시작 보존 검증
+        public IEnumerator VictoryReward_EquipmentCandidateRestoresAndPaysOnce() // 확정된 등급과 저주의 단일 지급 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentRewardTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 슬라임 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 확정 공격 명중
+            CombatScreenView.RewardRollOverride = (minimum, maximum) => maximum - 1; // 소비품 없는 시험 보상
+            CombatScreenView.TrialEquipmentDropOverride = true; // 희귀 저주 시험 장비 후보 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 실제 방 이동 키보드
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 조우 방 연결
+            yield return UseDoor(travel, player, first); // 실제 첫 조우 진입
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 전투 선택
+            yield return null; // 전투 화면 준비
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            attack.onClick.Invoke(); // 첫 공격
+            yield return null; // 다음 차례 대기
+            attack.onClick.Invoke(); // 상대 처치
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 장비 후보 저장
+            var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var warning); // 독립 저장소의 실제 후보
+            Assert.That(warning, Is.Empty); // 정상 후보 저장 확인
+            Assert.That(saved.pendingReward.equipment.cursed, Is.True); // 저장된 저주 상태
+            var candidateId = saved.pendingReward.equipment.instanceId; // 저장된 개별 장비 식별자
+            Assert.That(GameObject.Find("RewardEquipmentTraits").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("희귀").And.Contain("속도-2")); // 수령 전 등급과 저주 공개
+            Object.Destroy(app.gameObject); // 현재 실행 중단
+            yield return null; // 기존 객체 정리
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 관리자
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 후보 재개
+            var deadline = Time.realtimeSinceStartup + 10f; // 보상 화면 대기 제한
+            while (GameObject.Find("BattleRewardCanvas") == null && Time.realtimeSinceStartup < deadline) // 실제 보상 화면 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            Assert.That(GameObject.Find("RewardEquipmentTraits").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("속도-2")); // 저장된 저주 그대로 표시
+            GameObject.Find("TakeRewardButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 저장된 장비 획득
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Inventory.Slots.Count(slot => slot.Equipment != null && slot.Equipment.instanceId == candidateId), Is.EqualTo(1)); // 같은 개별 장비 한 번 지급
+            saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out warning); // 확정된 회차 저장 재읽기
+            Assert.That(warning, Is.Empty); // 정상 확정 저장 확인
+            Assert.That(saved.pendingReward, Is.Null); // 완료된 후보의 재지급 차단
+            Assert.That(saved.rewardReceipts[0].tookEquipment, Is.True); // 실제 장비 수령 기록
+        } // 검증 끝
+        [UnityTest] // 가득 찬 인벤토리의 개별 장비 보상 교체 검증
+        public IEnumerator VictoryReward_EquipmentReplacesConfirmedItemWithoutReroll() // 후보 보존과 명시적 교체 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentRewardTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 슬라임 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 확정 공격 명중
+            CombatScreenView.RewardRollOverride = (minimum, maximum) => maximum - 1; // 소비품 없는 시험 보상
+            CombatScreenView.TrialEquipmentDropOverride = true; // 희귀 저주 장비 후보 고정
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 지급 시작
+                app.Inventory.Add("full-" + index, "보유 물건", 1, 1); // 서로 다른 기존 아이템
+            } // 아이템 지급 끝
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 실제 방 이동 입력
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var door = travel.Layout.Doors.First(value => value.RoomX == 0 && value.RoomY == 0 && !value.IsSecret); // 첫 조우 방 연결
+            yield return UseDoor(travel, player, door); // 실제 첫 조우 진입
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 전투 선택
+            yield return null; // 전투 화면 준비
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            attack.onClick.Invoke(); // 첫 공격
+            yield return null; // 다음 차례 대기
+            attack.onClick.Invoke(); // 상대 처치
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 보상 후보 저장
+            var candidate = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _).pendingReward.equipment; // 저장된 개별 장비 후보
+            GameObject.Find("TakeRewardButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 가득 찬 상태에서 획득 시도
+            Assert.That(GameObject.Find("RewardNotice").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("부족")); // 명시적인 공간 부족 안내
+            Assert.That(app.Inventory.Slots[0].ItemId, Is.EqualTo("full-0")); // 기존 아이템 자동 삭제 차단
+            GameObject.Find("ReplaceRewardItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 대상 선택
+            GameObject.Find("RewardReplacementSlot_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 확인할 기존 물건 선택
+            GameObject.Find("ConfirmRewardReplacement").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 명시적인 교체 확정
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(candidate.instanceId)); // 저장된 같은 장비 후보 획득
+            Assert.That(app.Inventory.Slots[0].Equipment.cursed, Is.True); // 후보 저주 보존
+            Assert.That(app.Inventory.Slots[1].ItemId, Is.EqualTo("full-1")); // 다른 기존 물건 보존
+            var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 완료된 회차 저장 조회
+            Assert.That(saved.pendingReward, Is.Null); // 보상 후보 재지급 차단
+            Assert.That(saved.rewardReceipts[0].tookEquipment, Is.True); // 개별 장비 획득 기록
         } // 검증 끝
         [UnityTest] // 가득 찬 소지품의 보상 선택 검증
         public IEnumerator VictoryReward_FullInventoryPreservesItemsUntilExplicitSkip() // 아이템 자동 삭제 방지
@@ -2487,6 +2582,85 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 전투 화면 준비 대기
             GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 기본 공격
             Assert.That(GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("17/70")); // 도끼 공격력 60과 적 방어력 7 반영
+        } // 검증 끝
+        [UnityTest] // 시험 장비 미리보기와 정화의 실제 화면 검증
+        public IEnumerator EquipmentTraits_PreviewEquipPurifyAndRestore() // 공개 효과와 저장 복원 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentTraitsTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("TrialVariantButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 장비 획득 전 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CancelTrialVariantButton")); // 안전한 취소 기본 선택
+            var details = GameObject.Find("TrialVariantDetails").GetComponent<UnityEngine.UI.Text>().text; // 실제 획득 전 공개 내용
+            Assert.That(details, Does.Contain("희귀").And.Contain("저주").And.Contain("공격+2").And.Contain("속도-2")); // 등급과 양쪽 효과 공개 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 캡처 환경 확인
+            { // 화면 저장 시작
+                var image = CaptureScreen("InventoryCanvas"); // 실제 획득 전 확인 화면 캡처
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 화면 저장 끝
+            GameObject.Find("AcceptTrialVariantButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 표시한 시험 장비 획득
+            var original = app.Inventory.Slots[0].Equipment; // 실제 개별 장비 정보
+            Assert.That(original.cursed, Is.True); // 저주 상태 보존
+            GameObject.Find("InventorySlotButton_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 획득한 장비 선택
+            GameObject.Find("PurifySelectedButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 정화 확인
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CancelPurifyButton")); // 정화 기본 아니요 확인
+            GameObject.Find("CancelPurifyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 정화 취소
+            Assert.That(app.Inventory.Slots[0].Equipment.cursed, Is.True); // 취소 시 저주 보존
+            GameObject.Find("PurifySelectedButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 정화 재확인
+            GameObject.Find("ConfirmPurifyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 명시적인 시험 정화
+            Assert.That(app.Inventory.Slots[0].Equipment.cursed, Is.False); // 실제 저주 제거
+            Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(original.instanceId)); // 같은 개별 장비 유지
+            Assert.That(app.Inventory.Slots[0].Equipment.options[0].value, Is.EqualTo(2)); // 기존 추가 옵션 유지
+            app.CloseInventory(); // 탐험 복귀
+            app.ReturnToTitle(); // 저장 복원 준비
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 정화된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 실제 탐험 재개
+            Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(original.instanceId)); // 정화한 장비 식별자 복원
+            Assert.That(app.Inventory.Slots[0].Equipment.cursed, Is.False); // 정화 결과 저장 유지
+        } // 검증 끝
+        [UnityTest] // 미지원 정화 결과의 장비 보호 검증
+        public IEnumerator EquipmentTraits_RejectsUnsupportedPurificationResult() // 지정된 효과를 무시하는 정화 차단
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var item = TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, EquipmentVariantRules.Rare, true); // 시험 저주 검
+            item.purification.resultEffects = new[] { new EquipmentOptionData { optionId = TrialEquipmentTraits.Attack, value = 1 } }; // 현재 시험 경로에서 지원하지 않는 명시 결과
+            Assert.That(app.Inventory.TryAddEquipment(item), Is.True); // 유효한 계획을 가진 시험 장비 보관
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            Assert.That(app.TryPurifyInventoryItem(0, out _), Is.False); // 미지원 결과의 임의 정화 차단
+            Assert.That(app.Inventory.Slots[0].Equipment.cursed, Is.True); // 원래 저주 상태 보존
+            Assert.That(app.Inventory.Slots[0].Equipment.purification.resultEffects[0].value, Is.EqualTo(1)); // 지정된 결과 보존
+        } // 검증 끝
+        [UnityTest] // 같은 기본 장비의 개별 특성 교체와 복원 검증
+        public IEnumerator EquipmentTraits_IdenticalWeaponsRetainIndependentOptions() // 교체한 두 검의 개별 데이터 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EquipmentTraitsTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var first = TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, EquipmentVariantRules.Common, false); // 일반 시험 검
+            var second = TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, EquipmentVariantRules.Rare, true); // 희귀 저주 시험 검
+            Assert.That(app.Inventory.TryAddEquipment(first), Is.True); // 첫 개별 검 보관
+            Assert.That(app.Inventory.TryAddEquipment(second), Is.True); // 다른 개별 검 보관
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            Assert.That(app.TryEquipInventoryItem(0, out var error), Is.True, error); // 일반 검 장착
+            Assert.That(app.TryEquipInventoryItem(1, out error), Is.True, error); // 희귀 저주 검 교체
+            Assert.That(app.Equipment.GetVariant(EquipmentSlot.Weapon).instanceId, Is.EqualTo(second.instanceId)); // 장착된 희귀 검 식별자
+            Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(first.instanceId)); // 이전 일반 검의 인스턴스 보존
+            app.CloseInventory(); // 탐험 복귀
+            app.ReturnToTitle(); // 자동 저장 재개 준비
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 회차 저장 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 복원 대기
+            Assert.That(app.Equipment.GetVariant(EquipmentSlot.Weapon).instanceId, Is.EqualTo(second.instanceId)); // 희귀 검과 저주 상태 복원
+            Assert.That(app.Equipment.GetVariant(EquipmentSlot.Weapon).cursed, Is.True); // 실제 저주 보존
+            Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(first.instanceId)); // 기존 일반 검 복원
         } // 검증 끝
         [UnityTest] // 전투 중 선택한 소비품 사용 검증
         public IEnumerator Combat_SelectedManaPotionConsumesOnlyOnRecovery() // 실패와 성공의 행동 소비 확인
@@ -4363,6 +4537,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제
             typeof(CombatScreenView).GetProperty("RetreatRollOverride")?.SetValue(null, null); // 검증용 후퇴 주사위 해제
             CombatScreenView.RewardRollOverride = null; // 검증용 보상 난수 해제
+            CombatScreenView.TrialEquipmentDropOverride = null; // 검증용 장비 드롭 설정 해제
             typeof(RoomTravelController).GetProperty("ForceRollOverride")?.SetValue(null, null); // 검증용 이벤트 주사위 해제
             typeof(EncounterScreenView).GetProperty("EscapeRollOverride")?.SetValue(null, null); // 검증용 도망 주사위 해제
             typeof(EncounterScreenView).GetProperty("ObserveRollOverride")?.SetValue(null, null); // 검증용 관찰 주사위 해제

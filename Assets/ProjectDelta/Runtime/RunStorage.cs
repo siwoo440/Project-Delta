@@ -296,6 +296,49 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", string.Empty); // 대문자 해시 문자열
             } // 도구 사용 끝
         } // 계산 끝
+        public static void NormalizeEquipment(RunSaveData data) // 역직렬화된 빈 장비 객체 정리
+        { // 정리 시작
+            if (data == null) // 회차 데이터 검사
+            { // 누락 시작
+                return; // 정리할 데이터 없음
+            } // 누락 끝
+            data.weaponVariant = NormalizeVariant(data.weaponVariant); // 빈 무기 특성 정리
+            data.armorVariant = NormalizeVariant(data.armorVariant); // 빈 방어구 특성 정리
+            data.accessoryVariant = NormalizeVariant(data.accessoryVariant); // 빈 장신구 특성 정리
+            data.bagVariant = NormalizeVariant(data.bagVariant); // 빈 가방 특성 정리
+            if (data.pendingReward != null) // 보상 후보 검사
+            { // 후보 장비 정리 시작
+                data.pendingReward.equipment = NormalizeVariant(data.pendingReward.equipment); // 빈 보상 장비 객체 정리
+            } // 후보 장비 정리 끝
+            if (data.slots != null) // 저장 슬롯 목록 검사
+            { // 슬롯 순회 시작
+                foreach (var slot in data.slots) // 저장 슬롯 순회
+                { // 슬롯 정리 시작
+                    if (slot != null) // 유효 슬롯 검사
+                    { // 개별 장비 정리 시작
+                        slot.equipment = NormalizeVariant(slot.equipment); // 빈 보유 장비 특성 정리
+                    } // 개별 장비 정리 끝
+                } // 슬롯 정리 끝
+            } // 슬롯 순회 끝
+        } // 정리 끝
+        private static EquipmentVariantData NormalizeVariant(EquipmentVariantData item) // Unity의 빈 중첩 객체 정리
+        { // 정리 시작
+            if (item == null) // 원래 빈 장비 검사
+            { // 빈 장비 시작
+                return null; // 빈 값 유지
+            } // 빈 장비 끝
+            var plan = item.purification; // 직렬화된 정화 계획
+            var emptyPlan = plan == null || string.IsNullOrEmpty(plan.sourceDefinitionId) && string.IsNullOrEmpty(plan.kind) && string.IsNullOrEmpty(plan.resultId) && plan.resultQuantity == 0 && (plan.resultEffects == null || plan.resultEffects.Length == 0); // 모든 필드가 빈 정화 계획
+            if (emptyPlan) // Unity가 만든 빈 정화 객체 검사
+            { // 빈 계획 시작
+                item.purification = null; // 빈 계획을 원래 값으로 복원
+            } // 빈 계획 끝
+            if (string.IsNullOrEmpty(item.instanceId) && string.IsNullOrEmpty(item.definitionId) && string.IsNullOrEmpty(item.grade) && (item.options == null || item.options.Length == 0) && !item.cursed && (item.curseEffects == null || item.curseEffects.Length == 0) && emptyPlan) // 모든 필드가 빈 개별 장비 검사
+            { // 빈 장비 시작
+                return null; // Unity의 빈 중첩 객체 제거
+            } // 빈 장비 끝
+            return item; // 실제 장비와 손상 여부 검사 유지
+        } // 정리 끝
         private static bool TryRead(string path, out RunSaveData data, out string hash) // 파일 무결성과 버전 검사
         { // 검사 시작
             data = null; // 기본 데이터 없음
@@ -322,6 +365,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 이전 보상 복원 시작
                     candidate.pendingReward.itemId = "trial-small-potion"; // 기존 보상의 실제 소비품 종류 보존
                 } // 이전 보상 복원 끝
+                NormalizeEquipment(candidate); // Unity의 빈 장비 객체 정리
                 if (!RunRestoreRules.IsValid(candidate)) // 버전과 던전 상태 검사
                 { // 형식 오류 시작
                     return false; // 지원하지 않는 회차 거절

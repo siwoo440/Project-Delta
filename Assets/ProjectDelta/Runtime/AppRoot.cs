@@ -205,7 +205,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 재개 거절 조건 끝
             var restoredInventory = InventoryState.FromSavedSlots(savedRun.slots); // 독립 인벤토리 복원
             var restoredEquipment = EquipmentState.Empty; // 이전 저장의 빈 장비
-            if (savedRun.version >= 11 && !EquipmentState.TryRestore(savedRun.weaponId, savedRun.armorId, savedRun.accessoryId, savedRun.bagId, out restoredEquipment)) // 저장 장비와 부위 검사
+            if (savedRun.version >= 11 && !EquipmentState.TryRestore(savedRun.weaponId, savedRun.armorId, savedRun.accessoryId, savedRun.bagId, savedRun.version >= 12 ? savedRun.weaponVariant : null, savedRun.version >= 12 ? savedRun.armorVariant : null, savedRun.version >= 12 ? savedRun.accessoryVariant : null, savedRun.version >= 12 ? savedRun.bagVariant : null, out restoredEquipment)) // 저장 장비와 개별 특성 검사
             { // 장비 복원 오류 시작
                 return false; // 잘못된 장비 복원 차단
             } // 장비 복원 오류 끝
@@ -348,18 +348,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 표시 끝
         public bool TryResolveVictoryReward(bool takePotion, out string error) // 보상 획득 또는 아이템 포기의 원자적 확정
         { // 일반 확정 시작
-            return ResolveVictoryReward(takePotion, -1, null, null, 0, 0, out error); // 기존 인벤토리를 보존하는 일반 확정
+            return ResolveVictoryReward(takePotion, -1, null, null, 0, 0, null, out error); // 기존 인벤토리를 보존하는 일반 확정
         } // 일반 확정 끝
-        public bool TryResolveVictoryRewardReplacing(int index, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, out string error) // 확인한 보유 묶음의 보상 교체
+        public bool TryResolveVictoryRewardReplacing(int index, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, string expectedEquipmentSnapshot, out string error) // 확인한 보유 묶음의 보상 교체
         { // 교체 확정 시작
             if (index < 0) // 잘못된 교체 슬롯 검사
             { // 슬롯 오류 시작
                 error = "교체할 아이템을 확인할 수 없습니다."; // 슬롯 오류 안내
                 return false; // 일반 획득으로 잘못 전환되는 상황 차단
             } // 슬롯 오류 끝
-            return ResolveVictoryReward(true, index, expectedId, expectedName, expectedQuantity, expectedLimit, out error); // 확인한 슬롯을 포함한 원자적 확정
+            return ResolveVictoryReward(true, index, expectedId, expectedName, expectedQuantity, expectedLimit, expectedEquipmentSnapshot, out error); // 확인한 슬롯을 포함한 원자적 확정
         } // 교체 확정 끝
-        private bool ResolveVictoryReward(bool takePotion, int replaceIndex, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, out string error) // 보상과 조우 완료의 공통 저장
+        private bool ResolveVictoryReward(bool takePotion, int replaceIndex, string expectedId, string expectedName, int expectedQuantity, int expectedLimit, string expectedEquipmentSnapshot, out string error) // 보상과 조우 완료의 공통 저장
         { // 확정 시작
             error = string.Empty; // 기본 오류 없음
             var room = GameObject.Find("RoomTravel"); // 현재 방 이동 객체
@@ -371,7 +371,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 확정 거절 끝
             var reward = savedRun.pendingReward; // 사전 저장된 후보
             var item = reward.potionCount > 0 ? TrialConsumableRules.Find(reward.itemId) : null; // 저장된 보상 소비품 정의
-            if (reward.potionCount > 0 && item == null) // 알 수 없는 보상 종류 검사
+            var equipmentReward = reward.equipment; // 저장된 개별 시험 장비 후보
+            if (reward.potionCount > 0 && item == null || equipmentReward != null && !TrialEquipmentTraits.IsValid(equipmentReward)) // 알 수 없는 보상 종류 검사
             { // 보상 종류 오류 시작
                 error = "보상 아이템을 확인할 수 없습니다."; // 보상 종류 오류 안내
                 return false; // 확인되지 않은 보상 지급 차단
@@ -384,19 +385,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 계산 오류 끝
             if (replaceIndex >= 0) // 기존 묶음을 교체하는지 검사
             { // 교체 검사 시작
-                if (!takePotion || reward.potionCount <= 0 || replaceIndex >= inventory.Slots.Count || replaceIndex >= Inventory.Slots.Count) // 후보와 교체 범위 검사
+                if (!takePotion || reward.potionCount <= 0 && equipmentReward == null || replaceIndex >= inventory.Slots.Count || replaceIndex >= Inventory.Slots.Count) // 후보와 교체 범위 검사
                 { // 교체 오류 시작
                     error = "교체할 아이템을 확인할 수 없습니다."; // 교체 오류 안내
                     return false; // 기존 소지품과 후보 보존
                 } // 교체 오류 끝
                 var live = Inventory.Slots[replaceIndex]; // 현재 화면의 실제 보유 묶음
                 var saved = inventory.Slots[replaceIndex]; // 후보 저장 시점의 보유 묶음
-                if (live.IsEmpty || live.ItemId != expectedId || live.Name != expectedName || live.Quantity != expectedQuantity || live.StackLimit != expectedLimit || saved.ItemId != expectedId || saved.Name != expectedName || saved.Quantity != expectedQuantity || saved.StackLimit != expectedLimit) // 확인 시점과 저장 시점의 아이템 비교
+                var liveEquipment = live.Equipment == null ? string.Empty : JsonUtility.ToJson(live.Equipment); // 현재 개별 장비의 독립 내용
+                var savedEquipment = saved.Equipment == null ? string.Empty : JsonUtility.ToJson(saved.Equipment); // 저장된 개별 장비의 독립 내용
+                if (live.IsEmpty || live.ItemId != expectedId || live.Name != expectedName || live.Quantity != expectedQuantity || live.StackLimit != expectedLimit || saved.ItemId != expectedId || saved.Name != expectedName || saved.Quantity != expectedQuantity || saved.StackLimit != expectedLimit || liveEquipment != expectedEquipmentSnapshot || savedEquipment != expectedEquipmentSnapshot) // 확인 시점과 저장 시점의 아이템 비교
                 { // 변경 충돌 시작
                     error = "아이템이 변경되어 교체할 수 없습니다."; // 기존 데이터 변경 안내
                     return false; // 다른 묶음의 삭제 차단
                 } // 변경 충돌 끝
-                if (!inventory.TryReplace(replaceIndex, item.Id, item.Name, reward.potionCount, item.StackLimit)) // 독립 인벤토리의 전체 교체 검사
+                if (!(equipmentReward == null ? inventory.TryReplace(replaceIndex, item.Id, item.Name, reward.potionCount, item.StackLimit) : inventory.TryReplaceWithEquipment(replaceIndex, equipmentReward))) // 독립 인벤토리의 전체 교체 검사
                 { // 교체 실패 시작
                     error = "보상 아이템을 교체할 수 없습니다."; // 교체 실패 안내
                     return false; // 기존 소지품 보존
@@ -407,7 +410,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 error = "인벤토리 공간이 부족합니다. 교체하거나 아이템을 포기할 수 있습니다."; // 명시적 선택 안내
                 return false; // 기존 인벤토리와 후보 보존
             } // 공간 부족 끝
+            if (replaceIndex < 0 && takePotion && equipmentReward != null && !inventory.TryAddEquipment(equipmentReward)) // 선택한 개별 장비의 수용 검사
+            { // 장비 공간 부족 시작
+                error = "인벤토리 공간이 부족합니다. 교체하거나 아이템을 포기할 수 있습니다."; // 명시적 선택 안내
+                return false; // 기존 인벤토리와 후보 보존
+            } // 장비 공간 부족 끝
             var data = JsonUtility.FromJson<RunSaveData>(JsonUtility.ToJson(savedRun)); // 저장 후보의 독립 복사
+            RunStorage.NormalizeEquipment(data); // 직렬화된 빈 장비 객체 정리
             data.level = growth.Level; // 적용한 레벨
             data.experience = growth.CurrentExperience; // 적용한 현재 레벨 경험치
             data.statPoints += growth.GainedStatPoints; // 도달 레벨의 스탯 포인트
@@ -416,7 +425,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             data.pendingReward = null; // 완료된 후보 화면 재진입 차단
             data.hasPendingReward = false; // 보상 처리 완료 표시
             var receipts = new System.Collections.Generic.List<SavedRewardReceipt>(data.rewardReceipts ?? new SavedRewardReceipt[0]); // 기존 보상 거래의 독립 목록
-            receipts.Add(new SavedRewardReceipt { transactionId = reward.transactionId, tookPotion = takePotion && reward.potionCount > 0 }); // 실제 획득 또는 포기 기록
+            receipts.Add(new SavedRewardReceipt { transactionId = reward.transactionId, tookPotion = takePotion && reward.potionCount > 0, tookEquipment = takePotion && equipmentReward != null }); // 실제 획득 또는 포기 기록
             data.rewardReceipts = receipts.ToArray(); // 완료한 거래 목록 저장
             if (!travel.PrepareCompletedEncounter(data) || !RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out error)) // 보상과 조우 완료의 단일 저장 검사
             { // 저장 오류 시작
@@ -801,29 +810,54 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 선택 오류 끝
             var item = Inventory.Slots[index]; // 선택한 보유 묶음
             var definition = EquipmentCatalog.Find(item.ItemId); // 확인된 장비 정의
-            if (definition == null || item.Quantity != 1 || item.StackLimit != 1 || !Equipment.TryEquip(definition.Slot, definition.Id, out var next)) // 실제 단일 장비와 부위 검사
+            if (definition == null || item.Quantity != 1 || item.StackLimit != 1 || !Equipment.TryEquip(definition.Slot, definition.Id, item.Equipment, out var next)) // 실제 단일 장비와 부위 검사
             { // 장비 오류 시작
                 return false; // 등록되지 않은 장비 차단
             } // 장비 오류 끝
             var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 실패 시 원본을 보존하는 독립 인벤토리
             var previous = Equipment.Get(definition.Slot); // 기존 장착 장비
-            if (inventory == null || !inventory.Remove(index, 1, out _) || (previous != null && inventory.Add(previous.Id, previous.Name, 1, 1).Remaining != 0) || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 교체품 보관과 새 가방 용량 검사
+            var previousVariant = Equipment.GetVariant(definition.Slot); // 기존 장비의 개별 특성
+            if (inventory == null || !inventory.Remove(index, 1, out _) || (previous != null && !(previousVariant == null ? inventory.Add(previous.Id, previous.Name, 1, 1).Remaining == 0 : inventory.TryAddEquipment(previousVariant))) || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 교체품 보관과 새 가방 용량 검사
             { // 공간 부족 시작
                 message = "장비를 보관할 공간이 부족합니다."; // 변경 없이 공간 부족 안내
                 return false; // 기존 장비와 아이템 보존
             } // 공간 부족 끝
             return TryPersistEquipment(inventory, next, definition.Name + " 장착", out message); // 저장 성공 후에만 장착 반영
         } // 장착 끝
+        public bool TryPurifyInventoryItem(int index, out string message) // 보유한 시험 저주 장비 정화
+        { // 정화 시작
+            message = "정화할 시험 저주 장비를 선택하세요."; // 기본 선택 안내
+            if (Flow.Phase != GamePhase.Inventory || index < 0 || index >= Inventory.Slots.Count) // 실제 화면과 슬롯 범위 검사
+            { // 선택 오류 시작
+                return false; // 잘못된 정화 차단
+            } // 선택 오류 끝
+            var item = Inventory.Slots[index].Equipment; // 선택한 개별 장비의 독립 복사
+            if (!TrialEquipmentTraits.IsValid(item) || !EquipmentVariantRules.TryGetPurification(item, TrialEquipmentTraits.Policies(), out var plan) || plan.kind != EquipmentVariantRules.Purify || plan.resultId != item.definitionId || plan.resultQuantity != 1 || plan.resultEffects != null && plan.resultEffects.Length > 0) // 명시된 시험 정화 결과 검사
+            { // 정화 불가 시작
+                return false; // 미정 결과와 다른 정화 방법 차단
+            } // 정화 불가 끝
+            item.cursed = false; // 시험 저주 제거
+            item.curseEffects = new EquipmentOptionData[0]; // 공개된 저주 효과 제거
+            item.purification = null; // 사용한 시험 정화 계획 제거
+            var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 원본을 보존하는 독립 인벤토리
+            if (!TrialEquipmentTraits.IsValid(item) || inventory == null || !inventory.TryReplaceEquipment(index, item)) // 정화 결과와 동일 인스턴스 검사
+            { // 정화 오류 시작
+                message = "시험 정화 결과를 확인할 수 없습니다."; // 안전한 실패 안내
+                return false; // 기존 저주 장비 보존
+            } // 정화 오류 끝
+            return TryPersistEquipment(inventory, Equipment, "시험 저주 정화", out message); // 저장 성공 후 정화 결과 적용
+        } // 정화 끝
         public bool TryUnequipItem(EquipmentSlot slot, out string message) // 장착 장비의 원자적 해제
         { // 해제 시작
             message = "해제할 장비가 없습니다."; // 기본 해제 안내
             var previous = Equipment.Get(slot); // 기존 장착 장비
+            var previousVariant = Equipment.GetVariant(slot); // 기존 장비의 개별 특성
             if (Flow.Phase != GamePhase.Inventory || previous == null || !Equipment.TryUnequip(slot, out var next)) // 실제 화면과 장착 상태 검사
             { // 해제 오류 시작
                 return false; // 잘못된 해제 차단
             } // 해제 오류 끝
             var inventory = InventoryState.FromSavedSlots(Inventory.SaveSlots()); // 실패 시 원본을 보존하는 독립 인벤토리
-            if (inventory == null || inventory.Add(previous.Id, previous.Name, 1, 1).Remaining != 0 || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 장비 보관과 축소 용량 검사
+            if (inventory == null || !(previousVariant == null ? inventory.Add(previous.Id, previous.Name, 1, 1).Remaining == 0 : inventory.TryAddEquipment(previousVariant)) || !next.TryCalculate(50, 40, 10, 0, 150, 10, out var stats) || !inventory.TryResize(stats.InventoryCapacity)) // 장비 보관과 축소 용량 검사
             { // 공간 부족 시작
                 message = "장비를 보관할 공간이 부족합니다."; // 변경 없이 공간 부족 안내
                 return false; // 기존 장비와 아이템 보존
@@ -852,6 +886,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             data.armorId = equipment.Get(EquipmentSlot.Armor)?.Id; // 변경할 방어구 식별자
             data.accessoryId = equipment.Get(EquipmentSlot.Accessory)?.Id; // 변경할 장신구 식별자
             data.bagId = equipment.Get(EquipmentSlot.Bag)?.Id; // 변경할 가방 식별자
+            data.weaponVariant = equipment.GetVariant(EquipmentSlot.Weapon); // 변경할 무기의 개별 특성
+            data.armorVariant = equipment.GetVariant(EquipmentSlot.Armor); // 변경할 방어구의 개별 특성
+            data.accessoryVariant = equipment.GetVariant(EquipmentSlot.Accessory); // 변경할 장신구의 개별 특성
+            data.bagVariant = equipment.GetVariant(EquipmentSlot.Bag); // 변경할 가방의 개별 특성
             if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 복원 가능성과 안전한 저장 검사
             { // 저장 실패 시작
                 if (string.IsNullOrEmpty(message)) // 세부 오류 누락 검사

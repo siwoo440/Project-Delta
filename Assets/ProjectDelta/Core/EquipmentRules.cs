@@ -83,6 +83,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         private readonly EquipmentDefinition armor; // 장착한 방어구
         private readonly EquipmentDefinition accessory; // 장착한 장신구
         private readonly EquipmentDefinition bag; // 장착한 가방
+        private EquipmentVariantData weaponVariant; // 무기의 개별 특성
+        private EquipmentVariantData armorVariant; // 방어구의 개별 특성
+        private EquipmentVariantData accessoryVariant; // 장신구의 개별 특성
+        private EquipmentVariantData bagVariant; // 가방의 개별 특성
         public static EquipmentState Empty => new EquipmentState(null, null, null, null); // 장비가 없는 새 회차 상태
         private EquipmentState(EquipmentDefinition weapon, EquipmentDefinition armor, EquipmentDefinition accessory, EquipmentDefinition bag) // 검증된 부위별 장비 구성
         { // 구성 시작
@@ -102,6 +106,25 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 default: return null; // 알 수 없는 부위 차단
             } // 부위 선택 끝
         } // 조회 끝
+        public EquipmentVariantData GetVariant(EquipmentSlot slot) // 해당 부위의 독립 개별 장비 조회
+        { // 조회 시작
+            var item = slot == EquipmentSlot.Weapon ? weaponVariant : slot == EquipmentSlot.Armor ? armorVariant : slot == EquipmentSlot.Accessory ? accessoryVariant : slot == EquipmentSlot.Bag ? bagVariant : null; // 선택 부위의 개별 장비
+            return EquipmentVariantRules.Copy(item); // 외부 변경을 차단한 독립 복사
+        } // 조회 끝
+        public static bool TryRestore(string weaponId, string armorId, string accessoryId, string bagId, EquipmentVariantData weaponData, EquipmentVariantData armorData, EquipmentVariantData accessoryData, EquipmentVariantData bagData, out EquipmentState state) // 개별 특성을 포함한 부위별 복원
+        { // 복원 시작
+            state = null; // 기본 복원 결과 없음
+            if (!TryRestore(weaponId, armorId, accessoryId, bagId, out var restored) || !Matches(weaponId, weaponData) || !Matches(armorId, armorData) || !Matches(accessoryId, accessoryData) || !Matches(bagId, bagData)) // 기본 장비와 개별 장비 일치 검사
+            { // 복원 오류 시작
+                return false; // 다른 종류와 손상된 특성 차단
+            } // 복원 오류 끝
+            restored.weaponVariant = EquipmentVariantRules.Copy(weaponData); // 무기 특성 독립 복원
+            restored.armorVariant = EquipmentVariantRules.Copy(armorData); // 방어구 특성 독립 복원
+            restored.accessoryVariant = EquipmentVariantRules.Copy(accessoryData); // 장신구 특성 독립 복원
+            restored.bagVariant = EquipmentVariantRules.Copy(bagData); // 가방 특성 독립 복원
+            state = restored; // 검증된 장비 상태 전달
+            return true; // 독립 장비 복원 완료
+        } // 복원 끝
         public static bool TryRestore(string weaponId, string armorId, string accessoryId, string bagId, out EquipmentState state) // 부위별 식별자의 저장 복원
         { // 복원 시작
             state = null; // 기본 복원 결과 없음
@@ -112,15 +135,19 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             state = new EquipmentState(weapon, armor, accessory, bag); // 검증된 독립 장비 상태
             return true; // 정상 장착 상태 복원
         } // 복원 끝
-        public bool TryEquip(EquipmentSlot slot, string id, out EquipmentState state) // 지정 부위의 장비 교체
+        public bool TryEquip(EquipmentSlot slot, string id, out EquipmentState state) // 기존 장비의 지정 부위 교체
+        { // 기존 장착 시작
+            return TryEquip(slot, id, null, out state); // 개별 특성 없는 기존 장비 호환
+        } // 기존 장착 끝
+        public bool TryEquip(EquipmentSlot slot, string id, EquipmentVariantData variant, out EquipmentState state) // 개별 특성을 포함한 장비 교체
         { // 장착 시작
             state = null; // 기본 장착 결과 없음
             var definition = EquipmentCatalog.Find(id); // 등록 장비 조회
-            if (!IsValidSlot(slot) || definition == null || definition.Slot != slot) // 부위와 장비 일치 검사
+            if (!IsValidSlot(slot) || definition == null || definition.Slot != slot || !Matches(id, variant)) // 부위와 개별 특성 일치 검사
             { // 장착 거절 시작
                 return false; // 잘못된 장비의 상태 변경 차단
             } // 장착 거절 끝
-            state = Replace(slot, definition); // 변경된 독립 장비 상태
+            state = Replace(slot, definition, variant); // 변경된 독립 장비 상태
             return true; // 유효한 장비 장착 성공
         } // 장착 끝
         public bool TryUnequip(EquipmentSlot slot, out EquipmentState state) // 지정 부위의 장비 해제
@@ -130,7 +157,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 해제 거절 시작
                 return false; // 빈 부위와 잘못된 부위의 해제 차단
             } // 해제 거절 끝
-            state = Replace(slot, null); // 선택 부위만 비운 독립 상태
+            state = Replace(slot, null, null); // 선택 부위만 비운 독립 상태
             return true; // 유효한 장비 해제 성공
         } // 해제 끝
         public bool TryCalculate(int baseAttack, int baseDefense, int baseSpeed, int bareCriticalChance, int bareCriticalMultiplierPercent, int baseCapacity, out EquipmentStats result) // 장비와 맨손 기준의 능력치 합산
@@ -155,6 +182,28 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 speed += definition.SpeedBonus; // 장비 속도 합산
                 capacity += definition.CapacityBonus; // 가방의 추가 칸 합산
             } // 보정 합산 끝
+            foreach (var variant in new[] { weaponVariant, armorVariant, accessoryVariant, bagVariant }) // 장착된 개별 특성 순회
+            { // 개별 효과 합산 시작
+                if (variant == null) // 이전 고정 장비 검사
+                { // 이전 장비 시작
+                    continue; // 추가 특성 없는 장비 유지
+                } // 이전 장비 끝
+                foreach (var effect in variant.options) // 확정된 추가 옵션 순회
+                { // 추가 옵션 시작
+                    attack += effect.optionId == TrialEquipmentTraits.Attack ? effect.value : 0; // 시험 공격 옵션 합산
+                    defense += effect.optionId == TrialEquipmentTraits.Defense ? effect.value : 0; // 시험 방어 옵션 합산
+                    speed += effect.optionId == TrialEquipmentTraits.Speed ? effect.value : 0; // 시험 속도 옵션 합산
+                } // 추가 옵션 끝
+                foreach (var effect in variant.curseEffects) // 공개된 저주 효과 순회
+                { // 저주 효과 시작
+                    attack += effect.optionId == TrialEquipmentTraits.Attack ? effect.value : 0; // 시험 저주의 공격 보정
+                    defense += effect.optionId == TrialEquipmentTraits.Defense ? effect.value : 0; // 시험 저주의 방어 보정
+                    speed += effect.optionId == TrialEquipmentTraits.Speed ? effect.value : 0; // 시험 저주의 속도 보정
+                } // 저주 효과 끝
+            } // 개별 효과 합산 끝
+            attack = Math.Max(0L, attack); // 음수 공격력 제한
+            defense = Math.Max(0L, defense); // 음수 방어력 제한
+            speed = Math.Max(0L, speed); // 음수 속도 제한
             if (attack > int.MaxValue || defense > int.MaxValue || speed > int.MaxValue || capacity > int.MaxValue) // 최종 정수 범위 검사
             { // 범위 초과 시작
                 return false; // 잘못된 계산과 넘침 차단
@@ -164,10 +213,19 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             result = new EquipmentStats((int)attack, (int)defense, (int)speed, criticalChance, criticalMultiplier, (int)capacity); // 검증된 최종 능력치 전달
             return true; // 정상 장비 합산 성공
         } // 계산 끝
-        private EquipmentState Replace(EquipmentSlot slot, EquipmentDefinition definition) // 선택한 한 부위만 교체
+        private EquipmentState Replace(EquipmentSlot slot, EquipmentDefinition definition, EquipmentVariantData variant) // 선택한 한 부위만 교체
         { // 교체 시작
-            return new EquipmentState(slot == EquipmentSlot.Weapon ? definition : weapon, slot == EquipmentSlot.Armor ? definition : armor, slot == EquipmentSlot.Accessory ? definition : accessory, slot == EquipmentSlot.Bag ? definition : bag); // 나머지 부위를 보존한 새 상태
+            var result = new EquipmentState(slot == EquipmentSlot.Weapon ? definition : weapon, slot == EquipmentSlot.Armor ? definition : armor, slot == EquipmentSlot.Accessory ? definition : accessory, slot == EquipmentSlot.Bag ? definition : bag); // 기본 장비를 보존한 새 상태
+            result.weaponVariant = EquipmentVariantRules.Copy(slot == EquipmentSlot.Weapon ? variant : weaponVariant); // 무기 특성 독립 보존
+            result.armorVariant = EquipmentVariantRules.Copy(slot == EquipmentSlot.Armor ? variant : armorVariant); // 방어구 특성 독립 보존
+            result.accessoryVariant = EquipmentVariantRules.Copy(slot == EquipmentSlot.Accessory ? variant : accessoryVariant); // 장신구 특성 독립 보존
+            result.bagVariant = EquipmentVariantRules.Copy(slot == EquipmentSlot.Bag ? variant : bagVariant); // 가방 특성 독립 보존
+            return result; // 독립 장비 상태 전달
         } // 교체 끝
+        private static bool Matches(string id, EquipmentVariantData variant) // 기본 장비와 개별 특성 일치 검사
+        { // 검사 시작
+            return variant == null || variant.definitionId == id && TrialEquipmentTraits.IsValid(variant); // 이전 장비 또는 유효한 시험 특성 허용
+        } // 검사 끝
         private static bool TryDefinition(string id, EquipmentSlot slot, out EquipmentDefinition definition) // 저장된 장비의 등록과 부위 검사
         { // 검사 시작
             definition = null; // 기본 빈 장비

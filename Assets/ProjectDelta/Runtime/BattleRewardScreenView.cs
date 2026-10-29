@@ -23,7 +23,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private string expectedName; // 확인 시점의 아이템 이름
         private int expectedQuantity; // 확인 시점의 아이템 수량
         private int expectedLimit; // 확인 시점의 최대 중첩
-        private string rewardName; // 저장된 보상 소비품 이름
+        private string expectedEquipmentSnapshot; // 확인 시점의 개별 장비 정보
+        private string rewardName; // 저장된 보상 아이템 이름
         public static BattleRewardScreenView Create(AppRoot owner, SavedBattleReward reward) // 실제 보상 화면 생성
         { // 생성 시작
             var screen = new GameObject("BattleRewardScreen", typeof(BattleRewardScreenView)); // 보상 화면 상위 객체
@@ -32,12 +33,22 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var view = screen.GetComponent<BattleRewardScreenView>(); // 실제 화면 제어
                 view.owner = owner; // 현재 회차 연결
                 view.slotButtons = new Button[owner.Inventory.Slots.Count]; // 실제 가방 용량의 교체 버튼
+                if (reward == null || reward.potionCount < 0 || (reward.equipment != null && reward.potionCount != 0)) // 보상 존재와 동시 후보 검사
+                { // 보상 오류 시작
+                    throw new System.InvalidOperationException("Invalid reward candidates."); // 누락과 동시 보상 후보 차단
+                } // 보상 오류 끝
                 var definition = reward.potionCount > 0 ? TrialConsumableRules.Find(reward.itemId) : null; // 저장된 보상 소비품 정의
                 if (reward.potionCount > 0 && definition == null) // 미등록 보상 소비품 검사
                 { // 정의 오류 시작
                     throw new System.InvalidOperationException("Unknown reward item."); // 잘못된 보상 화면 차단
                 } // 정의 오류 끝
-                view.rewardName = definition == null ? string.Empty : definition.Name; // 실제 보상 아이템 이름
+                if (reward.equipment != null && !TrialEquipmentTraits.IsValid(reward.equipment)) // 실제 장비 후보와 공개 효과 검사
+                { // 장비 오류 시작
+                    throw new System.InvalidOperationException("Invalid reward equipment."); // 미등록 장비와 잘못된 특성 차단
+                } // 장비 오류 끝
+                var equipment = reward.equipment == null ? null : EquipmentCatalog.Find(reward.equipment.definitionId); // 저장된 장비의 기본 정의
+                var hasItem = definition != null || equipment != null; // 소비품 또는 장비 후보 여부
+                view.rewardName = equipment != null ? equipment.Name : definition == null ? string.Empty : definition.Name; // 실제 장비 또는 소비품 이름
                 var canvas = UiFactory.CreateCanvas("BattleRewardCanvas"); // 보상 전용 화면
                 canvas.transform.SetParent(screen.transform, false); // 보상 화면 연결
                 canvas.sortingOrder = 110; // 전투보다 앞에 표시
@@ -51,8 +62,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 보상 배경색
                 UiFactory.CreateText(canvas.transform, "Header", "승리 보상", 58, new Vector2(0f, 300f), new Vector2(1000f, 100f), Color.white); // 결과 제목
                 UiFactory.CreateText(canvas.transform, "RewardAmounts", "경험치 " + reward.experience + " · 시험 골드 " + reward.gold, 34, new Vector2(0f, 150f), new Vector2(1100f, 80f), Color.white); // 경험치와 시험 골드
-                UiFactory.CreateText(canvas.transform, "RewardItem", reward.potionCount > 0 ? view.rewardName + " " + reward.potionCount + "개" : "획득한 소비 아이템 없음", 30, new Vector2(0f, 55f), new Vector2(900f, 70f), Color.white); // 고정된 소비 아이템 후보
-                view.notice = UiFactory.CreateText(canvas.transform, "RewardNotice", "보상을 확인하세요", 24, new Vector2(0f, -70f), new Vector2(1100f, 100f), Color.white); // 획득과 저장 안내
+                UiFactory.CreateText(canvas.transform, "RewardItem", hasItem ? view.rewardName + " " + (equipment == null ? reward.potionCount : 1) + "개" : "획득한 아이템 없음", 30, new Vector2(0f, 55f), new Vector2(900f, 70f), Color.white); // 확정된 아이템 이름과 수량
+                if (equipment != null) // 시험 장비 후보 검사
+                { // 장비 특성 표시 시작
+                    var traits = UiFactory.CreateText(canvas.transform, "RewardEquipmentTraits", "기본 공격+" + equipment.AttackBonus + " · 치명타 " + equipment.CriticalChance + "% / " + equipment.CriticalMultiplierPercent + "% · " + TrialEquipmentTraits.Describe(reward.equipment), 23, new Vector2(0f, -8f), new Vector2(1500f, 52f), Color.white); // 획득 전 등급과 전체 옵션 및 저주 공개
+                    traits.resizeTextForBestFit = true; // 긴 특성 문구의 표시 영역 유지
+                    traits.resizeTextMinSize = 16; // 특성 문구의 최소 글자 크기
+                    traits.resizeTextMaxSize = 23; // 특성 문구의 최대 글자 크기
+                } // 장비 특성 표시 끝
+                view.notice = UiFactory.CreateText(canvas.transform, "RewardNotice", "보상을 확인하세요", 24, new Vector2(0f, -95f), new Vector2(1100f, 80f), Color.white); // 획득과 저장 안내
                 var take = UiFactory.CreateButton(canvas.transform, "TakeRewardButton", "보상 받기", new Vector2(-215f, -210f)); // 모든 보상 획득
                 var skip = UiFactory.CreateButton(canvas.transform, "SkipRewardItemButton", "아이템 포기", new Vector2(215f, -210f)); // 아이템을 두고 보상 확정
                 view.takeButton = take; // 기본 획득 버튼 보관
@@ -61,11 +79,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 skip.onClick.AddListener(() => view.Resolve(false)); // 명시적 아이템 포기
                 take.gameObject.AddComponent<BattleRewardCancelRelay>().Initialize(view); // 선택 버튼 취소 입력 연결
                 skip.gameObject.AddComponent<BattleRewardCancelRelay>().Initialize(view); // 포기 버튼 취소 입력 연결
-                skip.gameObject.SetActive(reward.potionCount > 0); // 아이템이 있을 때만 포기 선택
+                skip.gameObject.SetActive(hasItem); // 후보 아이템이 있을 때만 포기 선택
                 view.replaceButton = UiFactory.CreateButton(canvas.transform, "ReplaceRewardItemButton", "보유 아이템 교체", new Vector2(0f, -320f)); // 보유 슬롯 교체 선택
                 view.replaceButton.onClick.AddListener(view.OpenSelection); // 교체할 슬롯 선택 화면 연결
                 view.replaceButton.gameObject.AddComponent<BattleRewardCancelRelay>().Initialize(view); // 교체 버튼 취소 입력 연결
-                view.replaceButton.gameObject.SetActive(reward.potionCount > 0); // 후보 아이템이 있을 때만 교체 선택
+                view.replaceButton.gameObject.SetActive(hasItem); // 후보 아이템이 있을 때만 교체 선택
                 view.CreateSelectionPanel(canvas.transform); // 보유 슬롯과 교체 취소 화면 구성
                 view.CreateConfirmationPanel(canvas.transform); // 버릴 묶음의 최종 확인 화면 구성
                 EventSystem.current.SetSelectedGameObject(take.gameObject); // 기본 보상 획득 선택
@@ -164,6 +182,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             expectedName = slot.Name; // 확인 시점의 아이템 이름 보관
             expectedQuantity = slot.Quantity; // 확인 시점의 아이템 수량 보관
             expectedLimit = slot.StackLimit; // 확인 시점의 중첩 한도 보관
+            expectedEquipmentSnapshot = slot.Equipment == null ? string.Empty : JsonUtility.ToJson(slot.Equipment); // 확인한 장비 인스턴스와 옵션 보관
             confirmationText.text = expectedName + " × " + expectedQuantity + "개를 버리고\n" + rewardName + "으로 교체할까요?"; // 실제 버릴 묶음과 새 아이템 확인
             confirmationNotice.text = string.Empty; // 이전 확인 오류 초기화
             selectionPanel.SetActive(false); // 슬롯 선택 화면 숨김
@@ -176,7 +195,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 확정 거절 시작
                 return; // 확인되지 않은 교체 차단
             } // 확정 거절 끝
-            if (!owner.TryResolveVictoryRewardReplacing(selectedIndex, expectedId, expectedName, expectedQuantity, expectedLimit, out var error)) // 확인 시점 값과 보상 저장 검사
+            if (!owner.TryResolveVictoryRewardReplacing(selectedIndex, expectedId, expectedName, expectedQuantity, expectedLimit, expectedEquipmentSnapshot, out var error)) // 확인 시점 값과 보상 저장 검사
             { // 저장 실패 시작
                 confirmationNotice.text = error; // 기존 데이터 보존과 오류 안내
             } // 저장 실패 끝
