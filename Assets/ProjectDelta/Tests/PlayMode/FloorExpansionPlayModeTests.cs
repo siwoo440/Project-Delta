@@ -105,25 +105,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 실제 층 확인 끝
             Assert.That(travel.Layout.Rooms.Count(room => room.Kind == RoomKind.Boss), Is.EqualTo(1)); // 최종 층의 마왕 방 한 곳
             Assert.That(travel.Layout.Rooms.Any(room => room.Kind == RoomKind.Stairs || room.Kind == RoomKind.Elite), Is.False); // 최종 층의 계단과 상위 방 제외
-            var boss = travel.Layout.Rooms.Single(room => room.Kind == RoomKind.Boss); // 생성된 실제 마왕 방
-            yield return GoToRoom(travel, player, boss); // 실제 마왕 방까지 이동
-            var doorNotice = string.Empty; // 실제 상호작용 안내 보관
-            travel.DoorNoticeChanged += text => doorNotice = text; // 마왕 방 안내 구독
-            yield return UseCenterInteraction(travel, player); // 마왕 방 중앙의 실제 E 상호작용
-            Assert.That(doorNotice, Does.Contain("마왕 방")); // 아직 준비 중인 마왕 방 안내
-            Assert.That(travel.Floor, Is.EqualTo(5)); // 마왕 방에서 다음 층으로 이동하지 않음
+            Assert.That(travel.Floor, Is.EqualTo(5)); // 최종 층 번호 확인
             travel.SendMessage("TryNextFloor"); // 마지막 층의 직접 전환 거절 확인
             yield return null; // 중복 전환 처리 대기
             Assert.That(travel.Floor, Is.EqualTo(5)); // 마지막 층 이후 이동 차단
             var content = JsonUtility.ToJson(travel.CurrentContent.Snapshot()); // 현재 층 상자와 함정의 독립 스냅샷
             var fingerprint = DungeonLayoutFingerprint.Compute(travel.Layout); // 저장 전 실제 다섯 번째 층 구조
-            var roomX = travel.RoomX; // 저장할 마왕 방 가로 좌표
-            var roomY = travel.RoomY; // 저장할 마왕 방 세로 좌표
+            var roomX = travel.RoomX; // 저장할 현재 방 가로 좌표
+            var roomY = travel.RoomY; // 저장할 현재 방 세로 좌표
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 다섯 번째 층 캡처 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 캡처 요청 검사
             { // 캡처 시작
                 yield return null; // 실제 게임 화면 갱신 대기
-                var image = CaptureScreen("DungeonCanvas"); // 마왕 방 실제 플레이 화면 렌더링
+                var image = CaptureScreen("DungeonCanvas"); // 최종 층 실제 플레이 화면 렌더링
                 System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 실제 화면 저장
                 Object.Destroy(image); // 캡처 이미지 정리
             } // 캡처 끝
@@ -137,11 +131,11 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return WaitForPhase(GamePhase.Exploration); // 복원한 다섯 번째 층 도착
             travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 실제 층 제어
             Assert.That(travel.Floor, Is.EqualTo(5)); // 이어하기 후 마지막 층 유지
-            Assert.That(travel.RoomX, Is.EqualTo(roomX)); // 저장된 마왕 방 가로 좌표
-            Assert.That(travel.RoomY, Is.EqualTo(roomY)); // 저장된 마왕 방 세로 좌표
+            Assert.That(travel.RoomX, Is.EqualTo(roomX)); // 저장된 방 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(roomY)); // 저장된 방 세로 좌표
             Assert.That(DungeonLayoutFingerprint.Compute(travel.Layout), Is.EqualTo(fingerprint)); // 재개 후 같은 층 구조
             Assert.That(JsonUtility.ToJson(travel.CurrentContent.Snapshot()), Is.EqualTo(content)); // 재개 후 같은 상자와 함정 상태
-            Assert.That(travel.Layout.GetRoom(travel.RoomX, travel.RoomY).Kind, Is.EqualTo(RoomKind.Boss)); // 마왕 방에서 실제 회차 복원
+            Assert.That(travel.Layout.Rooms.Count(room => room.Kind == RoomKind.Boss), Is.EqualTo(1)); // 재개한 층의 마왕 방 유지
         } // 검증 끝
         private IEnumerator GoToRoom(RoomTravelController travel, GridMoveController player, DungeonRoom target) // 실제 연결을 통한 목적 방 이동
         { // 이동 시작

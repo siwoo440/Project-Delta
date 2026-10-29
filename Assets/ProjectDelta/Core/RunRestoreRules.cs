@@ -6,7 +6,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public const int TrialEnemyMaxHealth = 70; // 현재 시험 상대의 최대 체력
         public static bool IsValid(RunSaveData data) // 재개 전 회차 상태 검사
         { // 검사 시작
-            if (data == null || !data.IsValid() || data.floor > 5 || data.health == 0 || data.maxHealth != 100 || data.keys < 0 || data.facing < 0 || data.facing > 4 || data.encounterHealth < 0 || data.encounterHealth > TrialEnemyMaxHealth || data.encounterCompleted && data.encounterHealth != 0 || data.history == null || data.history.Length > 10000 || InventoryState.FromSavedSlots(data.slots) == null) // 범위와 소지품 검사
+            if (data == null || !data.IsValid() || data.floor > 5 || data.health == 0 && !(data.version >= 19 && data.bossOutcome == 2) || data.maxHealth != 100 || data.keys < 0 || data.facing < 0 || data.facing > 4 || data.encounterHealth < 0 || data.encounterHealth > TrialEnemyMaxHealth || data.encounterCompleted && data.encounterHealth != 0 || data.history == null || data.history.Length > 10000 || InventoryState.FromSavedSlots(data.slots) == null) // 범위와 소지품 검사
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
@@ -79,6 +79,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 보스 조우 오류 시작
                 return false; // 존재하지 않는 상위 조우와 보스 보상 차단
             } // 보스 조우 오류 끝
+            if (data.version >= 19 && data.bossOutcome != 0 && (data.floor != 5 || layout.GetRoom(data.roomX, data.roomY)?.Kind != RoomKind.Boss)) // 확정 결과와 실제 마왕 방 검사
+            { // 마왕 위치 오류 시작
+                return false; // 다른 방의 마왕 결과 차단
+            } // 마왕 위치 오류 끝
             if (data.version >= 2 && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 저장된 구조와 실제 지문 비교
             { // 지문 오류 시작
                 return false; // 변경되거나 누락된 구조 거절

@@ -24,6 +24,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public string RunSaveMessage { get; private set; } = string.Empty; // 회차 저장 안내
         public bool CanContinueRun => savedRunValid; // 마지막 검증의 복원 가능 여부
         private CombatScreenView combatScreen; // 시험 전투 화면
+        private BossPreparationScreenView bossPreparation; // 마왕 방 진입 전 준비 화면
+        private BossResultScreenView bossResult; // 저장된 마왕 결과 대기 화면
+        private string pendingBossTransactionId; // 저장 재시도에도 유지할 마왕 결과 식별자
         private TrialEventBattleState trialEventBattle; // 현재 시험 이벤트 전투 상태
         private TrialEventBattleScreenView trialEventBattleScreen; // 별도 이벤트 전투 화면
         private Coroutine trialEventBattleAuto; // 적 주도권의 자동 처리
@@ -194,6 +197,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
             { // 새 게임 조건 시작
                 PendingRun = null; // 이전 복원 요청 해제
+                pendingBossTransactionId = null; // 이전 마왕 결과 식별자 초기화
                 CurrentRunId = System.Guid.NewGuid().ToString("N"); // 새 회차의 고유 식별자 생성
                 Level = 1; // 새 회차 기본 레벨
                 Experience = 0; // 새 회차 경험치 초기화
@@ -321,6 +325,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 재개 끝
         public void FinishRunRestore() // 던전 복원 요청 소모
         { // 소모 시작
+            if (PendingRun != null && PendingRun.version >= 19 && PendingRun.bossOutcome != 0) // 저장된 마왕 결과 검사
+            { // 마왕 결과 복원 시작
+                StartCoroutine(OpenRestoredBossResult()); // 장면 전환 뒤 결과 화면 복원
+            } // 마왕 결과 복원 끝
             if (PendingRun != null && PendingRun.pendingReward != null) // 미완료 승리 보상 검사
             { // 보상 복원 준비 시작
                 StartCoroutine(OpenRestoredReward()); // 씬 전환 후 저장된 후보 화면 복원
@@ -331,6 +339,104 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 복원 준비 끝
             PendingRun = null; // 재복원 방지
         } // 소모 끝
+        private IEnumerator OpenRestoredBossResult() // 저장된 마왕 결과 복원
+        { // 복원 시작
+            while (Flow.Phase == GamePhase.Loading) // 장면 전환 완료 검사
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            if (savedRun == null || savedRun.bossOutcome == 0 || Flow.Phase != GamePhase.Exploration) // 결과와 탐험 상태 검사
+            { // 오류 시작
+                RejectRunRestore(); // 원본 보존과 타이틀 복귀
+                yield break; // 잘못된 결과 차단
+            } // 오류 끝
+            ShowBossResult(savedRun.bossOutcome); // 저장된 결과 화면 표시
+        } // 복원 끝
+        public void OpenBossPreparation(System.Action enter) // 마왕 방 진입 전 준비 확인
+        { // 열기 시작
+            if (Flow.Phase != GamePhase.Exploration || bossPreparation != null || enter == null) // 탐험과 중복 화면 검사
+            { // 거절 시작
+                return; // 잘못된 준비 요청 차단
+            } // 거절 끝
+            Input.SetPhase(GamePhase.Pause); // 탐험 입력 잠금과 준비 화면 입력 활성화
+            try // 실제 준비 화면 생성
+            { // 생성 시작
+                bossPreparation = BossPreparationScreenView.Create(this, () => // 마왕 진입 선택
+                { // 진입 시작
+                    bossPreparation.Close(); // 준비 화면 닫기
+                    bossPreparation = null; // 화면 참조 제거
+                    Input.SetPhase(GamePhase.Exploration); // 실제 방 이동 입력 복원
+                    enter(); // 확인된 입장 실행
+                }, () => // 준비 계속 선택
+                { // 취소 시작
+                    bossPreparation.Close(); // 준비 화면 닫기
+                    bossPreparation = null; // 화면 참조 제거
+                    Input.SetPhase(GamePhase.Exploration); // 기존 탐험 입력 복원
+                }); // 선택 연결 끝
+            } // 생성 끝
+            catch (System.Exception exception) // 준비 화면 오류 검사
+            { // 오류 시작
+                Input.SetPhase(GamePhase.Exploration); // 실패 후 탐험 복구
+                Debug.LogError("Boss preparation failed: " + exception.Message); // 실제 오류 기록
+            } // 오류 끝
+        } // 열기 끝
+        public bool TrySaveBossOutcome(int outcome, out string message) // 마왕 결과를 현재 회차에 보존
+        { // 저장 시작
+            message = string.Empty; // 기본 오류 없음
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 조회
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+            if (Flow.Phase != GamePhase.Combat || travel == null || !travel.IsBossRoom || outcome < 1 || outcome > 3 || runStorage == null) // 실제 마왕 전투와 결과 검사
+            { // 거절 시작
+                message = "마왕 전투 결과를 확인할 수 없습니다."; // 잘못된 결과 안내
+                return false; // 다른 전투의 결과 저장 차단
+            } // 거절 끝
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage.LegacyRunId : savedRun.runId; // 기존 저장 회차 식별자
+            if (savedId != null && savedId != CurrentRunId) // 다른 회차의 저장 검사
+            { // 보호 시작
+                message = "다른 회차의 저장이 있어 마왕 결과를 저장할 수 없습니다."; // 기존 회차 보호 안내
+                return false; // 다른 회차 덮어쓰기 차단
+            } // 보호 끝
+            var data = travel.CaptureBattleRewardRun(); // 현재 전투의 독립 회차 저장본
+            if (data == null) // 안정된 위치 검사
+            { // 오류 시작
+                message = "마왕 전투 위치를 저장할 수 없습니다."; // 저장 불가 안내
+                return false; // 잘못된 위치 차단
+            } // 오류 끝
+            pendingBossTransactionId = pendingBossTransactionId ?? System.Guid.NewGuid().ToString("N"); // 재시도 시 동일 결과 식별자 유지
+            data.bossOutcome = outcome; // 확정된 마왕 결과
+            data.bossTransactionId = pendingBossTransactionId; // 고유 결과 식별자
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 결과 계약과 안전 저장 검사
+            { // 저장 실패 시작
+                if (string.IsNullOrEmpty(message)) // 구체적인 오류 누락 검사
+                { // 기본 안내 시작
+                    message = "마왕 결과를 저장할 수 없습니다."; // 재시도 안내
+                } // 기본 안내 끝
+                return false; // 기존 회차 보존
+            } // 저장 실패 끝
+            savedRun = data; // 실제 저장된 결과 보관
+            savedRunValid = true; // 저장 결과 재개 허용
+            EndCombat(); // 저장 성공 후 전투 화면 종료
+            ShowBossResult(outcome); // 저장된 결과 화면 표시
+            return true; // 결과 보존 성공
+        } // 저장 끝
+        private void ShowBossResult(int outcome) // 보존된 마왕 결과 화면 열기
+        { // 표시 시작
+            Input.SetPhase(GamePhase.Pause); // 탐험 입력 차단과 결과 화면 입력 활성화
+            try // 실제 결과 화면 생성
+            { // 생성 시작
+                bossResult = BossResultScreenView.Create(outcome, () => // 타이틀 이동 선택
+                { // 이동 시작
+                    bossResult.Close(); // 결과 화면 닫기
+                    bossResult = null; // 화면 참조 제거
+                    ReturnToTitle(); // 저장된 회차를 유지한 타이틀 복귀
+                }); // 선택 연결 끝
+            } // 생성 끝
+            catch (System.Exception exception) // 결과 화면 생성 오류
+            { // 오류 시작
+                Debug.LogError("Boss result failed: " + exception.Message); // 실제 오류 기록
+                ReturnToTitle(); // 저장 결과를 보존한 타이틀 복귀
+            } // 오류 끝
+        } // 표시 끝
         private IEnumerator OpenRestoredEventBattle() // 저장된 이벤트 전투 화면 복원
         { // 복원 시작
             while (Flow.Phase == GamePhase.Loading) // 던전 장면 전환 검사
@@ -1968,7 +2074,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 조우 대상
                     var monsterId = travel == null ? string.Empty : travel.CurrentMonsterId; // 실제 상대 식별자
                     var name = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 상대 이름
-                    var portrait = monsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : monsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : monsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 출현 초상화
+                    var portrait = monsterId == "MON_DEMON_LORD" ? "BattlePortraits/DemonLordPrototype" : monsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : monsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : monsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 출현 초상화
                     encounterTransition = EncounterTransitionView.Create(name, portrait); // 출현과 화면 전환 생성
                     StartCoroutine(TransitionIntoCombat(encounterTransition)); // 조우 연출 후 자동 전투 시작
                     return true; // 자동 전환 요청 성공

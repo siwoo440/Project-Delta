@@ -131,6 +131,86 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 Assert.That(RunRestoreRules.IsValid(data), Is.False, "층 " + floor); // 이전 2층 경험치 차단
             } // 층별 검사 끝
         } // 검증 끝
+        private static RunSaveData BossResultSnapshot() // 실제 보스 방의 결과 저장 준비
+        { // 준비 시작
+            var data = ExpandedSnapshot(5); // 현재 최종 층 저장
+            data.version = 19; // 보스 결과를 지원하는 저장 형식
+            var layout = FloorLayoutRules.Generate(data.seed, 5, data.generationVersion); // 실제 최종 층 구조
+            var visited = new System.Collections.Generic.List<SavedRoom>(); // 연결된 방문 방 목록
+            foreach (var room in layout.Rooms) // 실제 방 순회
+            { // 방문 기록 시작
+                if (!room.IsSecret) // 비밀 방이 아닌 실제 방 검사
+                { // 일반 방 시작
+                    visited.Add(new SavedRoom { x = room.X, y = room.Y }); // 방문한 방 기록
+                } // 일반 방 끝
+                if (room.Kind == RoomKind.Boss) // 최종 보스 방 검사
+                { // 보스 위치 시작
+                    data.roomX = room.X; // 실제 보스 방 가로 좌표
+                    data.roomY = room.Y; // 실제 보스 방 세로 좌표
+                } // 보스 위치 끝
+            } // 방문 기록 끝
+            data.visitedRooms = visited.ToArray(); // 검증 가능한 방문 기록
+            data.bossTransactionId = System.Guid.NewGuid().ToString("N"); // 실제 결과의 고유 거래
+            return data; // 검증 가능한 보스 방 저장
+        } // 준비 끝
+        [Test] // 마왕 결과와 체력의 저장 검증
+        public void Validate_BossResultRequiresMatchingLocationAndHealth() // 승리와 패배 및 항복의 범위 검사
+        { // 검증 시작
+            var data = BossResultSnapshot(); // 실제 보스 방 저장
+            data.bossOutcome = 1; // 일반 전투 승리
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 생존 승리 결과 허용
+            data.bossOutcome = 3; // 명시적 항복
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 생존 항복 결과 허용
+            data.health = 0; // 실제 체력 소진
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 체력 없는 항복 거절
+            data.bossOutcome = 1; // 일반 전투 승리
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 체력 없는 승리 거절
+            data.bossOutcome = 2; // 체력 소진 패배
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 체력 소진 패배 허용
+            data.health = 1; // 생존 체력
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 생존한 체력 소진 패배 거절
+            data.health = 0; // 패배 체력 복구
+            data.roomX = 0; // 보스가 아닌 시작 방
+            data.roomY = 0; // 시작 방 세로 좌표
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 방의 보스 결과 차단
+        } // 검증 끝
+        [Test] // 결과 식별자와 저장 상태 충돌 검증
+        public void Validate_BossResultRejectsInvalidOrConcurrentState() // 고유 식별자와 전투 충돌 검사
+        { // 검증 시작
+            var data = BossResultSnapshot(); // 실제 보스 방 저장
+            data.bossOutcome = 1; // 실제 보스 승리
+            data.bossTransactionId = "invalid"; // 잘못된 거래 식별자
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 위조된 결과 식별자 차단
+            data.bossTransactionId = System.Guid.NewGuid().ToString("N"); // 유효한 결과 식별자
+            data.hasPendingReward = true; // 일반 승리 보상 중복
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 일반 보상과 결과 충돌 차단
+            data.hasPendingReward = false; // 일반 보상 비활성화
+            data.hasTrialEventBattle = true; // 일반 이벤트 전투 중복
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 전투와 결과 충돌 차단
+            data.hasTrialEventBattle = false; // 다른 전투 비활성화
+            data.pendingReward = new SavedBattleReward(); // 비활성 표시 뒤 남은 보상 후보
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 숨겨진 보상 후보 차단
+            data.pendingReward = null; // 보상 후보 제거
+            data.rewardReceipts = new[] { new SavedRewardReceipt { transactionId = data.bossTransactionId } }; // 기존 보상과 겹치는 거래
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이미 사용된 거래 식별자 차단
+            data.rewardReceipts = null; // 보상 거래 충돌 해제
+            data.bossOutcome = 0; // 아직 결정되지 않은 보스 결과
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 미결 결과의 거래 식별자 차단
+            data.bossTransactionId = null; // 거래 없는 미결 상태
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 보스 방 탐험 허용
+            data.bossOutcome = 4; // 지원하지 않는 결과 값
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 알 수 없는 결과 차단
+        } // 검증 끝
+        [Test] // 이전 저장과 미결 전투 호환 검증
+        public void Validate_BossFieldsDoNotChangeLegacySaves() // 기존 저장의 보스 필드 무시
+        { // 검증 시작
+            var data = ExpandedSnapshot(5); // 기존 최종 층 저장
+            data.bossOutcome = 2; // 기존 버전에서 사용하지 않는 값
+            data.bossTransactionId = "invalid"; // 기존 버전에서 사용하지 않는 식별자
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 기존 버전의 복원 유지
+            data.health = 0; // 기존 저장의 체력 소진
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 이전 저장의 사망 상태 차단 유지
+        } // 검증 끝
         [Test] // 유효한 회차의 복원 가능 여부
         public void Validate_AcceptsCoherentSnapshot() // 정상 회차 허용
         { // 검증 시작

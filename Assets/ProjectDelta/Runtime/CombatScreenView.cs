@@ -11,6 +11,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         internal const int TrialEnemyHealth = RunRestoreRules.TrialEnemyMaxHealth; // 시험 상대 최대 체력
         private readonly System.Random random = new System.Random(); // 전투 판정 난수
         private AppRoot owner; // 탐험 상태와 체력 관리자
+        private bool isBoss; // 현재 마왕 전투 여부
         private BattleRound round; // 시험 전투 라운드 상태
         private BattleActor[] participants; // 도주 확률 계산용 참가자
         private BattleActor current; // 현재 시험 행동자
@@ -93,9 +94,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AddBattlePanel(canvas.transform, "BattlePlayerPanel", new Vector2(0f, -350f), new Vector2(1920f, 380f)); // 하단 플레이어와 행동 영역
                 var travelObject = GameObject.Find("RoomTravel"); // 실제 던전 객체 조회
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 조우 대상 조회
+                view.isBoss = travel != null && travel.IsBossRoom; // 실제 마왕 전투 구분
                 var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
                 var grouped = travel != null && travel.IsGroupEncounter; // 실제 다수 조우 여부
-                var enemyImage = travel != null && travel.CurrentMonsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : travel != null && travel.CurrentMonsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : travel != null && travel.CurrentMonsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 초상화
+                var enemyImage = view.isBoss ? "BattlePortraits/DemonLordPrototype" : travel != null && travel.CurrentMonsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : travel != null && travel.CurrentMonsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : travel != null && travel.CurrentMonsterId == "MON_MIMIC" ? "BattlePortraits/MimicPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 초상화
                 var firstEnemyPanel = AddBattlePanel(canvas.transform, "EnemySlotPanel1", new Vector2(grouped ? -250f : 0f, 180f), new Vector2(420f, 410f)); // 첫 상대의 상단 슬롯 배경
                 RectTransform secondEnemyPanel = null; // 선택적인 두 번째 적 슬롯
                 if (grouped) // 두 번째 상대 슬롯 검사
@@ -144,6 +146,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.skill.onClick.AddListener(view.StrongStrike); // 실제 기술 사용 연결
                 view.tempt = UiFactory.CreateButton(canvas.transform, "TemptBattleButton", "유혹 · 시험", Vector2.zero); // 시험 이벤트 전투 진입
                 view.tempt.onClick.AddListener(view.StartEventBattle); // 진입 요청 연결
+                if (view.isBoss) // 마왕 전용 기능 검사
+                { // 미구현 안내 시작
+                    view.tempt.transform.Find("Label").GetComponent<Text>().text = "유혹 · 준비 중"; // 미구현 이벤트 전투 안내
+                    view.flee.transform.Find("Label").GetComponent<Text>().text = "도주 불가"; // 마왕전 도주 제한 안내
+                } // 미구현 안내 끝
+                view.flee.interactable = !view.isBoss; // 마왕전 도주 차단
+                view.tempt.interactable = !view.isBoss; // 미구현 마왕 이벤트 전투 차단
                 var persuade = UiFactory.CreateButton(canvas.transform, "PersuadeBattleButton", "회유 · 준비 중", Vector2.zero); // 미구현 전투 회유 행동
                 var observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰 · 준비 중", Vector2.zero); // 미구현 전투 관찰 행동
                 view.itemButton = UiFactory.CreateButton(canvas.transform, "BattleItemListButton", "아이템 선택", Vector2.zero); // 전투 중 보유 아이템 선택
@@ -156,7 +165,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.surrenderDialog.transform.SetParent(canvas.transform, false); // 전투 화면 위 배치
                 view.surrenderDialog.GetComponent<RectTransform>().sizeDelta = new Vector2(900f, 320f); // 확인 화면 크기
                 view.surrenderDialog.GetComponent<Image>().color = new Color(0.04f, 0.08f, 0.1f, 0.98f); // 확인 화면 배경색
-                UiFactory.CreateText(view.surrenderDialog.transform, "Question", "항복하면 이번 회차가 종료됩니다", 30, new Vector2(0f, 85f), new Vector2(850f, 80f), Color.white); // 항복 결과 안내
+                UiFactory.CreateText(view.surrenderDialog.transform, "Question", view.isBoss ? "항복 결과를 저장하고 결말을 기다립니다" : "항복하면 이번 회차가 종료됩니다", 30, new Vector2(0f, 85f), new Vector2(850f, 80f), Color.white); // 항복 결과 안내
                 var yes = UiFactory.CreateButton(view.surrenderDialog.transform, "ConfirmSurrender", "항복", new Vector2(-205f, -45f)); // 항복 확정 버튼
                 var no = UiFactory.CreateButton(view.surrenderDialog.transform, "CancelSurrender", "아니요", new Vector2(205f, -45f)); // 항복 취소 버튼
                 yes.onClick.AddListener(view.ConfirmSurrender); // 실제 항복 확정 연결
@@ -233,7 +242,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 능력치 오류 시작
                 throw new System.InvalidOperationException("Invalid equipment stats."); // 잘못된 장비의 전투 진입 차단
             } // 능력치 오류 끝
-            participants = grouped ? new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(groupName + " 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor(groupName + " 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수와 장비 속도를 적용한 참가자
+            participants = grouped ? new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(groupName + " 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor(groupName + " 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", stats.Speed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? (isBoss ? BossRules.TrialSpeed : TrialEnemySpeed), false, 1) }; // 실제 적 수와 장비 속도를 적용한 참가자
             player = new CombatFighter(participants[0], 100, stats.Attack, stats.Defense, 0, 40, owner.PlayerHealth); // 장비 공격력과 방어력 적용
             if (grouped) // 실제 시험 다수 조우 검사
             { // 다수 전투 준비 시작
@@ -244,8 +253,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 다수 전투 준비 끝
             else // 기존 단일 전투 분기
             { // 단일 전투 준비 시작
-                var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
-                enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, enemyHealth); // 시험 상대와 명중 보정 0
+                var enemyHealth = isBoss ? BossRules.TrialMaxHealth : travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 마왕의 시험 체력 또는 후퇴한 상대 체력
+                enemy = new CombatFighter(participants[1], isBoss ? BossRules.TrialMaxHealth : TrialEnemyHealth, isBoss ? BossRules.TrialAttack : 11, isBoss ? BossRules.TrialDefense : 7, 0, isBoss ? BossRules.TrialEvasion : 8, enemyHealth); // 시험 대상별 체력과 능력치
             } // 단일 전투 준비 끝
             if (groupFighters == null) // 단일 조우 검사
             { // 단일 보상 준비 시작
@@ -267,6 +276,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 준비 끝
         private void StartEventBattle() // 시험 이벤트 전투 진입 요청
         { // 진입 시작
+            if (isBoss) // 미구현 마왕 이벤트 전투 검사
+            { // 차단 시작
+                notice.text = "마왕 이벤트 전투는 준비 중입니다."; // 실제 지원 범위 안내
+                return; // 다른 이벤트 전투 진입 차단
+            } // 차단 끝
             if (owner == null) // 전투 관리자 검사
             { // 관리자 누락 시작
                 notice.text = "전투 상태를 확인할 수 없습니다."; // 관리자 오류 안내
@@ -482,12 +496,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             Destroy(itemDialog); // 선택 화면 정리
             itemDialog = null; // 선택 화면 참조 해제
             advance.interactable = true; // 공격 선택 복구
-            flee.interactable = true; // 도주 선택 복구
+            flee.interactable = !isBoss; // 마왕전 제한을 유지한 도주 선택 복구
             defend.interactable = true; // 방어 선택 복구
             potion.interactable = true; // 바로 사용 복구
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
-            tempt.interactable = true; // 이벤트 전투 선택 복구
+            tempt.interactable = !isBoss; // 마왕전 제한을 유지한 이벤트 전투 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 생존한 적의 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 전투 기본 선택 복구
@@ -511,6 +525,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 회복약 사용 끝
         private void Flee() // 일반 전투의 속도 주사위 후퇴
         { // 후퇴 시작
+            if (isBoss) // 마왕전 도주 불가 검사
+            { // 차단 시작
+                notice.text = "마왕전에서는 도망칠 수 없습니다."; // 기획된 도주 제한 안내
+                return; // 도주 판정 차단
+            } // 차단 끝
             if (itemDialog != null || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 잘못된 후퇴 행동 차단
@@ -667,6 +686,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             tempt.interactable = false; // 종료된 전투의 진입 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
+            if (isBoss) // 마왕 전투의 즉시 결과 저장 검사
+            { // 결과 저장 시작
+                exit.transform.Find("Label").GetComponent<Text>().text = "결과 저장 재시도"; // 저장 실패 시 재시도 선택
+                if (!owner.TrySaveBossOutcome(outcome == CombatOutcome.Victory ? 1 : 2, out var bossError)) // 승패 확정 시 즉시 저장 검사
+                { // 저장 실패 시작
+                    notice.text = bossError + " 다시 선택해 주세요."; // 보존과 재시도 안내
+                } // 저장 실패 끝
+            } // 결과 저장 끝
             return true; // 전투 종료 확인
         } // 확인 끝
         private void Complete() // 시험 종료 또는 전투 결과 확정
@@ -707,6 +734,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 항복 확인 끝
             if (outcome == CombatOutcome.Victory) // 실제 승리 검사
             { // 승리 조건 시작
+                if (isBoss) // 마왕의 일반 승리 검사
+                { // 결과 저장 시작
+                    if (!owner.TrySaveBossOutcome(1, out var bossError)) // 경험치 없는 결과 저장 검사
+                    { // 저장 실패 시작
+                        notice.text = bossError + " 다시 선택해 주세요."; // 결과 보존 재시도 안내
+                    } // 저장 실패 끝
+                    return; // 일반 보상과 사망 처리 차단
+                } // 결과 저장 끝
                 var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
                 if (travel != null && travel.IsCurrentMimic) // 상자 미믹 승리 검사
@@ -782,12 +817,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 취소 시작
             surrenderDialog.SetActive(false); // 확인 화면 닫기
             advance.interactable = true; // 공격 선택 복구
-            flee.interactable = true; // 도주 선택 복구
+            flee.interactable = !isBoss; // 마왕전 제한을 유지한 도주 선택 복구
             defend.interactable = true; // 방어 선택 복구
             potion.interactable = true; // 회복 선택 복구
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
-            tempt.interactable = true; // 이벤트 전투 선택 복구
+            tempt.interactable = !isBoss; // 마왕전 제한을 유지한 이벤트 전투 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 다수 적의 생존 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 기존 행동 선택 복귀
@@ -801,6 +836,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 확정 끝
         private void FinishDefeat() // 실제 패배 대상 기록과 회차 종료
         { // 종료 시작
+            if (isBoss) // 마왕 패배 또는 확인된 항복 검사
+            { // 결과 보존 시작
+                outcome = CombatOutcome.Defeat; // 저장 재시도 중 다른 행동 차단
+                if (!owner.TrySaveBossOutcome(surrenderConfirmed ? 3 : 2, out var bossError)) // 정식 결말 전 회차 보존 검사
+                { // 저장 실패 시작
+                    notice.text = bossError + " 다시 선택해 주세요."; // 결과 저장 재시도 안내
+                } // 저장 실패 끝
+                return; // 일반 패배의 조기 회차 종료 차단
+            } // 결과 보존 끝
             var enemies = new BattleActor[participants.Length - 1]; // 실제 적 참가자 목록
             System.Array.Copy(participants, 1, enemies, 0, enemies.Length); // 실제 전투 상대 복사
             var selected = enemy != null && enemy.Actor.IsAlive ? enemy.Actor : null; // 실제 선택된 생존 상대
@@ -844,7 +888,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             playerHealth.text = "체력 " + player.Health + "/" + player.MaxHealth; // 플레이어 체력 표시
             if (groupBattle == null) // 기존 단일 대상 검사
             { // 단일 체력 표시 시작
-                enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
+                enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth + (isBoss ? " · " + BossRules.Phase(enemy.Health) + "단계 · 시험값" : string.Empty); // 상대 체력과 마왕 단계 표시
             } // 단일 체력 표시 끝
             else // 실제 다수 적 분기
             { // 다수 체력 표시 시작

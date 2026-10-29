@@ -49,8 +49,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public bool TutorialCompleted => tutorialCompleted; // 첫 조우 완료 상태
         private bool TutorialEnabled => TutorialEncounterTestOverride ?? true; // 실제 게임의 첫 조우 활성 상태
         public EncounterPlacement TutorialEncounter => tutorialEncounter; // 첫 일반 방의 실제 조우 데이터
-        public string CurrentMonsterId => IsMimicEncounter ? "MON_MIMIC" : IsGroupRoom() ? (groupGoblin ? "MON_GOBLIN" : "MON_SLIME") : IsTutorialRoom() && !tutorialCompleted ? "MON_SLIME" : "trial-elite"; // 미믹을 우선한 시험 조우 식별자
-        public string CurrentMonsterName => IsMimicEncounter ? "미믹" : IsGroupRoom() ? (groupGoblin ? "고블린 2개체" : "슬라임 2개체") : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 미믹을 우선한 시험 대상 이름
+        public bool IsBossRoom => IsReady && Layout.GetRoom(RoomX, RoomY)?.Kind == RoomKind.Boss; // 현재 마왕 방 여부
+        private bool bossEntryApproved; // 마왕 방 입장 확인 여부
+        public string CurrentMonsterId => IsBossRoom ? "MON_DEMON_LORD" : IsMimicEncounter ? "MON_MIMIC" : IsGroupRoom() ? (groupGoblin ? "MON_GOBLIN" : "MON_SLIME") : IsTutorialRoom() && !tutorialCompleted ? "MON_SLIME" : "trial-elite"; // 현재 조우 대상 식별자
+        public string CurrentMonsterName => IsBossRoom ? "마왕" : IsMimicEncounter ? "미믹" : IsGroupRoom() ? (groupGoblin ? "고블린 2개체" : "슬라임 2개체") : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 현재 조우 대상 이름
         public bool IsMimicEncounter // 현재 상자의 미완료 미믹 여부
         { // 속성 시작
             get // 실제 상자 상태 조회
@@ -937,8 +939,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var currentRoom = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
             if (currentRoom != null && currentRoom.Kind == RoomKind.Boss && player.X == 0 && player.Y == 0) // 최종 마왕 방 중앙 검사
             { // 최종 방 안내 시작
-                DoorNoticeChanged?.Invoke("마왕 방 · 보스 전투 준비 중"); // 아직 구현되지 않은 전투 안내
-                return; // 추가 층과 미완성 전투 차단
+                AppRoot.Instance.OpenBossPreparation(() => AppRoot.Instance.StartEncounter()); // 저장된 마왕 방의 준비 화면
+                return; // 추가 층 이동 차단
             } // 최종 방 안내 끝
             if (currentRoom != null && currentRoom.Kind == RoomKind.Stairs && player.X == 0 && player.Y == 0) // 계단 칸의 상호작용 검사
             { // 계단 상호작용 시작
@@ -962,6 +964,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 문 없음 조건 시작
                 return; // 일치하는 출구 없음
             } // 문 없음 조건 끝
+            var targetRoom = Layout.GetRoom(door.TargetRoomX, door.TargetRoomY); // 도착 방의 역할
+            if (targetRoom != null && targetRoom.Kind == RoomKind.Boss && !bossEntryApproved) // 마왕 방의 준비 확인 검사
+            { // 준비 확인 시작
+                AppRoot.Instance.OpenBossPreparation(() => // 확인 후 동일한 문 이동 요청
+                { // 입장 확인 시작
+                    bossEntryApproved = true; // 확인된 진입 표시
+                    OnInteraction(); // 동일한 문 이동 재시도
+                    bossEntryApproved = false; // 확인 표시 초기화
+                }); // 입장 확인 끝
+                return; // 준비 선택 전 방 이동 차단
+            } // 준비 확인 끝
             if (door.IsSecret && !Discovery.IsSecretDiscovered(door)) // 미발견 비밀벽 검사
             { // 발견 시작
                 if (Discovery.TryDiscoverSecret(door)) // 실제 비밀벽 발견 검사
@@ -1042,6 +1055,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
             BeginRoomTransition(door.Direction); // 도착 방으로 부드러운 화면 이동 시작
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
+            if (IsBossRoom && bossEntryApproved) // 확인된 마왕 방 도착 검사
+            { // 마왕 조우 준비 시작
+                StartCoroutine(OpenBossAfterTransition()); // 방 전환 후 마왕 조우
+                return; // 다른 방 이벤트 중복 차단
+            } // 마왕 조우 준비 끝
             if (currentContent != null && currentContent.TrapRoom.X == state.RoomX && currentContent.TrapRoom.Y == state.RoomY && !currentContent.Snapshot().trapCompleted) // 처음 진입한 미완료 함정 방 검사
             { // 함정 판정 준비 시작
                 StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 방 전환 종료 후 즉시 함정 처리
@@ -1059,6 +1077,24 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 실제 다수 조우 선택 진입
             } // 다수 조우 끝
         } // 처리 끝
+        private IEnumerator OpenBossAfterTransition() // 마왕 방 전환 뒤 실제 조우
+        { // 대기 시작
+            input.SetPhase(GamePhase.Loading); // 전투 전 탐험 입력 잠금
+            yield return null; // 같은 프레임 전환 대기
+            while (player != null && (player.IsRoomTransitionLocked || player.IsMoving)) // 화면 이동 완료 검사
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            if (!IsBossRoom || AppRoot.Instance == null || AppRoot.Instance.Flow.Phase != GamePhase.Exploration) // 실제 도착 상태 검사
+            { // 오류 시작
+                yield break; // 잘못된 조우 차단
+            } // 오류 끝
+            if (!AppRoot.Instance.StartEncounter()) // 마왕 조우 진입 검사
+            { // 실패 시작
+                input.SetPhase(GamePhase.Exploration); // 재시도를 위한 탐험 입력 복구
+                DoorNoticeChanged?.Invoke("마왕 조우를 시작하지 못했습니다. 중앙에서 다시 시도하세요."); // 조우 오류 안내
+            } // 실패 끝
+        } // 대기 끝
         private IEnumerator OpenTrialEventAfterTransition(int expectedFloor, int x, int y) // 전환 후 시험 이벤트 자동 진입
         { // 대기 시작
             if (input != null) // 탐험 입력 검사

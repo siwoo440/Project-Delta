@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 18; // 다섯 층 재현을 포함한 저장 버전
+        public const int CurrentVersion = 19; // 마왕 결과를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -123,12 +123,18 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool trialNpcEnabled; // 시험 상인 배치 활성 여부
         public bool hasTrialEventBattle; // 진행 중인 이벤트 전투 존재 여부
         public TrialEventBattleSaveData trialEventBattle; // 마지막 완료 행동의 이벤트 전투
+        public int bossOutcome; // 미결 영과 승리 일 및 패배 이와 항복 삼
+        public string bossTransactionId; // 확정된 마왕 결과의 고유 식별자
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || floor > (version >= 18 ? 5 : 2) || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
+            if (version >= 19 && (bossOutcome < 0 || bossOutcome > 3 || bossOutcome == 0 && !string.IsNullOrEmpty(bossTransactionId) || bossOutcome != 0 && (!Guid.TryParseExact(bossTransactionId, "N", out _) || floor != 5 || hasPendingReward || hasTrialEventBattle || pendingReward != null || trialEventBattle != null || (bossOutcome == 2 ? health != 0 : health <= 0)))) // 결과 범위와 식별자 및 자원 충돌 검사
+            { // 마왕 결과 오류 시작
+                return false; // 미결 상태의 거래와 잘못된 결과 차단
+            } // 마왕 결과 오류 끝
             if (version >= 11 && (!EquipmentState.TryRestore(weaponId, armorId, accessoryId, bagId, out var equipment) || !equipment.TryCalculate(50, 40, 10, 0, 150, 10, out var equipmentStats) || slots.Length != equipmentStats.InventoryCapacity)) // 장비 부위와 가방 용량 일치 검사
             { // 장비 저장 오류 시작
                 return false; // 알 수 없는 장비와 잘못된 용량 차단
@@ -252,7 +258,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 var seenRewards = new HashSet<string>(StringComparer.Ordinal); // 보상 거래 식별자 중복 검사
                 foreach (var receipt in rewardReceipts) // 완료된 거래 순회
                 { // 거래 검사 시작
-                    if (receipt == null || !Guid.TryParseExact(receipt.transactionId, "N", out _) || !seenRewards.Add(receipt.transactionId) || (hasPendingReward && receipt.transactionId == pendingReward.transactionId)) // 거래 식별과 미완료 후보 충돌 검사
+                    if (receipt == null || !Guid.TryParseExact(receipt.transactionId, "N", out _) || !seenRewards.Add(receipt.transactionId) || (hasPendingReward && receipt.transactionId == pendingReward.transactionId) || (version >= 19 && bossOutcome != 0 && receipt.transactionId == bossTransactionId)) // 거래 식별과 미완료 후보 충돌 검사
                     { // 거래 오류 시작
                         return false; // 중복 또는 잘못된 보상 기록 차단
                     } // 거래 오류 끝

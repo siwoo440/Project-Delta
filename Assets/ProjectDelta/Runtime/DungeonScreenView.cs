@@ -152,7 +152,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     status.text = "현재 위치: 계단 방"; // 계단 방과 추가 층 안내
                     break; // 역할 선택 종료
                 case RoomKind.Boss: // 최종 마왕 방
-                    status.text = "현재 위치: 마왕 방 · 준비 중"; // 아직 구현되지 않은 최종 전투 안내
+                    status.text = "현재 위치: 마왕 방"; // 실제 최종 방 안내
                     break; // 역할 선택 종료
                 case RoomKind.Elite: // 상위 개체 방
                     status.text = "현재 위치: 상위 개체 방"; // 상위 개체 방 이름 표시
