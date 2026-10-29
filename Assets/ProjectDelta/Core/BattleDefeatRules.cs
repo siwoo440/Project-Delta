@@ -4,7 +4,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     public enum BattleDefeatReason // 기록 가능한 일반 전투 패배 원인
     { // 원인 목록 시작
         HealthZero, // 플레이어 체력 소진
-        Surrender // 플레이어의 확정된 항복
+        Surrender, // 플레이어의 확정된 항복
+        StaminaZero // 이벤트 전투 정력 소진
     } // 원인 목록 끝
     public sealed class BattleDefeatRecord // 실제 패배 원인과 기록 대상
     { // 클래스 시작

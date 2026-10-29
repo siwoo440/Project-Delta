@@ -406,6 +406,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 이전 보상 복원 시작
                     candidate.pendingReward.itemId = "trial-small-potion"; // 기존 보상의 실제 소비품 종류 보존
                 } // 이전 보상 복원 끝
+                if (candidate != null && !candidate.hasTrialEventBattle) // 직렬화된 빈 이벤트 전투 검사
+                { // 빈 전투 정리 시작
+                    candidate.trialEventBattle = null; // 미진행 회차의 빈 전투 객체 제거
+                } // 빈 전투 정리 끝
                 NormalizeEquipment(candidate); // Unity의 빈 장비 객체 정리
                 if (!RunRestoreRules.IsValid(candidate)) // 버전과 던전 상태 검사
                 { // 형식 오류 시작

@@ -135,6 +135,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 복원 불가능한 기록 차단
                 } // 오류 끝
             } // 이벤트 검사 끝
+            if (data.version >= 17 && data.hasTrialEventBattle && !ValidTrialEventBattle(data, layout, generationVersion)) // 이벤트 전투와 실제 방 및 참가자 검사
+            { // 전투 오류 시작
+                return false; // 다른 방과 잘못된 참가자의 복원 차단
+            } // 전투 오류 끝
             if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY, data.secretPassages) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
             { // 던전 오류 시작
                 return false; // 잘못된 던전 상태 거절
@@ -144,6 +148,84 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                 return false; // 잘못된 이전 경로 거절
             } // 연결 오류 끝
             return true; // 논리 저장 상태 검증 통과
+        } // 검사 끝
+        private static bool ValidTrialEventBattle(RunSaveData data, DungeonLayout layout, int generationVersion) // 이벤트 전투와 실제 조우 대조
+        { // 검사 시작
+            if (data.hasPendingReward || !TrialEventBattleState.TryRestore(data.trialEventBattle, out var battle)) // 기존 보상과 전투 재생 검사
+            { // 오류 시작
+                return false; // 다른 보상과 손상된 전투 차단
+            } // 오류 끝
+            var saved = battle.Snapshot(); // 검증된 독립 전투 상태
+            if (saved.initialStamina != 100 || saved.playerCharm != 50) // 현재 구현의 시작 자원과 매력 검사
+            { // 시작 오류 시작
+                return false; // 미지원 능력치의 전투 차단
+            } // 시작 오류 끝
+            if (data.roomContentEnabled) // 현재 층의 상자 상태 검사
+            { // 상자 검사 시작
+                foreach (var floor in data.roomContents) // 저장된 층별 콘텐츠 순회
+                { // 층 검사 시작
+                    if (floor.floor != data.floor) // 다른 층 검사
+                    { // 다른 층 시작
+                        continue; // 현재 층만 확인
+                    } // 다른 층 끝
+                    foreach (var chest in floor.chests) // 실제 상자 방 순회
+                    { // 상자 검사 시작
+                        if (chest.x == data.roomX && chest.y == data.roomY && chest.chest.mimicState == 2 && !chest.chest.mimicDefeated) // 현재 미믹 조우 검사
+                        { // 미믹 오류 시작
+                            return false; // 미지원 미믹 이벤트 전투 차단
+                        } // 미믹 오류 끝
+                    } // 상자 검사 끝
+                } // 층 검사 끝
+            } // 상자 검사 끝
+            var room = layout.GetRoom(data.roomX, data.roomY); // 저장된 실제 방
+            if (room == null) // 실제 방 존재 검사
+            { // 방 오류 시작
+                return false; // 존재하지 않는 방 차단
+            } // 방 오류 끝
+            var excluded = TrialRoomContentPlacement.Excluded(layout, data.floor, generationVersion, data.groupEncounterEnabled); // 실제 첫 조우와 다수 방 재현
+            if (excluded == null) // 조우 배치 실패 검사
+            { // 배치 오류 시작
+                return false; // 잘못된 조우 구조 차단
+            } // 배치 오류 끝
+            var first = excluded.Length > 0 ? excluded[0] : null; // 실제 첫 슬라임 방
+            var group = excluded.Length > 1 ? excluded[1] : null; // 실제 다수 조우 방
+            var isFirst = first != null && first.X == data.roomX && first.Y == data.roomY && !data.tutorialCompleted; // 미완료 첫 조우
+            var isGroup = group != null && group.X == data.roomX && group.Y == data.roomY && data.groupEncounterEnabled && !data.groupEncounterCompleted; // 미완료 다수 조우
+            var isElite = room.Kind == RoomKind.Elite && !data.encounterCompleted; // 미완료 상위 조우
+            if (!isFirst && !isGroup && !isElite) // 실제 조우 유형 검사
+            { // 조우 오류 시작
+                return false; // 완료 조우와 일반 방 차단
+            } // 조우 오류 끝
+            var species = isGroup ? data.groupGoblin ? "MON_GOBLIN" : "MON_SLIME" : isFirst ? "MON_SLIME" : "trial-elite"; // 실제 조우 대상 종족
+            var maximumSlots = isGroup ? 2 : 1; // 실제 일반 전투의 적 수
+            var available = 0; // 일반 전투 시작 시 생존 적 수
+            for (var slot = 0; slot < maximumSlots; slot++) // 실제 일반 전투의 적 순회
+            { // 생존 검사 시작
+                var oldHealth = isGroup && data.groupEnemyHealth != null && data.groupEnemyHealth.Length == 2 ? data.groupEnemyHealth[slot] : isFirst && data.tutorialHealth > 0 ? data.tutorialHealth : isElite && data.encounterHealth > 0 ? data.encounterHealth : TrialEnemyMaxHealth; // 이전 후퇴 또는 최초 체력
+                if (oldHealth > 0) // 이전부터 생존한 적 검사
+                { // 생존 시작
+                    available++; // 기존 전투의 보상 대상
+                } // 생존 끝
+            } // 생존 검사 끝
+            foreach (var enemy in saved.initialEnemies) // 이벤트에 참가한 생존 적 순회
+            { // 참가자 검사 시작
+                if (enemy.slot < 0 || enemy.slot >= maximumSlots || enemy.id != species + ":" + enemy.slot || enemy.charm != 50 || enemy.health < 1 || enemy.health > TrialEnemyMaxHealth) // 원본 슬롯과 종족 및 시험 매력 검사
+                { // 참가자 오류 시작
+                    return false; // 변경된 참가자 차단
+                } // 참가자 오류 끝
+                var oldHealth = isGroup && data.groupEnemyHealth != null && data.groupEnemyHealth.Length == 2 ? data.groupEnemyHealth[enemy.slot] : isFirst && data.tutorialHealth > 0 ? data.tutorialHealth : isElite && data.encounterHealth > 0 ? data.encounterHealth : TrialEnemyMaxHealth; // 같은 슬롯의 기존 체력
+                if (oldHealth == 0 || enemy.health > oldHealth) // 이전에 처치된 적과 체력 증가 검사
+                { // 체력 오류 시작
+                    return false; // 존재하지 않는 생존 적 차단
+                } // 체력 오류 끝
+            } // 참가자 검사 끝
+            if (available < saved.initialEnemies.Length) // 실제 전투의 생존 참가자 수 검사
+            { // 수량 오류 시작
+                return false; // 원래 전투보다 많은 참가자 차단
+            } // 수량 오류 끝
+            var baseExperience = data.floor == 1 ? 60 : 80; // 층별 기획 일반 경험치
+            var unit = isElite ? baseExperience * 3 : baseExperience; // 상위 또는 일반 적별 경험치
+            return saved.normalExperience == saved.initialEnemies.Length * unit && saved.priorExperience == (available - saved.initialEnemies.Length) * unit; // 생존 참가자와 이전 처치 경험치 일치
         } // 검사 끝
     } // 클래스 끝
 } // 이름 공간 끝

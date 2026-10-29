@@ -24,6 +24,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public string RunSaveMessage { get; private set; } = string.Empty; // 회차 저장 안내
         public bool CanContinueRun => savedRunValid; // 마지막 검증의 복원 가능 여부
         private CombatScreenView combatScreen; // 시험 전투 화면
+        private TrialEventBattleState trialEventBattle; // 현재 시험 이벤트 전투 상태
+        private TrialEventBattleScreenView trialEventBattleScreen; // 별도 이벤트 전투 화면
+        private Coroutine trialEventBattleAuto; // 적 주도권의 자동 처리
+        public static System.Func<int, int, int> TrialEventBattleRollOverride { get; set; } // 자동 검증용 전투 주사위
         private BattleRewardScreenView rewardScreen; // 저장된 승리 보상 화면
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private EncounterTransitionView encounterTransition; // 자동 전투 진입 전환 화면
@@ -304,8 +308,34 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 보상 복원 준비 시작
                 StartCoroutine(OpenRestoredReward()); // 씬 전환 후 저장된 후보 화면 복원
             } // 보상 복원 준비 끝
+            if (PendingRun != null && PendingRun.hasTrialEventBattle) // 저장된 이벤트 전투 검사
+            { // 이벤트 전투 복원 준비
+                StartCoroutine(OpenRestoredEventBattle()); // 장면 전환 후 마지막 행동 상태 복원
+            } // 복원 준비 끝
             PendingRun = null; // 재복원 방지
         } // 소모 끝
+        private IEnumerator OpenRestoredEventBattle() // 저장된 이벤트 전투 화면 복원
+        { // 복원 시작
+            while (Flow.Phase == GamePhase.Loading) // 던전 장면 전환 검사
+            { // 전환 대기 시작
+                yield return null; // 탐험 상태 대기
+            } // 전환 대기 끝
+            if (Flow.Phase != GamePhase.Exploration || savedRun == null || !savedRun.hasTrialEventBattle || !TrialEventBattleState.TryRestore(savedRun.trialEventBattle, out var restored) || !Flow.TryStartCombat()) // 저장된 전투와 탐험 상태 검사
+            { // 복원 오류 시작
+                RejectRunRestore(); // 저장 원본 보존과 타이틀 복귀
+                yield break; // 잘못된 전투 복원 차단
+            } // 복원 오류 끝
+            trialEventBattle = restored; // 검증된 전투 복원
+            Input.SetPhase(GamePhase.Combat); // 탐험 입력 잠금
+            if (!ShowTrialEventBattle()) // 실제 전투 화면 생성 검사
+            { // 화면 오류 시작
+                Flow.TryEndCombat(); // 실패한 전투 상태를 탐험으로 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 상태의 복구 입력 적용
+                RejectRunRestore(); // 저장된 전투를 보존한 타이틀 복귀
+                yield break; // 불완전한 화면 차단
+            } // 화면 오류 끝
+            QueueEventBattleAuto(); // 저장된 적 주도권 자동 재개
+        } // 복원 끝
         private IEnumerator OpenRestoredReward() // 저장된 승리 보상 화면 복원
         { // 복원 시작
             while (Flow.Phase == GamePhase.Loading) // 씬 전환 완료 검사
@@ -1082,6 +1112,289 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             trialNpcScreen = null; // 화면 참조 해제
             Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
         } // 종료 끝
+        public TrialEventBattleSaveData CurrentTrialEventBattle => trialEventBattle == null ? null : trialEventBattle.Snapshot(); // 현재 전투의 독립 저장 상태
+        public bool TryStartEventBattle(CombatScreenView source, out string message) // 일반 전투의 실제 참가자를 별도 전투로 전환
+        { // 전환 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (Flow.Phase != GamePhase.Combat || source == null || source != combatScreen || trialEventBattleScreen != null) // 실제 일반 전투와 중복 화면 검사
+            { // 오류 시작
+                message = "이벤트 전투를 시작할 수 없습니다."; // 전환 오류 안내
+                return false; // 다른 화면의 전투 차단
+            } // 오류 끝
+            if (!source.TryCaptureEventBattle(out var initial, out message)) // 생존 적과 실제 전투 상태 검사
+            { // 오류 시작
+                return false; // 잘못된 참가자 차단
+            } // 오류 끝
+            if (!CommitTrialEventBattle(initial, out message)) // 전환 전 참가자의 안전한 저장
+            { // 저장 오류 시작
+                return false; // 원래 일반 전투 보존
+            } // 저장 오류 끝
+            source.gameObject.SetActive(false); // 기존 전투의 입력 차단
+            if (!ShowTrialEventBattle()) // 실제 화면 생성 검사
+            { // 화면 오류 시작
+                message = "이벤트 전투 화면을 열지 못해 저장된 회차를 보존합니다."; // 복원 안내
+                ReturnToTitle(); // 저장된 전투를 보존한 타이틀 복귀
+                return false; // 중복 일반 행동 차단
+            } // 화면 오류 끝
+            return true; // 안전한 이벤트 전투 진입
+        } // 전환 끝
+        private bool ShowTrialEventBattle() // 저장된 이벤트 전투 화면 생성
+        { // 표시 시작
+            try // 화면 생성 보호
+            { // 생성 시작
+                trialEventBattleScreen = TrialEventBattleScreenView.Create(this); // 실제 저장 전투 표시
+                return true; // 화면 생성 성공
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 오류 시작
+                Debug.LogError("Event battle screen failed: " + exception.Message); // 실제 화면 오류 기록
+                return false; // 저장된 전투 보존
+            } // 오류 끝
+        } // 표시 끝
+        private bool CommitTrialEventBattle(TrialEventBattleState next, out string message) // 각 행동의 이벤트 전투 상태 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 전투 방 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 조우 제어
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 회차 식별자
+            if (Flow.Phase != GamePhase.Combat || runStorage == null || travel == null || next == null || savedId != null && savedId != CurrentRunId) // 실제 전투와 기존 저장 검사
+            { // 오류 시작
+                message = "기존 저장 또는 전투 상태를 확인해 주세요."; // 다른 회차 보호 안내
+                return false; // 기존 회차와 전투 상태 보존
+            } // 오류 끝
+            var data = travel.CaptureBattleRewardRun(); // 안정된 전투 위치의 독립 저장본
+            if (data == null) // 실제 위치 저장 검사
+            { // 오류 시작
+                message = "현재 전투를 저장할 수 없습니다."; // 전투 위치 오류 안내
+                return false; // 실제 상태 보존
+            } // 오류 끝
+            data.hasTrialEventBattle = true; // 별도 전투 복원 표시
+            data.trialEventBattle = next.Snapshot(); // 완료한 행동과 참가자 기록
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 참가자와 행동의 재생 검증 및 저장
+            { // 오류 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 오류 안내 시작
+                    message = "이벤트 전투 상태를 저장할 수 없습니다."; // 기본 저장 오류
+                } // 오류 안내 끝
+                return false; // 저장 실패 시 이전 상태 보존
+            } // 오류 끝
+            trialEventBattle = next; // 저장 후 실제 전투 상태 적용
+            savedRun = data; // 마지막 정상 저장 갱신
+            savedRunValid = true; // 저장된 전투 재개 허용
+            return true; // 실제 행동 저장 성공
+        } // 저장 끝
+        private int EventBattleRoll() // 시험 전투의 주도권 주사위
+        { // 주사위 시작
+            return TrialEventBattleRollOverride == null ? chestRandom.Next(1, 21) : TrialEventBattleRollOverride(1, 21); // 실제 난수 또는 검증값
+        } // 주사위 끝
+        public bool TryEventBattleAction(int targetIndex, int action, out string message) // 플레이어 행동과 전투 기록 저장
+        { // 행동 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (trialEventBattleScreen == null || trialEventBattle == null || trialEventBattle.Snapshot().turn != -1 || !trialEventBattle.TryAction(targetIndex, action, EventBattleRoll(), EventBattleRoll(), out var next)) // 플레이어 주도권과 대상 및 행동 검사
+            { // 오류 시작
+                message = "현재 행동을 선택할 수 없습니다. 시험 전투를 중단할 수 있습니다."; // 행동 한도와 상태 안내
+                return false; // 잘못된 행동 차단
+            } // 오류 끝
+            if (!CommitTrialEventBattle(next, out message)) // 완료 행동의 안전한 저장
+            { // 오류 시작
+                return false; // 저장 전 상태 보존
+            } // 오류 끝
+            var observed = next.Snapshot().enemies[targetIndex]; // 저장된 실제 대상 상태
+            message = action == 0 ? "관찰 · 상대 " + (observed.slot + 1) + " · 체력 " + observed.health + " · 시험 매력 " + observed.charm : "시험 행동 " + action + " 적용"; // 관찰 정보 또는 실제 행동 결과
+            QueueEventBattleAuto(); // 다음 적 주도권의 자동 처리
+            return true; // 저장된 행동 완료
+        } // 행동 끝
+        public bool TryAdvanceEventBattle(out string message) // 현재 적의 한 행동과 기록 저장
+        { // 행동 시작
+            message = string.Empty; // 기본 안내 초기화
+            var current = CurrentTrialEventBattle; // 현재 전투 상태
+            if (trialEventBattleScreen == null || trialEventBattle == null || current == null || current.outcome != 0 || current.turn < 0 || !trialEventBattle.TryAction(current.turn, 1, EventBattleRoll(), EventBattleRoll(), out var next)) // 실제 적 주도권과 시험 행동 검사
+            { // 오류 시작
+                message = "상대 행동을 진행할 수 없습니다. 시험 전투를 중단할 수 있습니다."; // 상태 또는 기록 한도 안내
+                return false; // 잘못된 적 행동 차단
+            } // 오류 끝
+            if (!CommitTrialEventBattle(next, out message)) // 적 행동의 안전한 저장
+            { // 오류 시작
+                return false; // 이전 행동 상태 보존
+            } // 오류 끝
+            message = "상대의 시험 행동 완료"; // 저장된 적 행동 안내
+            QueueEventBattleAuto(); // 이어지는 적 주도권 자동 처리
+            return true; // 실제 적 행동 완료
+        } // 행동 끝
+        private void QueueEventBattleAuto() // 적 주도권의 중복 없는 자동 처리 요청
+        { // 요청 시작
+            var current = CurrentTrialEventBattle; // 현재 저장 상태
+            if (trialEventBattleAuto == null && trialEventBattleScreen != null && current != null && current.outcome == 0 && current.turn >= 0) // 실제 적 차례와 중복 코루틴 검사
+            { // 자동 처리 시작
+                trialEventBattleAuto = StartCoroutine(AdvanceEventBattleAutomatically()); // 한 행동씩 저장하는 자동 처리
+            } // 자동 처리 끝
+        } // 요청 끝
+        private IEnumerator AdvanceEventBattleAutomatically() // 적 행동별 저장과 화면 갱신
+        { // 처리 시작
+            yield return null; // 화면 표시와 입력 잠금 대기
+            while (trialEventBattleScreen != null && CurrentTrialEventBattle != null && CurrentTrialEventBattle.outcome == 0 && CurrentTrialEventBattle.turn >= 0) // 남은 적 주도권 검사
+            { // 적 행동 시작
+                if (trialEventBattleScreen.IsRetreatConfirmationOpen) // 중단 확인 화면 검사
+                { // 자동 행동 대기 시작
+                    yield return null; // 사용자 확인 중 전투 상태 보존
+                    continue; // 확인 종료 후 같은 적 차례 재검사
+                } // 자동 행동 대기 끝
+                if (!TryAdvanceEventBattle(out var message)) // 실제 적 행동과 저장 검사
+                { // 오류 시작
+                    trialEventBattleScreen.ShowAdvanceFailure(message); // 재시도 가능한 저장 오류 표시
+                    break; // 무한 저장 재시도 차단
+                } // 오류 끝
+                trialEventBattleScreen.Refresh(); // 저장된 행동 상태 표시
+                yield return null; // 다음 행동 전 화면 갱신
+            } // 적 행동 끝
+            trialEventBattleAuto = null; // 종료된 자동 처리 참조 해제
+        } // 처리 끝
+        public bool TryFinishEventBattle(out string message) // 실제 승패 결과의 안전한 확정
+        { // 완료 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 조우 방 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 조우 제어
+            var battle = CurrentTrialEventBattle; // 저장된 이벤트 전투 결과
+            if (Flow.Phase != GamePhase.Combat || trialEventBattleScreen == null || travel == null || battle == null || battle.outcome == 0) // 실제 종료 상태 검사
+            { // 오류 시작
+                message = "전투 결과를 확인할 수 없습니다."; // 결과 오류 안내
+                return false; // 미완료 전투 차단
+            } // 오류 끝
+            if (battle.outcome == 2) // 정력 소진 패배 검사
+            { // 패배 시작
+                if (!TryRecordDefeat(travel.CurrentMonsterId, BattleDefeatReason.StaminaZero, out message)) // 실제 상대와 패배 원인 기록
+                { // 저장 오류 시작
+                    return false; // 패배 기록 전 현재 전투 보존
+                } // 저장 오류 끝
+                CloseEventBattleScreen(); // 기록된 패배 화면과 자동 처리 정리
+                ReturnToTitle(); // 기록과 회차 종료 후 타이틀 복귀
+                return true; // 패배 결과 확정
+            } // 패배 끝
+            if (!ExperienceRules.TryAdvance(Level, Experience, battle.experience, out var growth)) // 실제 승리 경험치 성장 검사
+            { // 오류 시작
+                message = "전투 경험치를 계산할 수 없습니다."; // 성장 오류 안내
+                return false; // 잘못된 보상 차단
+            } // 오류 끝
+            var data = travel.CaptureBattleRewardRun(); // 완료할 조우의 독립 저장본
+            if (data == null || !travel.PrepareCompletedEncounter(data)) // 실제 조우 완료 검사
+            { // 오류 시작
+                message = "전투 완료 위치를 확인할 수 없습니다."; // 조우 오류 안내
+                return false; // 중복 조우 완료 차단
+            } // 오류 끝
+            data.hasTrialEventBattle = false; // 별도 전투 복원 종료
+            data.trialEventBattle = null; // 완료한 행동 기록 제거
+            data.level = growth.Level; // 성장 후 레벨
+            data.experience = growth.CurrentExperience; // 성장 후 경험치
+            data.statPoints += growth.GainedStatPoints; // 추가 스탯 포인트
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 완료와 경험치의 단일 저장
+            { // 오류 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 안내 시작
+                    message = "전투 결과를 저장할 수 없습니다."; // 기본 저장 오류
+                } // 안내 끝
+                return false; // 지급과 조우 완료 보존
+            } // 오류 끝
+            savedRun = data; // 완료된 회차 저장
+            Level = data.level; // 저장된 레벨 적용
+            Experience = data.experience; // 저장된 경험치 적용
+            StatPoints = data.statPoints; // 저장된 스탯 포인트 적용
+            travel.CompleteCurrentEncounter(); // 저장된 실제 조우 완료 적용
+            CloseEventBattleScreen(); // 별도 전투 화면 정리
+            EndCombat(); // 실제 탐험 복귀
+            return true; // 안전한 승리 확정
+        } // 완료 끝
+        private void CloseEventBattleScreen() // 저장된 이벤트 전투 화면 정리
+        { // 정리 시작
+            if (trialEventBattleAuto != null) // 진행 중인 적 행동 검사
+            { // 자동 처리 정리 시작
+                StopCoroutine(trialEventBattleAuto); // 남은 적 행동 중단
+                trialEventBattleAuto = null; // 코루틴 참조 해제
+            } // 자동 처리 정리 끝
+            if (trialEventBattleScreen != null) // 실제 이벤트 전투 화면 검사
+            { // 화면 제거 시작
+                trialEventBattleScreen.gameObject.SetActive(false); // 화면 입력 차단
+                Destroy(trialEventBattleScreen.gameObject); // 완료 화면 제거
+                trialEventBattleScreen = null; // 화면 참조 해제
+            } // 화면 제거 끝
+            trialEventBattle = null; // 완료된 전투 참조 해제
+        } // 정리 끝
+        public bool TryRetreatEventBattle(out string message) // 보상 포기의 시험 전투 중단
+        { // 중단 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 조우 방 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 제어
+            var battle = CurrentTrialEventBattle; // 저장된 전투와 참가자
+            if (Flow.Phase != GamePhase.Combat || trialEventBattleScreen == null || travel == null || battle == null || battle.outcome != 0 || !travel.CanReturnToPreviousRoom()) // 진행 전투와 안전한 이전 방 검사
+            { // 오류 시작
+                message = "이전 방으로 중단할 수 없습니다."; // 안전한 복귀 안내
+                return false; // 잘못된 전투 중단 차단
+            } // 오류 끝
+            var data = travel.CaptureBattleRewardRun(); // 현재 위치의 독립 저장본
+            if (data == null) // 안정된 저장 위치 검사
+            { // 오류 시작
+                message = "전투 중단을 저장할 수 없습니다."; // 위치 오류 안내
+                return false; // 현재 전투 보존
+            } // 오류 끝
+            var health = new int[travel.IsGroupEncounter ? 2 : 1]; // 원래 조우의 적별 잔여 체력
+            foreach (var enemy in battle.enemies) // 이벤트에 참여한 상대 순회
+            { // 적 상태 복사 시작
+                if (enemy.slot >= 0 && enemy.slot < health.Length && enemy.status == 0) // 아직 참여 중인 적 검사
+                { // 생존 복사 시작
+                    health[enemy.slot] = enemy.health; // 해당 슬롯의 실제 잔여 체력
+                } // 생존 복사 끝
+            } // 적 상태 복사 끝
+            if (travel.IsGroupEncounter) // 실제 다수 조우 검사
+            { // 다수 저장 시작
+                data.groupEnemyHealth = health; // 제거된 적을 제외한 개별 체력
+            } // 다수 저장 끝
+            else if (travel.TutorialEncounter != null && travel.RoomX == travel.TutorialEncounter.RoomX && travel.RoomY == travel.TutorialEncounter.RoomY && !travel.TutorialCompleted) // 첫 조우 방 검사
+            { // 첫 조우 저장 시작
+                data.tutorialHealth = health[0]; // 살아 있는 첫 상대 체력
+            } // 첫 조우 저장 끝
+            else // 상위 개체 조우 분기
+            { // 상위 저장 시작
+                data.encounterHealth = health[0]; // 살아 있는 상위 상대 체력
+            } // 상위 저장 끝
+            var entry = travel.Layout.GetConnection(data.previousRoomX, data.previousRoomY, data.roomX, data.roomY); // 이전 방에서 현재 방으로 들어온 출구
+            if (entry == null) // 실제 이전 방 연결 검사
+            { // 연결 오류 시작
+                message = "이전 방의 연결을 확인할 수 없습니다."; // 중단 위치 오류 안내
+                return false; // 잘못된 복귀 저장 차단
+            } // 연결 오류 끝
+            var originX = data.roomX; // 현재 방 가로 좌표 보관
+            var originY = data.roomY; // 현재 방 세로 좌표 보관
+            data.roomX = data.previousRoomX; // 저장할 복귀 방 가로 좌표
+            data.roomY = data.previousRoomY; // 저장할 복귀 방 세로 좌표
+            data.playerX = entry.ApproachX; // 이전 방의 실제 복귀 가로 칸
+            data.playerY = entry.ApproachY; // 이전 방의 실제 복귀 세로 칸
+            data.previousRoomX = originX; // 복귀 전 방의 가로 좌표
+            data.previousRoomY = originY; // 복귀 전 방의 세로 좌표
+            data.hasPreviousRoom = true; // 실제 역방향 연결 유지
+            data.hasTrialEventBattle = false; // 중단한 별도 전투 해제
+            data.trialEventBattle = null; // 미완료 시험 전투 기록 제거
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 중단과 상대 체력의 단일 저장
+            { // 오류 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 오류 안내 시작
+                    message = "전투 중단을 저장할 수 없습니다."; // 기본 저장 오류
+                } // 오류 안내 끝
+                return false; // 저장 실패 시 전투 유지
+            } // 오류 끝
+            savedRun = data; // 안전한 중단 저장 갱신
+            if (travel.IsGroupEncounter) // 다수 상대의 실제 체력 반영
+            { // 다수 적용 시작
+                travel.StoreCurrentGroupHealth(health); // 저장된 개별 체력 적용
+            } // 다수 적용 끝
+            else // 단일 상대 체력 반영
+            { // 단일 적용 시작
+                travel.StoreCurrentEncounterHealth(health[0]); // 저장된 잔여 체력 적용
+            } // 단일 적용 끝
+            var returned = travel.TryReturnToPreviousRoom(); // 실제 이전 방 복귀
+            CloseEventBattleScreen(); // 중단한 전투 화면 정리
+            EndCombat(); // 탐험 상태 복귀
+            message = returned ? "시험 전투 중단 · 보상 포기" : "전투를 중단했습니다. 현재 방 상태를 확인하세요."; // 실제 복귀 결과 안내
+            return true; // 저장된 중단 처리 완료
+        } // 중단 끝
         public TrialEventSaveData CurrentEvent // 현재 방의 독립 이벤트 상태
         { // 속성 시작
             get // 현재 상태 조회

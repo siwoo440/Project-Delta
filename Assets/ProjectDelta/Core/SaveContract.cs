@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 16; // 시험 상인 배치를 포함한 저장 버전
+        public const int CurrentVersion = 17; // 시험 이벤트 전투를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -121,6 +121,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool trialEventsEnabled; // 시험 이벤트 배치 활성 여부
         public SavedFloorTrialEvent[] trialEvents; // 층별 시험 이벤트 기록
         public bool trialNpcEnabled; // 시험 상인 배치 활성 여부
+        public bool hasTrialEventBattle; // 진행 중인 이벤트 전투 존재 여부
+        public TrialEventBattleSaveData trialEventBattle; // 마지막 완료 행동의 이벤트 전투
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
@@ -135,6 +137,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 방 콘텐츠 오류 시작
                 return false; // 누락 또는 중복된 층 상태 차단
             } // 방 콘텐츠 오류 끝
+            if (version >= 17 && hasTrialEventBattle && (hasPendingReward || !TrialEventBattleState.TryRestore(trialEventBattle, out _))) // 이벤트 전투와 기존 보상 상태 검사
+            { // 전투 저장 오류 시작
+                return false; // 손상 또는 중복 보상 전투 차단
+            } // 전투 저장 오류 끝
             if (version >= 16 && trialNpcEnabled && !trialEventsEnabled) // 상인과 기존 콘텐츠 활성 검사
             { // 오류 시작
                 return false; // 필요한 기존 배치가 없는 상인 차단

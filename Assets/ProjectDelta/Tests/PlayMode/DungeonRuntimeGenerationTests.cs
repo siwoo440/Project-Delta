@@ -2780,6 +2780,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             for (var index = 0; index < 5; index++) // 기본 유물 한도 채우기
             { // 유물 획득 시작
                 GameObject.Find("TrialRelic_" + index).GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 시험 유물 획득
+                Assert.That(app.Relics.Count, Is.EqualTo(index + 1), GameObject.Find("EconomyNotice").GetComponent<UnityEngine.UI.Text>().text); // 개별 거래의 실제 저장 오류 확인
+                var savedRelics = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var relicWarning); // 실제 저장된 유물 상태 조회
+                Assert.That(relicWarning, Is.Empty); // 정상 저장과 복구 오류 검사
+                Assert.That(savedRelics.relicIds.Length, Is.EqualTo(index + 1)); // 매 획득 후 실제 파일의 유물 수 확인
             } // 유물 획득 끝
             Assert.That(app.Relics.Count, Is.EqualTo(5)); // 기본 유물 한도 확인
             GameObject.Find("TrialRelic_5").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 여섯 번째 유물 선택
@@ -4304,7 +4308,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(GameObject.Find("PlayerHealth").GetComponent<RectTransform>().anchoredPosition.y, Is.LessThan(0f)); // 플레이어 체력의 하단 배치
             Assert.That(GameObject.Find("RoundStatus").GetComponent<RectTransform>().anchoredPosition.y, Is.GreaterThan(0f)); // 라운드의 상단 배치
             Assert.That(GameObject.Find("RelicStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("유물")); // 상단 유물 상태 확인
-            Assert.That(GameObject.Find("TemptBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 유혹 행동 차단
+            Assert.That(GameObject.Find("TemptBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 시험 이벤트 전투 선택 표시
             Assert.That(GameObject.Find("PersuadeBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 회유 차단
             Assert.That(GameObject.Find("ObserveBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 관찰 차단
             var playerLayout = playerPortrait.GetComponent<BattlePortraitLayout>(); // 주인공의 하단 화면 배치

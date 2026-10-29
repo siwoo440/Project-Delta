@@ -29,6 +29,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button potion; // 시험 회복약 행동 버튼
         private Button skill; // 강한 일격 시험 기술 버튼
         private Button itemButton; // 선택한 전투 소비품 사용 버튼
+        private Button tempt; // 시험 이벤트 전투 진입 버튼
         private GameObject itemDialog; // 전투 아이템 선택 화면
         private Text itemNotice; // 선택한 아이템의 사용 결과
         private Text playerMana; // 현재 플레이어 마나 표시
@@ -141,12 +142,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.potion.onClick.AddListener(view.UsePotion); // 전투 회복약 행동 연결
                 view.skill = UiFactory.CreateButton(canvas.transform, "StrongStrikeButton", "강한 일격", new Vector2(0f, -275f)); // 시험 전투 기술 버튼
                 view.skill.onClick.AddListener(view.StrongStrike); // 실제 기술 사용 연결
-                var tempt = UiFactory.CreateButton(canvas.transform, "TemptBattleButton", "유혹 · 준비 중", Vector2.zero); // 미구현 유혹 행동
+                view.tempt = UiFactory.CreateButton(canvas.transform, "TemptBattleButton", "유혹 · 시험", Vector2.zero); // 시험 이벤트 전투 진입
+                view.tempt.onClick.AddListener(view.StartEventBattle); // 진입 요청 연결
                 var persuade = UiFactory.CreateButton(canvas.transform, "PersuadeBattleButton", "회유 · 준비 중", Vector2.zero); // 미구현 전투 회유 행동
                 var observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰 · 준비 중", Vector2.zero); // 미구현 전투 관찰 행동
                 view.itemButton = UiFactory.CreateButton(canvas.transform, "BattleItemListButton", "아이템 선택", Vector2.zero); // 전투 중 보유 아이템 선택
                 view.itemButton.onClick.AddListener(view.OpenBattleItems); // 실제 전투 아이템 화면 연결
-                tempt.interactable = false; // 미구현 유혹 차단
                 persuade.interactable = false; // 미구현 전투 회유 차단
                 observe.interactable = false; // 미구현 전투 관찰 차단
                 view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "항복", Vector2.zero); // 하단 항복과 결과 복귀 버튼
@@ -163,7 +164,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.surrenderDialog.SetActive(false); // 확인 화면 초기 숨김
                 var actionLayout = canvas.gameObject.AddComponent<CombatActionLayout>(); // 화면 너비별 행동 배치
                 actionLayout.Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill, -380f); // 하단 첫 행동 줄 배치
-                actionLayout.SetSecondaryRow(new[] { tempt, persuade, observe, view.itemButton, view.exit }, -475f); // 아이템과 항복의 하단 두 번째 줄
+                actionLayout.SetSecondaryRow(new[] { view.tempt, persuade, observe, view.itemButton, view.exit }, -475f); // 아이템과 항복의 하단 두 번째 줄
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
                 { // 기본 선택 시작
@@ -264,6 +265,65 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 준비 실패 조건 끝
             ContinueUntilPlayer(); // 빠른 상대 행동과 첫 플레이어 차례 처리
         } // 준비 끝
+        private void StartEventBattle() // 시험 이벤트 전투 진입 요청
+        { // 진입 시작
+            if (owner == null) // 전투 관리자 검사
+            { // 관리자 누락 시작
+                notice.text = "전투 상태를 확인할 수 없습니다."; // 관리자 오류 안내
+                return; // 잘못된 진입 차단
+            } // 관리자 누락 끝
+            if (!owner.TryStartEventBattle(this, out var message)) // 상태 저장과 진입 검사
+            { // 진입 실패 시작
+                notice.text = message; // 실제 실패 안내
+            } // 진입 실패 끝
+        } // 진입 끝
+        public bool TryCaptureEventBattle(out TrialEventBattleState state, out string message) // 실제 생존 적의 이벤트 전투 준비
+        { // 준비 시작
+            state = null; // 기본 생성 실패
+            message = string.Empty; // 기본 오류 없음
+            if (owner == null || owner.Flow.Phase != GamePhase.Combat || itemDialog != null || surrenderDialog == null || surrenderDialog.activeSelf || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || player == null || !player.Actor.IsAlive || lastActionFrame == Time.frameCount) // 플레이어 차례와 화면 상태 검사
+            { // 진입 불가 시작
+                message = "현재 이벤트 전투를 시작할 수 없습니다."; // 현재 행동 차단 안내
+                return false; // 잘못된 전투 상태 차단
+            } // 진입 불가 끝
+            var travelObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체
+            var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 조우 확인
+            if (travel == null || travel.IsCurrentMimic) // 시험 미믹의 별도 보상 검사
+            { // 대상 오류 시작
+                message = travel == null ? "현재 조우 정보를 확인할 수 없습니다." : "미믹은 상자 보상 연결 준비 중으로 이벤트 전투를 사용할 수 없습니다."; // 실제 차단 이유
+                return false; // 미믹과 누락된 조우 차단
+            } // 대상 오류 끝
+            var monsterId = travel.CurrentMonsterId; // 현재 방의 실제 종족
+            var fighters = groupFighters ?? new[] { enemy }; // 원래 적 슬롯 순서
+            var alive = new System.Collections.Generic.List<TrialEventBattleEnemy>(); // 생존 대상 복사 목록
+            for (var index = 0; index < fighters.Length; index++) // 원래 적 슬롯 순회
+            { // 적 검사 시작
+                var fighter = fighters[index]; // 실제 전투 대상
+                if (fighter != null && fighter.Actor.IsAlive && fighter.Health > 0) // 현재 생존 대상 검사
+                { // 생존 대상 시작
+                    alive.Add(new TrialEventBattleEnemy { id = monsterId + ":" + index, slot = index, health = fighter.Health, charm = 50 }); // 시험 매력과 원본 슬롯 복사
+                } // 생존 대상 끝
+            } // 적 검사 끝
+            var killed = rewardEligibleEnemies - alive.Count; // 이번 전투에서 처치한 보상 대상 수
+            var elite = monsterId == "trial-elite"; // 상위 개체 보상 구분
+            if (alive.Count < 1 || killed < 0 || !ExperienceRules.TryCalculateVictory(travel.Floor, elite ? 0 : alive.Count, elite ? alive.Count : 0, out var aliveExperience)) // 생존 대상과 층 경험치 검사
+            { // 경험치 오류 시작
+                message = "이벤트 전투 대상과 경험치를 확인할 수 없습니다."; // 유효하지 않은 대상 안내
+                return false; // 잘못된 참여자 차단
+            } // 경험치 오류 끝
+            var priorExperience = 0; // 이번 전투의 이전 처치 경험치
+            if (killed > 0 && !ExperienceRules.TryCalculateVictory(travel.Floor, elite ? 0 : killed, elite ? killed : 0, out priorExperience)) // 이전 처치의 실제 경험치 검사
+            { // 이전 처치 오류 시작
+                message = "이전 처치 경험치를 확인할 수 없습니다."; // 잘못된 경험치 안내
+                return false; // 보상 오류 차단
+            } // 이전 처치 오류 끝
+            if (!TrialEventBattleState.TryCreate(alive.ToArray(), 100, 50, aliveExperience, priorExperience, out state)) // 시험 정력과 매력 및 경험치 생성
+            { // 생성 오류 시작
+                message = "이벤트 전투를 준비할 수 없습니다."; // 생성 실패 안내
+                return false; // 무효한 시작 상태 차단
+            } // 생성 오류 끝
+            return true; // 검증된 독립 전투 전달
+        } // 준비 끝
         private void Advance() // 플레이어 기본 공격과 적 기본 행동
         { // 행동 시작
             if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
@@ -353,6 +413,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             potion.interactable = false; // 선택 중 바로 사용 차단
             skill.interactable = false; // 선택 중 기술 차단
             itemButton.interactable = false; // 중복 아이템 화면 차단
+            tempt.interactable = false; // 선택 중 이벤트 전투 차단
             exit.interactable = false; // 선택 중 항복 차단
             if (groupTargets != null) // 다수 대상 버튼 검사
             { // 대상 잠금 시작
@@ -426,6 +487,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             potion.interactable = true; // 바로 사용 복구
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
+            tempt.interactable = true; // 이벤트 전투 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 생존한 적의 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 전투 기본 선택 복구
@@ -602,6 +664,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             potion.interactable = false; // 종료된 전투의 회복약 사용 차단
             skill.interactable = false; // 종료된 전투의 기술 차단
             itemButton.interactable = false; // 종료된 전투의 아이템 선택 차단
+            tempt.interactable = false; // 종료된 전투의 진입 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             return true; // 전투 종료 확인
@@ -630,6 +693,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 potion.interactable = false; // 확인 중 회복 차단
                 skill.interactable = false; // 확인 중 기술 차단
                 itemButton.interactable = false; // 확인 중 아이템 선택 차단
+                tempt.interactable = false; // 항복 확인 중 진입 차단
                 exit.interactable = false; // 중복 확인 화면 차단
                 if (groupTargets != null) // 다수 대상 버튼 검사
                 { // 대상 잠금 시작
@@ -723,6 +787,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             potion.interactable = true; // 회복 선택 복구
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
+            tempt.interactable = true; // 이벤트 전투 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 다수 적의 생존 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 기존 행동 선택 복귀
@@ -757,6 +822,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             potion.interactable = false; // 패배 후 회복 차단
             skill.interactable = false; // 패배 후 기술 차단
             itemButton.interactable = false; // 패배 후 아이템 선택 차단
+            tempt.interactable = false; // 패배 후 진입 차단
             exit.transform.Find("Label").GetComponent<Text>().text = "기록 후 타이틀로"; // 저장 실패 시 재시도 안내
             var travelObject = GameObject.Find("RoomTravel"); // 현재 조우 객체
             var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 실제 조우 상태

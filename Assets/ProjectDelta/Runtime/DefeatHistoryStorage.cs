@@ -207,7 +207,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 추가 끝
         private bool IsValidRecord(string transactionId, string targetId, BattleDefeatReason reason) // 패배 기록의 식별자와 원인 검사
         { // 검사 시작
-            if (!ValidId(transactionId) || !ValidId(targetId) || (reason != BattleDefeatReason.HealthZero && reason != BattleDefeatReason.Surrender)) // 식별자와 원인 범위 검사
+            if (!ValidId(transactionId) || !ValidId(targetId) || (reason != BattleDefeatReason.HealthZero && reason != BattleDefeatReason.Surrender && reason != BattleDefeatReason.StaminaZero)) // 식별자와 원인 범위 검사
             { // 형식 오류 시작
                 return false; // 잘못된 기록 차단
             } // 형식 오류 끝
