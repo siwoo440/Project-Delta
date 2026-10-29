@@ -27,6 +27,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public static bool? RoomContentTestOverride { get; set; } // 자동 검증용 시험 콘텐츠 활성 설정
         public bool RoomContentEnabled { get; private set; } // 현재 회차의 상자와 함정 활성 여부
         public FloorRoomContent CurrentContent => currentContent; // 현재 층 콘텐츠 조회
+        public static bool? TrialEventTestOverride { get; set; } // 자동 검증의 이벤트 활성 설정
+        public bool TrialEventsEnabled { get; private set; } // 현재 회차의 이벤트 활성 여부
+        private readonly List<SavedFloorTrialEvent> trialEvents = new List<SavedFloorTrialEvent>(); // 층별 시험 이벤트 기록
+        public DungeonRoom TrialEventRoom => CurrentTrialEventRecord == null ? null : Layout.GetRoom(CurrentTrialEventRecord.x, CurrentTrialEventRecord.y); // 현재 층의 시험 이벤트 방
+        public SavedFloorTrialEvent CurrentTrialEventRecord => trialEvents.Find(value => value.floor == Floor); // 현재 층 이벤트 기록
+        public bool IsTrialEventPending => IsReady && TrialEventRoom != null && RoomX == TrialEventRoom.X && RoomY == TrialEventRoom.Y && CurrentTrialEventRecord.eventData.phase < 2 && !HasCompletedTrialEvent(); // 현재 방의 미완료 시험 이벤트
         public bool IsTrapPending => IsReady && currentContent != null && currentContent.TrapRoom.X == RoomX && currentContent.TrapRoom.Y == RoomY && !currentContent.Snapshot().trapCompleted; // 현재 방의 미처리 함정 여부
         private bool tutorialCompleted; // 첫 슬라임 조우 완료 여부
         private int tutorialHealth; // 도망한 슬라임의 남은 체력
@@ -175,6 +181,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 shopStocks = AppRoot.Instance.ShopStocksSnapshot(), // 방문한 층의 상품과 재고
                 roomContentEnabled = RoomContentEnabled, // 현재 회차의 시험 방 콘텐츠 여부
                 roomContents = RoomContentSnapshots(), // 방문한 층의 상자와 함정 기록
+                trialEventsEnabled = TrialEventsEnabled, // 현재 회차의 시험 이벤트 활성 여부
+                trialEvents = TrialEventSnapshots(), // 층별 고정 이벤트와 결과
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
                 doorLock = lockData, // 현재 층의 잠금 기록
                 hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부
@@ -406,6 +414,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 콘텐츠 오류 시작
                     throw new InvalidOperationException("Invalid room content state."); // 잘못된 상자와 함정 상태 차단
                 } // 콘텐츠 오류 끝
+                TrialEventsEnabled = RoomContentEnabled && (saved != null && saved.version >= 15 ? saved.trialEventsEnabled : TrialEventTestOverride ?? true); // 새 회차 또는 저장된 이벤트 활성 여부
+                if (TrialEventsEnabled && !InitializeTrialEvents(saved)) // 층별 시험 이벤트 준비 검사
+                { // 이벤트 오류 시작
+                    throw new InvalidOperationException("Invalid trial event placement."); // 기존 콘텐츠와 충돌 차단
+                } // 이벤트 오류 끝
                 AddContentMarkers(rooms, currentContent); // 실제 상자 방의 시험 표시 추가
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
@@ -504,6 +517,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 추적 구성 생성 끝
                 motion.Initialize(player); // 실제 플레이어 추적 시작
             } // 카메라 연결 끝
+            if (saved != null && IsTrialEventPending) // 복원된 이벤트 방의 미완료 상태 검사
+            { // 복원 이벤트 시작
+                StartCoroutine(OpenTrialEventAfterTransition(Floor, RoomX, RoomY)); // 저장된 선택 또는 결과 화면 복원
+            } // 복원 이벤트 끝
             if (saved != null && currentContent != null && currentContent.TrapRoom.X == state.RoomX && currentContent.TrapRoom.Y == state.RoomY && !currentContent.Snapshot().trapCompleted) // 복원된 함정 방의 미처리 상태 검사
             { // 복원 함정 처리 시작
                 StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 복원 후 최초 미처리 함정 판정
@@ -632,6 +649,82 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 새 콘텐츠 생성 끝
             return true; // 모든 층 배치 준비 완료
         } // 준비 끝
+        private static SavedFloorTrialEvent CopyTrialEvent(SavedFloorTrialEvent record) // 이벤트 기록의 독립 복사
+        { // 복사 시작
+            return record != null && TrialEventState.TryRestore(record.eventData, out var restored) ? new SavedFloorTrialEvent { floor = record.floor, x = record.x, y = record.y, eventData = restored.Snapshot() } : null; // 좌표와 검증된 독립 상태
+        } // 복사 끝
+        public SavedFloorTrialEvent[] TrialEventSnapshots() // 현재 회차의 독립 이벤트 기록
+        { // 저장본 시작
+            var result = new SavedFloorTrialEvent[trialEvents.Count]; // 독립 기록 배열
+            for (var index = 0; index < result.Length; index++) // 층별 기록 순회
+            { // 복사 시작
+                result[index] = CopyTrialEvent(trialEvents[index]); // 검증된 기록 복사
+            } // 복사 끝
+            return result; // 독립 이벤트 목록 전달
+        } // 저장본 끝
+        public SavedFloorTrialEvent[] TrialEventSnapshotsWith(TrialEventState next) // 현재 층의 변경 상태를 포함한 독립 기록
+        { // 저장본 시작
+            var records = TrialEventSnapshots(); // 현재 기록 복사
+            for (var index = 0; index < records.Length; index++) // 층별 기록 검사
+            { // 현재 층 검색 시작
+                if (records[index].floor == Floor && next != null) // 현재 층과 새 이벤트 검사
+                { // 변경 시작
+                    records[index].eventData = next.Snapshot(); // 변경된 이벤트 기록
+                    return records; // 독립 저장본 전달
+                } // 변경 끝
+            } // 현재 층 검색 끝
+            return null; // 현재 층 누락 차단
+        } // 저장본 끝
+        public bool ApplyTrialEvent(TrialEventState next) // 저장 성공 후 현재 이벤트 적용
+        { // 적용 시작
+            var record = CurrentTrialEventRecord; // 현재 층 이벤트
+            if (record == null || next == null || next.Snapshot().eventId != record.eventData.eventId) // 대상과 식별자 검사
+            { // 오류 시작
+                return false; // 다른 이벤트 적용 차단
+            } // 오류 끝
+            record.eventData = next.Snapshot(); // 저장된 독립 상태 적용
+            return true; // 실제 상태 적용 완료
+        } // 적용 끝
+        private bool HasCompletedTrialEvent() // 같은 회차의 동일 이벤트 완료 여부
+        { // 검사 시작
+            return trialEvents.Exists(value => value.eventData.phase == 2); // 모든 층의 완료 상태 검사
+        } // 검사 끝
+        private bool TryCreateTrialEvent(int floor, DungeonLayout layout, int seed, FloorRoomContent content, out SavedFloorTrialEvent record) // 기존 콘텐츠와 겹치지 않는 시험 이벤트 생성
+        { // 생성 시작
+            record = null; // 기본 생성 실패
+            var excluded = TrialRoomContentPlacement.Excluded(layout, floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+            if (excluded == null || content == null || !TrialEventPlacement.TrySelect(layout, seed, content.Snapshot(), excluded, out var room) || !TrialEventState.TryCreate("trial-event-01", Seed & 1, out var initial)) // 결정적 방과 회차 선택 순서 검사
+            { // 오류 시작
+                return false; // 공간 부족과 잘못된 이벤트 차단
+            } // 오류 끝
+            record = new SavedFloorTrialEvent { floor = floor, x = room.X, y = room.Y, eventData = initial.Snapshot() }; // 실제 좌표와 고정 순서
+            return true; // 안전한 이벤트 생성
+        } // 생성 끝
+        private bool InitializeTrialEvents(RunSaveData saved) // 저장과 이전 회차의 이벤트 복원
+        { // 복원 시작
+            if (saved != null && saved.version >= 15) // 이벤트 저장 버전 검사
+            { // 저장 복원 시작
+                foreach (var record in saved.trialEvents) // 저장된 이벤트 순회
+                { // 복사 시작
+                    var copy = CopyTrialEvent(record); // 검증된 독립 기록
+                    if (copy == null) // 손상된 이벤트 검사
+                    { // 오류 시작
+                        return false; // 손상 상태 복원 차단
+                    } // 오류 끝
+                    trialEvents.Add(copy); // 복원된 층 기록 보관
+                } // 복사 끝
+            } // 저장 복원 끝
+            if (CurrentTrialEventRecord == null) // 이전 버전 또는 새 회차 검사
+            { // 생성 시작
+                var seed = Floor == 1 ? Seed : unchecked(Seed + 7919); // 현재 층의 생성 씨드
+                if (!TryCreateTrialEvent(Floor, Layout, seed, currentContent, out var record)) // 현재 층의 이벤트 방 검사
+                { // 오류 시작
+                    return false; // 다른 콘텐츠 침범 차단
+                } // 오류 끝
+                trialEvents.Add(record); // 현재 층 시험 이벤트 보관
+            } // 생성 끝
+            return true; // 이벤트 준비 완료
+        } // 복원 끝
         public int CurrentEncounterHealth() // 현재 방의 후퇴한 시험 적 체력 조회
         { // 조회 시작
             if (!IsReady) // 현재 던전 준비 상태 검사
@@ -813,6 +906,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
+            if (IsTrialEventPending) // 이전 저장에 실패한 이벤트 검사
+            { // 이벤트 재시도 시작
+                StartCoroutine(OpenTrialEventAfterTransition(Floor, RoomX, RoomY)); // 현재 방의 이벤트 화면 재시도
+                return; // 이벤트 처리 전 상호작용 차단
+            } // 이벤트 재시도 끝
             if (IsTrapPending) // 이전 저장에 실패한 함정 검사
             { // 함정 재시도 시작
                 StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 같은 방에서 함정 저장 재시도
@@ -925,6 +1023,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 함정 판정 준비 시작
                 StartCoroutine(ApplyTrapAfterTransition(Floor, state.RoomX, state.RoomY)); // 방 전환 종료 후 즉시 함정 처리
             } // 함정 판정 준비 끝
+            if (IsTrialEventPending) // 처음 진입한 시험 이벤트 방 검사
+            { // 이벤트 시작 준비
+                StartCoroutine(OpenTrialEventAfterTransition(Floor, RoomX, RoomY)); // 방 전환 후 자동 화면 진입
+            } // 이벤트 준비 끝
             if (TutorialEnabled && IsTutorialRoom() && !tutorialCompleted) // 첫 연결 방의 슬라임 검사
             { // 첫 조우 시작
                 AppRoot.Instance.StartEncounter(); // 실제 일반 조우 선택 진입
@@ -934,6 +1036,34 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 실제 다수 조우 선택 진입
             } // 다수 조우 끝
         } // 처리 끝
+        private IEnumerator OpenTrialEventAfterTransition(int expectedFloor, int x, int y) // 전환 후 시험 이벤트 자동 진입
+        { // 대기 시작
+            if (input != null) // 탐험 입력 검사
+            { // 입력 잠금 시작
+                input.SetPhase(GamePhase.Loading); // 이벤트 준비 전 이동 차단
+            } // 입력 잠금 끝
+            yield return null; // 같은 프레임 전환 대기
+            while (AppRoot.Instance != null && AppRoot.Instance.Flow.Phase == GamePhase.Loading) // 저장 재개 전환 검사
+            { // 복원 대기 시작
+                yield return null; // 탐험 상태 대기
+            } // 복원 대기 끝
+            while (player != null && (player.IsRoomTransitionLocked || player.IsMoving)) // 방 이동 완료 검사
+            { // 이동 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 이동 대기 끝
+            if (!IsReady || Floor != expectedFloor || RoomX != x || RoomY != y || !IsTrialEventPending || AppRoot.Instance == null) // 현재 방과 미완료 상태 검사
+            { // 대상 변경 시작
+                yield break; // 다른 이벤트와 중복 표시 차단
+            } // 대상 변경 끝
+            if (!AppRoot.Instance.OpenTrialEvent(out var message)) // 이벤트의 저장과 화면 진입 검사
+            { // 저장 오류 시작
+                DoorNoticeChanged?.Invoke(message + " · E: 다시 시도 · ESC: 메뉴"); // 재시도와 메뉴 안내
+                if (input != null && AppRoot.Instance.Flow.Phase == GamePhase.Exploration) // 탐험 입력 복구 검사
+                { // 복구 시작
+                    input.SetPhase(GamePhase.Exploration); // 오류 후 재시도 입력 허용
+                } // 복구 끝
+            } // 저장 오류 끝
+        } // 대기 끝
         private IEnumerator ApplyTrapAfterTransition(int expectedFloor, int x, int y) // 전환 완료 후 실제 함정 저장과 발동
         { // 대기 시작
             if (input != null) // 함정 판정 전 입력 검사
@@ -1288,6 +1418,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                         throw new InvalidOperationException("Invalid next floor content."); // 기존 층을 유지한 전환 차단
                     } // 생성 오류 끝
                 } // 다음 층 콘텐츠 생성 끝
+                SavedFloorTrialEvent nextEvent = null; // 다음 층의 시험 이벤트 기록
+                if (TrialEventsEnabled && !TryCreateTrialEvent(Floor + 1, nextLayout, nextSeed, nextContent, out nextEvent)) // 다음 층 이벤트 방 검사
+                { // 오류 시작
+                    throw new InvalidOperationException("Invalid next floor event."); // 공간 부족 시 기존 층 보존
+                } // 오류 끝
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
                 stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
                 stage.SetActive(false); // 준비 중 화면 노출 방지
@@ -1346,6 +1481,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     currentContent = nextContent; // 다음 층 콘텐츠 연결
                     roomContents.Add(nextContent); // 이전 층 콘텐츠를 보존한 새 층 추가
                 } // 콘텐츠 확정 끝
+                if (nextEvent != null) // 다음 층 이벤트 검사
+                { // 이벤트 확정 시작
+                    trialEvents.Add(nextEvent); // 이전 층 기록을 보존한 새 이벤트
+                } // 이벤트 확정 끝
                 AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
             catch (Exception exception) // 새 층 준비 실패 처리

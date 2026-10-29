@@ -103,6 +103,38 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 누락된 현재 층의 복원 차단
                 } // 누락 오류 끝
             } // 콘텐츠 복원 검사 끝
+            if (data.version >= 15 && data.trialEventsEnabled) // 이벤트 위치와 회차 검증
+            { // 이벤트 검사 시작
+                var currentEventFound = false; // 현재 층의 이벤트 존재 여부
+                foreach (var record in data.trialEvents) // 층별 이벤트 순회
+                { // 배치 검증 시작
+                    SavedFloorRoomContent content = null; // 이벤트 층의 방 콘텐츠
+                    foreach (var candidate in data.roomContents) // 저장된 콘텐츠 순회
+                    { // 층 비교 시작
+                        if (candidate.floor == record.floor) // 같은 층 검사
+                        { // 일치 시작
+                            content = candidate; // 현재 이벤트 층의 콘텐츠
+                            break; // 추가 검색 종료
+                        } // 일치 끝
+                    } // 층 비교 끝
+                    var eventSeed = record.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 층별 재현 씨드
+                    var eventLayout = DungeonGenerator.GenerateVersioned(eventSeed, generationVersion); // 실제 층의 결정적 구조
+                    var excluded = TrialRoomContentPlacement.Excluded(eventLayout, record.floor, generationVersion, data.groupEncounterEnabled); // 기존 조우 방 제외
+                    if (content == null || excluded == null || !TrialEventPlacement.TrySelect(eventLayout, eventSeed, content, excluded, out var eventRoom) || eventRoom.X != record.x || eventRoom.Y != record.y || record.eventData.choices[0] != (data.seed & 1)) // 좌표와 회차 선택 순서 검사
+                    { // 오류 시작
+                        return false; // 변경된 방 또는 선택 순서 차단
+                    } // 오류 끝
+                    if (record.eventData.phase == 1 && (record.floor != data.floor || record.x != data.roomX || record.y != data.roomY)) // 확인 전 결과의 실제 위치 검사
+                    { // 위치 오류 시작
+                        return false; // 확인 전 다른 방으로 이동한 저장 차단
+                    } // 위치 오류 끝
+                    currentEventFound |= record.floor == data.floor; // 현재 층 이벤트 확인
+                } // 배치 검증 끝
+                if (!currentEventFound) // 현재 층 이벤트 누락 검사
+                { // 오류 시작
+                    return false; // 복원 불가능한 기록 차단
+                } // 오류 끝
+            } // 이벤트 검사 끝
             if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY, data.secretPassages) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
             { // 던전 오류 시작
                 return false; // 잘못된 던전 상태 거절

@@ -25,6 +25,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public static bool? AutomaticEncounterTestOverride { get; set; } // 조우 방식의 독립 검증 설정
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private ChestScreenView chestScreen; // 현재 상자 확인 화면
+        private TrialEventScreenView trialEventScreen; // 현재 시험 이벤트 화면
+        public static System.Func<int, int, int> TrialEventRollOverride { get; set; } // 독립 이벤트 난수 검증
         private readonly System.Random chestRandom = new System.Random(); // 상자와 함정 시험 난수
         public static System.Func<int, int, int> ChestRollOverride { get; set; } // 자동 검증용 상자 난수
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
@@ -954,6 +956,141 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = success + " · 저장 완료"; // 실제 거래와 저장 결과 안내
             return true; // 안전한 거래 확정 완료
         } // 저장 끝
+        public TrialEventSaveData CurrentEvent // 현재 방의 독립 이벤트 상태
+        { // 속성 시작
+            get // 현재 상태 조회
+            { // 조회 시작
+                var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+                var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+                var record = travel == null || !travel.IsTrialEventPending ? null : travel.CurrentTrialEventRecord; // 현재 방의 미완료 이벤트
+                return record != null && TrialEventState.TryRestore(record.eventData, out var state) ? state.Snapshot() : null; // 독립 저장 상태 전달
+            } // 조회 끝
+        } // 속성 끝
+        public string EventDisabledReason // 시험 행동의 실제 조건 안내
+        { // 속성 시작
+            get // 조건 조회
+            { // 조회 시작
+                return TrialEventRules.CanChoose(0, Gold, out var reason) ? string.Empty : reason + " · 현재 골드 " + Gold; // 비용과 현재 골드 안내
+            } // 조회 끝
+        } // 속성 끝
+        public float EventProbability => TrialEventRules.SuccessCount(50) / 4f; // 장비를 제외한 실제 사백 조합 확률
+        public bool OpenTrialEvent(out string message) // 현재 이벤트의 저장과 자동 화면 열기
+        { // 열기 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            if (trialEventScreen != null || travel == null || !travel.IsTrialEventPending || !TrialEventState.TryRestore(CurrentEvent, out var state) || !Flow.TryOpenInventory()) // 현재 이벤트와 탐험 상태 검사
+            { // 오류 시작
+                message = "이벤트를 열 수 없습니다."; // 화면 오류 안내
+                return false; // 중복 화면 차단
+            } // 오류 끝
+            Input.SetPhase(GamePhase.Inventory); // 탐험 입력 잠금
+            if (!TryCommitTrialEvent(travel, state, Gold, out message)) // 선택 순서와 현재 위치의 사전 저장
+            { // 저장 오류 시작
+                Flow.TryCloseInventory(); // 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 재시도 입력 복구
+                return false; // 저장 전 화면 차단
+            } // 저장 오류 끝
+            try // 화면 생성 보호
+            { // 생성 시작
+                trialEventScreen = TrialEventScreenView.Create(this); // 저장된 선택 또는 결과 표시
+                return true; // 화면 진입 완료
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 복구 시작
+                Flow.TryCloseInventory(); // 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 재시도 입력 복구
+                Debug.LogError("Trial event screen failed: " + exception.Message); // 실제 오류 기록
+                message = "이벤트 화면을 열 수 없습니다."; // 화면 오류 안내
+                return false; // 저장된 상태 보존
+            } // 복구 끝
+        } // 열기 끝
+        private bool TryCommitTrialEvent(RoomTravelController travel, TrialEventState next, int gold, out string message) // 이벤트와 골드의 단일 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 안내 초기화
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 회차 식별자
+            if (Flow.Phase != GamePhase.Inventory || runStorage == null || travel == null || next == null || gold < 0 || savedId != null && savedId != CurrentRunId) // 화면과 회차 및 골드 검사
+            { // 오류 시작
+                message = "기존 저장 또는 이벤트 상태를 확인해 주세요."; // 안전한 저장 안내
+                return false; // 다른 회차와 잘못된 상태 보호
+            } // 오류 끝
+            var data = travel.CaptureInventoryRun(); // 현재 위치의 독립 회차
+            var events = travel.TrialEventSnapshotsWith(next); // 변경된 이벤트의 독립 목록
+            if (data == null || events == null) // 안정된 위치와 기록 검사
+            { // 오류 시작
+                message = "현재 이벤트를 저장할 수 없습니다."; // 위치 오류 안내
+                return false; // 원본 상태 보존
+            } // 오류 끝
+            data.trialEvents = events; // 선택 또는 결과의 고정 기록
+            data.gold = gold; // 비용과 보상을 반영한 잔액
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 회차 검증과 실제 저장
+            { // 오류 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 안내 시작
+                    message = "이벤트를 저장할 수 없습니다."; // 기본 저장 오류
+                } // 안내 끝
+                return false; // 저장 실패 시 실제 상태 보존
+            } // 오류 끝
+            travel.ApplyTrialEvent(next); // 저장된 이벤트 단계 적용
+            Gold = gold; // 저장된 재화 적용
+            savedRun = data; // 마지막 정상 저장 갱신
+            savedRunValid = true; // 재개 허용
+            message = "이벤트 저장 완료"; // 실제 저장 결과 안내
+            return true; // 원자적 저장 완료
+        } // 저장 끝
+        public bool TryChooseTrialEvent(int choice, out string message) // 고정 선택과 판정 결과 저장
+        { // 선택 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            var saved = CurrentEvent; // 현재 이벤트 저장 상태
+            if (trialEventScreen == null || travel == null || !TrialEventState.TryRestore(saved, out var state) || choice < 0 || choice > 1) // 화면과 실제 선택 검사
+            { // 오류 시작
+                message = "이벤트 선택을 확인할 수 없습니다."; // 선택 오류 안내
+                return false; // 잘못된 선택 차단
+            } // 오류 끝
+            var index = System.Array.IndexOf(saved.choices, choice); // 저장된 표시 순서의 선택 위치
+            var attack = choice == 0 ? 50 : 0; // 장비를 제외한 시험 이벤트 공격력
+            var playerRoll = choice == 0 ? TrialEventRoll(1, 21) : 0; // 행동 시 플레이어 주사위
+            var eventRoll = choice == 0 ? TrialEventRoll(1, 21) : 0; // 행동 시 이벤트 주사위
+            if (!state.TryChoose(index, Gold, attack, playerRoll, eventRoll, System.Guid.NewGuid().ToString("N"), out var next, out message)) // 조건과 판정 결과 검사
+            { // 오류 시작
+                return false; // 선택과 결과 보존
+            } // 오류 끝
+            var result = next.Snapshot(); // 고정된 비용과 결과
+            var balance = (long)Gold - result.cost + result.rewardGold; // 정수 범위를 보호한 재화 결과
+            if (balance < 0 || balance > int.MaxValue) // 재화 범위 검사
+            { // 오류 시작
+                message = "이벤트 재화를 계산할 수 없습니다."; // 계산 오류 안내
+                return false; // 잘못된 지급 차단
+            } // 오류 끝
+            return TryCommitTrialEvent(travel, next, (int)balance, out message); // 결과 표시 전 비용과 보상 저장
+        } // 선택 끝
+        private int TrialEventRoll(int minimum, int maximum) // 이벤트 판정 전용 난수
+        { // 난수 시작
+            return TrialEventRollOverride == null ? chestRandom.Next(minimum, maximum) : TrialEventRollOverride(minimum, maximum); // 실제 난수 또는 검증값
+        } // 난수 끝
+        public bool ConfirmTrialEvent(out string message) // 저장된 이벤트 결과 확인
+        { // 확인 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            if (trialEventScreen == null || travel == null || !TrialEventState.TryRestore(CurrentEvent, out var state) || !state.TryComplete(out var next)) // 실제 결과와 완료 전이 검사
+            { // 오류 시작
+                message = "이벤트 결과를 확인할 수 없습니다."; // 확인 오류 안내
+                return false; // 중복 완료 차단
+            } // 오류 끝
+            if (!TryCommitTrialEvent(travel, next, Gold, out message)) // 완료 기록의 안전한 저장
+            { // 오류 시작
+                return false; // 저장 실패 시 결과 화면 보존
+            } // 오류 끝
+            Flow.TryCloseInventory(); // 탐험 상태 복구
+            trialEventScreen.gameObject.SetActive(false); // 이전 화면 입력 차단
+            Destroy(trialEventScreen.gameObject); // 완료한 이벤트 화면 제거
+            trialEventScreen = null; // 화면 참조 해제
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+            return true; // 확인 완료
+        } // 확인 끝
         public ChestSaveData CurrentChest // 현재 방의 독립 상자 상태
         { // 속성 시작
             get // 현재 상자 조회

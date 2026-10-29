@@ -141,7 +141,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 차단 조건 끝
             var room = GameObject.Find("RoomTravel"); // 현재 던전 이동 객체
             var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 상태 조회
-            if (travel != null && travel.IsTrapPending) // 미처리 함정 검사
+            if (travel != null && (travel.IsTrapPending || travel.IsTrialEventPending)) // 미처리 함정 검사
             { // 이동 차단 시작
                 return; // 함정 저장 전 방 이탈 차단
             } // 이동 차단 끝

@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 14; // 층별 상자와 함정을 포함한 저장 버전
+        public const int CurrentVersion = 15; // 층별 이벤트를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -118,6 +118,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public ShopStockData[] shopStocks; // 방문한 층의 확정된 상품과 재고
         public bool roomContentEnabled; // 상자와 함정 시험 배치 활성 여부
         public SavedFloorRoomContent[] roomContents; // 방문한 층의 상자와 함정 상태
+        public bool trialEventsEnabled; // 시험 이벤트 배치 활성 여부
+        public SavedFloorTrialEvent[] trialEvents; // 층별 시험 이벤트 기록
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
@@ -132,6 +134,30 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 방 콘텐츠 오류 시작
                 return false; // 누락 또는 중복된 층 상태 차단
             } // 방 콘텐츠 오류 끝
+            if (version >= 15) // 층별 시험 이벤트 검사
+            { // 이벤트 검사 시작
+                if (trialEvents == null || trialEvents.Length > 2 || trialEventsEnabled && !roomContentEnabled || !trialEventsEnabled && trialEvents.Length != 0) // 이벤트 목록과 활성 상태 검사
+                { // 오류 시작
+                    return false; // 누락 또는 비활성 상태의 이벤트 차단
+                } // 오류 끝
+                var eventFloors = new HashSet<int>(); // 중복 층 검사
+                var completedEvents = 0; // 회차당 결정된 이벤트 수
+                foreach (var record in trialEvents) // 저장된 층별 이벤트 순회
+                { // 기록 검사 시작
+                    if (record == null || record.floor < 1 || record.floor > floor || !eventFloors.Add(record.floor) || !TrialEventState.TryRestore(record.eventData, out var eventState) || record.eventData.eventId != "trial-event-01") // 층과 이벤트 상태 검사
+                    { // 오류 시작
+                        return false; // 중복 또는 손상 이벤트 차단
+                    } // 오류 끝
+                    if (eventState.Snapshot().phase > 0) // 선택이 확정된 이벤트 검사
+                    { // 완료 검사 시작
+                        completedEvents++; // 회차당 결정 수 증가
+                    } // 완료 검사 끝
+                } // 기록 검사 끝
+                if (completedEvents > 1) // 중복 결정 검사
+                { // 오류 시작
+                    return false; // 같은 회차의 중복 결과 차단
+                } // 오류 끝
+            } // 이벤트 검사 끝
             if (version >= 13 && (!RelicState.TryRestore(relicIds, out _) || shopStocks == null || shopStocks.Length > 2)) // 유물과 현재 시험 층의 상점 수 검사
             { // 경제 저장 오류 시작
                 return false; // 잘못된 유물과 상점 목록 차단
@@ -230,6 +256,14 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 순회 끝
             return true; // 기본 형식 검사 통과
         } // 검사 끝
+    } // 클래스 끝
+    [Serializable] // 층별 이벤트 직렬화 형식
+    public sealed class SavedFloorTrialEvent // 이벤트 방과 상태 기록
+    { // 클래스 시작
+        public int floor; // 이벤트 층 번호
+        public int x; // 이벤트 방 가로 좌표
+        public int y; // 이벤트 방 세로 좌표
+        public TrialEventSaveData eventData; // 고정 선택과 결과
     } // 클래스 끝
     [Serializable] // 저장 형식 직렬화
     public sealed class ProfileSaveData // 회차 간 영구 기록 범위

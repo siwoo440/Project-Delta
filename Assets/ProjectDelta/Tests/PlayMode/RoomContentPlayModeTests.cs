@@ -23,6 +23,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [SetUp] // 시험 준비
         public void Setup() // 독립 저장과 실제 콘텐츠 활성화
         { // 준비 시작
+            RoomTravelController.TrialEventTestOverride = false; // 상자와 함정의 독립 검증
             RoomTravelController.RoomContentTestOverride = true; // 실제 시험 방 콘텐츠 사용
             RoomTravelController.TutorialEncounterTestOverride = false; // 독립 콘텐츠 검증
             AppRoot.AutomaticEncounterTestOverride = false; // 시험 조우 화면 사용
@@ -41,6 +42,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 시험 정리
         public IEnumerator Cleanup() // 검증 설정과 객체 복구
         { // 정리 시작
+            RoomTravelController.TrialEventTestOverride = null; // 시험 이벤트 설정 복구
             RoomTravelController.RoomContentTestOverride = null; // 콘텐츠 설정 해제
             RoomTravelController.TutorialEncounterTestOverride = null; // 조우 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 던전 시드 해제
