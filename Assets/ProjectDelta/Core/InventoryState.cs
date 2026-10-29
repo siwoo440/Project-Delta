@@ -58,6 +58,17 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 새 묶음 채우기 끝
             return new InventoryAddResult(requested - remaining, remaining); // 실제 추가와 남은 수량 전달
         } // 획득 끝
+        public bool TrySwap(int first, int second) // 두 슬롯의 전체 아이템 교환
+        { // 교환 시작
+            if (first < 0 || first >= slots.Count || second < 0 || second >= slots.Count) // 두 슬롯의 범위 검사
+            { // 범위 오류 조건 시작
+                return false; // 잘못된 슬롯 변경 차단
+            } // 범위 오류 조건 끝
+            var previous = slots[first]; // 첫 슬롯의 전체 묶음 보관
+            slots[first] = slots[second]; // 두 번째 묶음을 첫 슬롯에 이동
+            slots[second] = previous; // 첫 묶음을 두 번째 슬롯에 이동
+            return true; // 수량과 중첩 한도를 보존한 교환 완료
+        } // 교환 끝
         public bool Remove(int slotIndex, int quantity, out int removed) // 슬롯의 아이템 수량 제거
         { // 제거 시작
             removed = 0; // 제거 수량 초기화

@@ -33,6 +33,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
     public sealed class DungeonRuntimeGenerationTests // 생성된 실제 던전 검증
     { // 클래스 시작
         private Keyboard keyboard; // 검증용 키보드
+        private Mouse mouse; // 검증용 마우스
         private Gamepad gamepad; // 검증용 게임패드
         private GameObject testPrototype; // 오류 경로 검증용 방 객체
         private GameObject testController; // 오류 경로 검증용 제어 객체
@@ -816,6 +817,161 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 다음 프레임 대기
             attack.onClick.Invoke(); // 다음 프레임의 새 공격 요청
             Assert.That(health.text, Does.Contain("0/70")); // 새 공격과 승리 처리 확인
+        } // 검증 끝
+        [UnityTest] // 키보드 슬롯 이동과 취소 검증
+        public IEnumerator Inventory_SlotMove_KeyboardAndCancel() // 실제 키보드 선택과 수량 보존
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            AppRoot.Instance.Inventory.Add("potion", "물약", 3, 5); // 시험용 아이템 보관
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var first = GameObject.Find("InventorySlotButton_0"); // 출발 슬롯 버튼
+            var second = GameObject.Find("InventorySlotButton_1"); // 도착 슬롯 버튼
+            Assert.That(first, Is.Not.Null); // 슬롯 선택 제공 확인
+            Assert.That(second, Is.Not.Null); // 빈 슬롯 선택 제공 확인
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(first); // 출발 슬롯 선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 출발 슬롯 확정
+            yield return null; // 선택 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 키 해제 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 이동 선택 취소
+            yield return null; // 취소 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 취소 키 해제
+            yield return null; // 키 해제 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Inventory)); // 이동 취소 후 화면 유지
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(3)); // 취소한 아이템 보존
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(first); // 출발 슬롯 재선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 출발 슬롯 확정
+            yield return null; // 선택 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 키 해제 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.DownArrow)); // 아래 도착 슬롯 이동
+            yield return null; // 방향 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 방향 키 해제
+            yield return null; // 선택 이동 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(second)); // 실제 도착 슬롯 선택
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Enter)); // 이동 확정
+            yield return null; // 이동 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 선택 키 해제
+            yield return null; // 키 해제 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 원래 슬롯 비움
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 이동된 수량 보존
+        } // 검증 끝
+        [UnityTest] // 게임패드 슬롯 교환 검증
+        public IEnumerator Inventory_SlotMove_GamepadExchangesStacks() // 실제 게임패드 이동과 교환
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            AppRoot.Instance.Inventory.Add("potion", "물약", 3, 5); // 첫 아이템
+            AppRoot.Instance.Inventory.Add("herb", "약초", 2, 3); // 두 번째 아이템
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var first = GameObject.Find("InventorySlotButton_0"); // 출발 슬롯 버튼
+            var second = GameObject.Find("InventorySlotButton_1"); // 도착 슬롯 버튼
+            Assert.That(first, Is.Not.Null); // 슬롯 선택 제공 확인
+            for (var index = 0; index < 5; index++) // 기본 획득 버튼에서 첫 슬롯까지 이동
+            { // 게임패드 선택 이동 시작
+                InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadUp)); // 위쪽 선택 입력
+                yield return null; // 방향 입력 처리 대기
+                InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+                yield return null; // 선택 변경 반영 대기
+            } // 게임패드 선택 이동 끝
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(first)); // 기본 선택에서 첫 슬롯 접근 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 출발 슬롯 확정
+            yield return null; // 선택 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 버튼 해제
+            yield return null; // 해제 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadDown)); // 아래 도착 슬롯 이동
+            yield return null; // 방향 입력 반영
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 선택 이동 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(second)); // 실제 도착 슬롯 선택
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 이동 확정
+            yield return null; // 교환 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].ItemId, Is.EqualTo("herb")); // 첫 슬롯 교환 결과
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].ItemId, Is.EqualTo("potion")); // 두 번째 슬롯 교환 결과
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 물약 수량 보존
+        } // 검증 끝
+        [UnityTest] // 드래그 중 다른 입력의 중복 변경 차단 검증
+        public IEnumerator Inventory_SlotMove_DragBlocksOtherChanges() // 드래그 도중 다른 입력 차단
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            AppRoot.Instance.Inventory.Add("potion", "물약", 3, 5); // 시험용 아이템 보관
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var first = GameObject.Find("InventorySlotButton_0"); // 출발 슬롯 버튼
+            var second = GameObject.Find("InventorySlotButton_1"); // 도착 슬롯 버튼
+            var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current); // 시험 마우스 이벤트
+            pointer.pointerDrag = first; // 드래그 출발 슬롯 지정
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.beginDragHandler); // 실제 슬롯 드래그 시작
+            GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 드래그 중 시험 아이템 획득 요청
+            second.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 드래그 중 다른 슬롯 선택 요청
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].IsEmpty, Is.True); // 드래그 중 아이템 추가 차단
+            UnityEngine.EventSystems.ExecuteEvents.Execute(second, pointer, UnityEngine.EventSystems.ExecuteEvents.dropHandler); // 도착 슬롯에 놓기
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.endDragHandler); // 드래그 종료
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 출발 슬롯 비움
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 드래그한 수량 보존
+        } // 검증 끝
+        [UnityTest] // 가상 마우스의 실제 슬롯 드래그 검증
+        public IEnumerator Inventory_SlotMove_ActualMouseDrag() // 실제 입력 장치로 슬롯 이동
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            mouse = InputSystem.AddDevice<Mouse>(); // 시험 마우스 연결
+            InputSystem.Update(); // 입력 장치 반영
+            AppRoot.Instance.Inventory.Add("potion", "물약", 3, 5); // 시험용 아이템 보관
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            yield return null; // 화면 위치 반영 대기
+            var first = GameObject.Find("InventorySlotButton_0").GetComponent<RectTransform>(); // 출발 슬롯 위치
+            var second = GameObject.Find("InventorySlotButton_1").GetComponent<RectTransform>(); // 도착 슬롯 위치
+            var start = RectTransformUtility.WorldToScreenPoint(null, first.position); // 출발 슬롯 화면 좌표
+            var end = RectTransformUtility.WorldToScreenPoint(null, second.position); // 도착 슬롯 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = start }); // 출발 위치로 마우스 이동
+            yield return null; // 위치 반영 대기
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = start }.WithButton(MouseButton.Left)); // 출발 슬롯 누름
+            yield return null; // 누름 처리 대기
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = end }.WithButton(MouseButton.Left)); // 도착 슬롯으로 드래그
+            yield return null; // 드래그 처리 대기
+            yield return null; // 도착 슬롯 반영 대기
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = end }); // 도착 슬롯에서 버튼 해제
+            yield return null; // 놓기 처리 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 실제 입력의 출발 슬롯 비움
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 실제 입력의 수량 보존
+        } // 검증 끝
+        [UnityTest] // 드래그와 바깥 취소 검증
+        public IEnumerator Inventory_SlotMove_DragDropAndOutsideCancel() // 실제 슬롯의 드래그 이벤트 전달
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            AppRoot.Instance.Inventory.Add("potion", "물약", 3, 5); // 시험용 아이템 보관
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            var first = GameObject.Find("InventorySlotButton_0"); // 출발 슬롯 버튼
+            var second = GameObject.Find("InventorySlotButton_1"); // 도착 슬롯 버튼
+            Assert.That(first, Is.Not.Null); // 슬롯 드래그 제공 확인
+            Assert.That(second, Is.Not.Null); // 도착 슬롯 제공 확인
+            var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current); // 시험 마우스 이벤트
+            pointer.pointerDrag = first; // 드래그 출발 슬롯 지정
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.beginDragHandler); // 실제 슬롯 드래그 시작
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.endDragHandler); // 슬롯 밖 드래그 종료
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(3)); // 슬롯 밖 취소 시 수량 보존
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.beginDragHandler); // 다시 드래그 시작
+            UnityEngine.EventSystems.ExecuteEvents.Execute(second, pointer, UnityEngine.EventSystems.ExecuteEvents.dropHandler); // 실제 도착 슬롯에 놓기
+            UnityEngine.EventSystems.ExecuteEvents.Execute(first, pointer, UnityEngine.EventSystems.ExecuteEvents.endDragHandler); // 드래그 종료
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 원래 슬롯 비움
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 이동한 아이템 수량 보존
+            yield return null; // 화면 배치 반영 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("InventoryCanvas"); // 실제 인벤토리 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
         } // 검증 끝
         [UnityTest] // 키보드 인벤토리 왕복과 새 게임 검증
         public IEnumerator Inventory_OpensAddsClosesAndResets() // 실제 인벤토리 입력과 상태 확인
@@ -2085,6 +2241,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             { // 게임패드 정리 시작
                 InputSystem.RemoveDevice(gamepad); // 검증용 게임패드 제거
             } // 게임패드 정리 끝
+            if (mouse != null && mouse.added) // 검증 마우스 존재 검사
+            { // 마우스 정리 시작
+                InputSystem.RemoveDevice(mouse); // 검증용 마우스 제거
+            } // 마우스 정리 끝
             if (keyboard != null && keyboard.added) // 검증 키보드 존재 검사
             { // 키보드 정리 시작
                 InputSystem.RemoveDevice(keyboard); // 검증용 키보드 제거
