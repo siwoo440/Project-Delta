@@ -5,6 +5,15 @@ namespace ProjectDelta.Tests // 검증 이름 공간
 { // 이름 공간 시작
     public sealed class DungeonDiscoveryTests // 방 연결과 발견 정보 검증
     { // 클래스 시작
+        [Test] // 현재 방 중심의 미니맵 범위 검증
+        public void MiniMapWindow_ShowsOnlyFiveByFiveAroundCurrentRoom() // 다섯 칸 범위와 경계 확인
+        { // 검증 시작
+            Assert.That(MiniMapWindow.Contains(2, -2, 0, 0), Is.True); // 양쪽 끝 방 표시
+            Assert.That(MiniMapWindow.Contains(3, 0, 0, 0), Is.False); // 오른쪽 범위 밖 제외
+            Assert.That(MiniMapWindow.Contains(0, -3, 0, 0), Is.False); // 아래쪽 범위 밖 제외
+            Assert.That(MiniMapWindow.Contains(3, 0, 1, 0), Is.True); // 현재 방 이동 후 새 범위 표시
+            Assert.That(MiniMapWindow.Contains(int.MinValue, 0, int.MaxValue, 0), Is.False); // 좌표 차이의 정수 범위 보호
+        } // 검증 끝
         private static DungeonLayout MakeLayout() // 시험 방과 비밀 방 구성
         { // 구성 시작
             var rooms = new[] // 방 정의 목록

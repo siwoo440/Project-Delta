@@ -368,7 +368,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 문 검사 끝
             foreach (var room in layout.Rooms) // 생성된 방의 지도 표시 검사
             { // 지도 검사 시작
-                var visible = travel.Discovery.GetVisibility(room.X, room.Y) != RoomVisibility.Hidden; // 플레이어에게 공개된 방 여부
+                var visible = travel.Discovery.GetVisibility(room.X, room.Y) != RoomVisibility.Hidden && MiniMapWindow.Contains(room.X, room.Y, travel.RoomX, travel.RoomY); // 공개된 방과 미니맵 범위 확인
                 var image = GameObject.Find("DungeonMiniMap/MapContent/Room_" + room.X + "_" + room.Y); // 실제 미니맵 방 칸
                 Assert.That(image != null, Is.EqualTo(visible)); // 생성된 구조와 지도 공개 상태 일치
             } // 지도 검사 끝

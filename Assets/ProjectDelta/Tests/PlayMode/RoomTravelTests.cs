@@ -207,6 +207,10 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return TapKey(Key.E); // 두 번째 방 진입
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_1"), Is.Not.Null); // 새로 확인한 위쪽 방 표시
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.Not.EqualTo(connectedColor)); // 방문 방의 표시 변경
+            var currentRect = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<RectTransform>(); // 새 현재 방의 지도 위치
+            var previousRect = GameObject.Find("DungeonMiniMap/MapContent/Room_0_0").GetComponent<RectTransform>(); // 이전 방의 지도 위치
+            Assert.That(currentRect.anchoredPosition.x, Is.EqualTo(0f).Within(0.01f)); // 이동 후 현재 방의 가로 중앙 정렬
+            Assert.That(previousRect.anchoredPosition.x, Is.EqualTo(-22.4f).Within(0.01f)); // 이동 후 이전 방의 상대 위치
             yield return Move(player, Key.W); // 두 번째 방의 위쪽 이동
             yield return Move(player, Key.W); // 장애물 위쪽 경로 진입
             for (var index = 0; index < 7; index++) // 위쪽 문 아래 가로 이동

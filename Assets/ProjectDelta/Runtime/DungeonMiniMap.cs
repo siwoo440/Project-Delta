@@ -83,33 +83,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 child.gameObject.SetActive(false); // 즉시 이전 표시 가림
                 Destroy(child.gameObject); // 이전 표시 객체 제거
             } // 기존 표시 정리 끝
-            var minX = int.MaxValue; // 공개된 방의 최소 가로 좌표
-            var maxX = int.MinValue; // 공개된 방의 최대 가로 좌표
-            var minY = int.MaxValue; // 공개된 방의 최소 세로 좌표
-            var maxY = int.MinValue; // 공개된 방의 최대 세로 좌표
-            foreach (var room in travel.Layout.Rooms) // 실제 방의 공개 범위 순회
-            { // 공개 범위 검사 시작
-                if (travel.Discovery.GetVisibility(room.X, room.Y) == RoomVisibility.Hidden) // 숨겨진 방 검사
-                { // 비공개 조건 시작
-                    continue; // 미발견 방의 위치와 범위 제외
-                } // 비공개 조건 끝
-                minX = Mathf.Min(minX, room.X); // 공개된 최소 가로 좌표
-                maxX = Mathf.Max(maxX, room.X); // 공개된 최대 가로 좌표
-                minY = Mathf.Min(minY, room.Y); // 공개된 최소 세로 좌표
-                maxY = Mathf.Max(maxY, room.Y); // 공개된 최대 세로 좌표
-            } // 공개 범위 검사 끝
-            if (minX == int.MaxValue) // 공개된 방 존재 검사
-            { // 방 없음 조건 시작
-                return; // 표시할 방 없음
-            } // 방 없음 조건 끝
-            mapCenter = new Vector2(((float)minX + maxX) * 0.5f, ((float)minY + maxY) * 0.5f); // 공개된 방만의 중앙 좌표
-            spacing = Mathf.Min(48f, 168f / ((float)maxX - minX + 1f), 112f / ((float)maxY - minY + 1f)); // 공개 범위가 지도 안에 들어가는 간격
+            mapCenter = new Vector2(travel.RoomX, travel.RoomY); // 현재 방을 미니맵 중앙에 배치
+            spacing = 22.4f; // 다섯 칸이 화면 안에 들어가는 간격
             foreach (var door in travel.Layout.Doors) // 실제 연결 정보 순회
             { // 연결 순회 시작
                 if (door.RoomX > door.TargetRoomX || (door.RoomX == door.TargetRoomX && door.RoomY > door.TargetRoomY)) // 양방향 연결의 중복 검사
                 { // 중복 조건 시작
                     continue; // 반대 방향 연결선 생략
                 } // 중복 조건 끝
+                if (!MiniMapWindow.Contains(door.RoomX, door.RoomY, travel.RoomX, travel.RoomY) || !MiniMapWindow.Contains(door.TargetRoomX, door.TargetRoomY, travel.RoomX, travel.RoomY)) // 연결 양끝의 표시 범위 검사
+                { // 범위 밖 조건 시작
+                    continue; // 표시 범위 밖 연결 제외
+                } // 범위 밖 조건 끝
                 if (!travel.Discovery.IsConnectionVisible(door.RoomX, door.RoomY, door.TargetRoomX, door.TargetRoomY)) // 공개 가능한 연결 검사
                 { // 비공개 조건 시작
                     continue; // 미발견과 비밀 연결 표시 제외
@@ -122,6 +107,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 연결 순회 끝
             foreach (var room in travel.Layout.Rooms) // 실제 방 정의 순회
             { // 방 순회 시작
+                if (!MiniMapWindow.Contains(room.X, room.Y, travel.RoomX, travel.RoomY)) // 현재 방 주변 다섯 칸 범위 검사
+                { // 범위 밖 조건 시작
+                    continue; // 화면 범위 밖의 방 표시 제외
+                } // 범위 밖 조건 끝
                 var visibility = travel.Discovery.GetVisibility(room.X, room.Y); // 플레이어가 아는 방 상태
                 if (visibility == RoomVisibility.Hidden) // 미발견 또는 비밀 방 검사
                 { // 숨김 조건 시작
