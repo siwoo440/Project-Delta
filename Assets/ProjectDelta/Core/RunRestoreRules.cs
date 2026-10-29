@@ -17,17 +17,22 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 잘못된 기록 거절
                 } // 기록 오류 끝
             } // 기록 검사 끝
+            var generationVersion = data.version < 3 ? 1 : data.generationVersion; // 기존 저장과 새 생성 버전 구분
+            if (generationVersion < 1 || generationVersion > 2 || (data.version >= 3 && data.secretPassages == null)) // 생성 버전과 비밀 상태 검사
+            { // 생성 오류 시작
+                return false; // 알 수 없는 생성 규칙 거절
+            } // 생성 오류 끝
             var floorSeed = data.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 현재 층의 재현 시드
-            var layout = DungeonGenerator.Generate(floorSeed); // 저장된 층 구조 재생성
-            if (data.version == RunSaveData.CurrentVersion && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 새 저장과 실제 구조 지문 비교
+            var layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 층 구조
+            if (data.version >= 2 && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 저장된 구조와 실제 지문 비교
             { // 지문 오류 시작
                 return false; // 변경되거나 누락된 구조 거절
             } // 지문 오류 끝
-            if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
+            if (DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.roomX, data.roomY, data.secretPassages) == null || DoorLockState.FromSaved(layout, data.doorLock) == null) // 방문과 문 상태 검사
             { // 던전 오류 시작
                 return false; // 잘못된 던전 상태 거절
             } // 던전 오류 끝
-            if (data.hasPreviousRoom && (layout.GetConnection(data.previousRoomX, data.previousRoomY, data.roomX, data.roomY) == null || DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.previousRoomX, data.previousRoomY) == null)) // 이전 방의 연결과 방문 기록 검사
+            if (data.hasPreviousRoom && (layout.GetConnection(data.previousRoomX, data.previousRoomY, data.roomX, data.roomY) == null || DungeonDiscovery.FromSaved(layout, data.visitedRooms, data.previousRoomX, data.previousRoomY, data.secretPassages) == null)) // 이전 방의 연결과 방문 기록 검사
             { // 연결 오류 시작
                 return false; // 잘못된 이전 경로 거절
             } // 연결 오류 끝

@@ -20,6 +20,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private const int TrialForceAttack = 50; // 기존 기본 공격력의 시험 적용
         private const int TrialForceDifficulty = 50; // 아직 미정인 문의 시험 난이도
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
+        private int generationVersion = 2; // 현재 회차의 던전 생성 규칙
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
         private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
         private readonly Dictionary<string, int> encounterHealth = new Dictionary<string, int>(); // 층과 방별 후퇴한 시험 적의 체력
@@ -39,6 +40,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             set; // 검증 주사위 설정
         } // 속성 끝
         public event Action RoomChanged; // 성공한 방 이동 알림
+        public event Action DiscoveryChanged; // 비밀 통로 발견과 개방 알림
         public event Action<string> DoorNoticeChanged; // 문 상태 안내 변경 알림
         public RoomDoor TrialLockedDoor => doorLocks?.TrialDoor; // 현재 층의 시험 잠금 문
         public bool IsDoorLocked(RoomDoor door) // 문 연결의 잠금 여부
@@ -86,6 +88,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 저장 데이터 시작
                 version = RunSaveData.CurrentVersion, // 회차 형식 버전
                 seed = Seed, // 최초 던전 생성 시드
+                generationVersion = generationVersion, // 현재 회차의 생성 규칙
+                secretPassages = Discovery.SaveSecrets(), // 발견한 비밀 연결과 개방 상태
                 layoutFingerprint = DungeonLayoutFingerprint.Compute(Layout), // 저장 당시 현재 층의 구조 지문
                 floor = Floor, // 현재 층 번호
                 roomX = state.RoomX, // 현재 방 가로 좌표
@@ -281,14 +285,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 SaveTemplates(); // 변경 전 방 원형 보관
                 var saved = AppRoot.Instance.PendingRun; // 복원 대기 중인 회차
                 Seed = saved == null ? GenerationSeedOverride ?? Guid.NewGuid().GetHashCode() : saved.seed; // 새 게임 또는 저장된 시드
+                generationVersion = saved == null ? 2 : saved.version < 3 ? 1 : saved.generationVersion; // 새 회차 또는 저장된 생성 규칙
                 var floorSeed = saved != null && saved.floor == 2 ? unchecked(Seed + 7919) : Seed; // 저장 층의 생성 시드
-                Layout = DungeonGenerator.Generate(floorSeed); // 시드 기반 현재 층 구조 생성
+                Layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 현재 층 구조
                 doorLocks = saved == null ? new DoorLockState(Layout) : DoorLockState.FromSaved(Layout, saved.doorLock); // 새 문 또는 저장된 문 상태
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
                 DungeonPresentation.Apply(rooms); // 생성 이미지와 두 배 타일 표시 적용
-                Discovery = saved == null ? new DungeonDiscovery(Layout, 0, 0) : DungeonDiscovery.FromSaved(Layout, saved.visitedRooms, saved.roomX, saved.roomY); // 새 기록 또는 저장한 방문 기록
+                Discovery = saved == null ? new DungeonDiscovery(Layout, 0, 0) : DungeonDiscovery.FromSaved(Layout, saved.visitedRooms, saved.roomX, saved.roomY, saved.secretPassages); // 새 기록 또는 저장한 방문 기록
                 if (saved != null && (doorLocks == null || Discovery == null || !floorProgress.TryRestore(saved.floor))) // 저장된 던전 상태 검사
                 { // 복원 오류 조건 시작
                     throw new InvalidOperationException("Invalid saved dungeon state."); // 잘못된 저장 복원 거절
@@ -296,6 +301,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
                 UpdateLockMarkers(Layout, rooms, doorLocks); // 잠긴 문의 양방향 표시
+                UpdateSecretMarkers(Layout, rooms, Discovery); // 발견된 비밀벽의 표시 복원
             } // 검사 끝
             catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
@@ -415,6 +421,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return; // 탐험 외 조우 차단
             } // 검사 제외 조건 끝
             var room = Layout.GetRoom(state.RoomX, state.RoomY); // 현재 방 역할 조회
+            var wall = Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing); // 현재 바라보는 벽 조회
+            if (wall != null && wall.IsSecret && !Discovery.IsSecretDiscovered(wall)) // 미발견 비밀벽의 단서 검사
+            { // 단서 조건 시작
+                DoorNoticeChanged?.Invoke("벽에서 희미한 흔적 발견 · E / 패드 A: 조사"); // 비밀벽 조사 단서 안내
+            } // 단서 조건 끝
             if (room != null && room.Kind == RoomKind.Elite && !completedEncounters.Contains(EncounterKey()) && EncounterRange.Contains(player.X, player.Y, 0, 0)) // 대상 주변 여덟 방향 검사
             { // 자동 조우 조건 시작
                 AppRoot.Instance.StartEncounter(); // 조우 선택 화면과 대기 이동 취소
@@ -517,6 +528,25 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 문 없음 조건 시작
                 return; // 일치하는 출구 없음
             } // 문 없음 조건 끝
+            if (door.IsSecret && !Discovery.IsSecretDiscovered(door)) // 미발견 비밀벽 검사
+            { // 발견 시작
+                if (Discovery.TryDiscoverSecret(door)) // 실제 비밀벽 발견 검사
+                { // 발견 성공 시작
+                    UpdateSecretMarkers(Layout, rooms, Discovery); // 발견한 벽 표시 갱신
+                    DoorNoticeChanged?.Invoke("비밀벽을 발견했습니다 · E / 패드 A: 개방"); // 발견과 개방 안내
+                    DiscoveryChanged?.Invoke(); // 발견 지도 갱신
+                } // 발견 성공 끝
+                return; // 발견과 방 이동 분리
+            } // 발견 끝
+            if (door.IsSecret && !Discovery.IsSecretOpen(door)) // 발견했지만 닫힌 비밀벽 검사
+            { // 개방 시작
+                if (Discovery.TryOpenSecret(door)) // 실제 비밀벽 개방 검사
+                { // 개방 성공 시작
+                    DoorNoticeChanged?.Invoke("비밀 통로를 열었습니다 · E / 패드 A: 이동"); // 개방과 이동 안내
+                    DiscoveryChanged?.Invoke(); // 지도 갱신
+                } // 개방 성공 끝
+                return; // 개방과 방 이동 분리
+            } // 개방 끝
             var requiresKey = doorLocks.IsLocked(door); // 현재 문의 잠금 검사
             if (requiresKey && AppRoot.Instance.Keys.Count <= 0) // 열쇠 부족 검사
             { // 열쇠 부족 조건 시작
@@ -752,6 +782,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 방 검사 끝
             throw new InvalidOperationException("An encounter room binding is required."); // 조우 방 누락 거절
         } // 표시 끝
+        private static void UpdateSecretMarkers(DungeonLayout layout, RoomBinding[] bindings, DungeonDiscovery discovery) // 발견된 비밀벽 표시 갱신
+        { // 표시 갱신 시작
+            foreach (var binding in bindings) // 현재 층의 실제 방 순회
+            { // 방 순회 시작
+                foreach (var marker in binding.Root.GetComponentsInChildren<SecretDoorMarker>(true)) // 비밀벽 표시 순회
+                { // 표시 순회 시작
+                    var door = layout.GetConnection(marker.RoomX, marker.RoomY, marker.TargetX, marker.TargetY); // 표시의 실제 비밀 연결
+                    marker.gameObject.SetActive(discovery.IsSecretDiscovered(door)); // 발견한 연결만 표시
+                } // 표시 순회 끝
+            } // 방 순회 끝
+        } // 표시 갱신 끝
         private static void UpdateLockMarkers(DungeonLayout layout, RoomBinding[] bindings, DoorLockState locks) // 시험 문의 양방향 표시 갱신
         { // 표시 갱신 시작
             var first = locks.TrialDoor; // 시험 문 조회
@@ -823,7 +864,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             try // 다음 층의 방과 시작 위치 준비
             { // 준비 시작
                 var nextSeed = unchecked(Seed + floorProgress.Floor * 7919); // 층별 재현 가능한 새 시드
-                var nextLayout = DungeonGenerator.Generate(nextSeed); // 임시 1층 규칙으로 새 층 생성
+                var nextLayout = DungeonGenerator.GenerateVersioned(nextSeed, generationVersion); // 현재 회차 규칙으로 새 층 생성
                 var nextLocks = new DoorLockState(nextLayout); // 새 층의 독립 문 잠금
                 var nextDiscovery = new DungeonDiscovery(nextLayout, 0, 0); // 새 층의 독립 방문 기록
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
@@ -847,6 +888,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
                 AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
                 UpdateLockMarkers(nextLayout, nextRooms, nextLocks); // 새 층 잠긴 문 표시
+                UpdateSecretMarkers(nextLayout, nextRooms, nextDiscovery); // 새 층의 미발견 비밀벽 숨김
                 var start = Array.Find(nextRooms, room => room.X == 0 && room.Y == 0); // 새 층 시작 방 조회
                 var floor = start.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 시작 방 바닥
                 var obstacles = start.Root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 시작 방 장애물

@@ -44,6 +44,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             travel = controller; // 실제 방 이동 연결
             content = layer; // 지도 표시 영역 연결
             travel.RoomChanged += Rebuild; // 성공한 방 이동의 지도 갱신 연결
+            travel.DiscoveryChanged += Rebuild; // 비밀 통로 발견의 지도 갱신 연결
             Rebuild(); // 시작 방의 지도 표시
         } // 연결 끝
         private void OnDestroy() // 지도 이벤트 연결 해제
@@ -51,6 +52,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (travel != null) // 방 이동 객체 존재 검사
             { // 연결 해제 시작
                 travel.RoomChanged -= Rebuild; // 지도 갱신 구독 해제
+                travel.DiscoveryChanged -= Rebuild; // 비밀 발견 구독 해제
             } // 연결 해제 끝
         } // 정리 끝
         private void Update() // 플레이어 방향의 지도 표시 갱신

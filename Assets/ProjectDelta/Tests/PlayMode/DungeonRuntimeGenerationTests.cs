@@ -632,7 +632,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return EnterDungeon(); // 실제 던전 진입
             var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 조회
             var layout = travel.Layout; // 실제 이동과 지도가 공유하는 구조
-            Assert.That(layout.Rooms.Count, Is.InRange(11, 13)); // 실제 생성된 전체 방 수
+            Assert.That(layout.Rooms.Count, Is.InRange(12, 14)); // 시험 비밀방을 포함한 전체 방 수
             var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 객체 조회 메서드
             Assert.That(finder, Is.Not.Null); // 실제 방 조회 기능 확인
             foreach (var door in layout.Doors) // 생성된 모든 양방향 문 순회
@@ -664,7 +664,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                         markerFound = true; // 실제 문 표시 확인
                     } // 표시 일치 조건 끝
                 } // 표시 검사 끝
-                Assert.That(markerFound, Is.True, "Generated exit must have a visible marker."); // 실제 문 표시 누락 방지
+                Assert.That(markerFound, Is.EqualTo(!door.IsSecret), "Secret exits must remain hidden before discovery."); // 일반 문 표시와 미발견 비밀벽 숨김 확인
                 var targetFloor = target.transform.Find("Floor").GetComponent<Tilemap>(); // 도착 방의 바닥
                 var targetObstacles = target.transform.Find("Obstacles").GetComponent<Tilemap>(); // 도착 방의 장애물
                 var arrival = new Vector3Int(door.TargetX, door.TargetY, 0); // 생성된 도착 칸
@@ -676,6 +676,80 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 var image = GameObject.Find("DungeonMiniMap/MapContent/Room_" + room.X + "_" + room.Y); // 실제 미니맵 방 칸
                 Assert.That(image != null, Is.EqualTo(visible)); // 생성된 구조와 지도 공개 상태 일치
             } // 지도 검사 끝
+        } // 검증 끝
+        [UnityTest] // 비밀벽의 실제 조사와 저장 재개 검증
+        public IEnumerator SecretWall_DiscoverOpenAndRestore() // 발견과 개방 상태 복원 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 42; // 재현 가능한 던전 시드
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 검증용 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 실제 게임 실행 객체
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var door = travel.Layout.Doors.First(item => item.IsSecret && !travel.Layout.GetRoom(item.RoomX, item.RoomY).IsSecret); // 일반 방의 시험 비밀벽
+            Assert.That(travel.Discovery.GetVisibility(door.TargetRoomX, door.TargetRoomY), Is.EqualTo(RoomVisibility.Hidden)); // 발견 전 비밀방 숨김
+            yield return ApproachLockedDoor(travel, player, door); // 비밀벽 앞 접근
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 조회
+            var source = (GameObject)finder.Invoke(travel, new object[] { door.RoomX, door.RoomY }); // 비밀벽 출발 방
+            var marker = source.GetComponentsInChildren<SecretDoorMarker>(true).First(); // 비밀벽 표시 객체
+            Assert.That(marker.gameObject.activeSelf, Is.False); // 발견 전 문 이미지 숨김
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 비밀벽 조사 입력
+            InputSystem.Update(); // 조사 입력 반영
+            yield return null; // 조사 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 조사 키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return null; // 해제 처리 대기
+            Assert.That(travel.Discovery.IsSecretDiscovered(door), Is.True); // 비밀벽 발견 확인
+            Assert.That(travel.Discovery.IsSecretOpen(door), Is.False); // 아직 닫힌 통로 확인
+            Assert.That(marker.gameObject.activeSelf, Is.True); // 발견 후 비밀벽 표시
+            Assert.That(travel.Discovery.GetVisibility(door.TargetRoomX, door.TargetRoomY), Is.EqualTo(RoomVisibility.Connected)); // 발견한 미방문 비밀방 공개
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 플레이 화면 캡처 요청
+            { // 캡처 시작
+                var image = CaptureScreen("DungeonCanvas"); // 실제 비밀벽 발견 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 끝
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 발견한 상태 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전
+            door = travel.Layout.GetConnection(door.RoomX, door.RoomY, door.TargetRoomX, door.TargetRoomY); // 복원된 비밀벽
+            Assert.That(travel.Discovery.IsSecretDiscovered(door), Is.True); // 발견 상태 복원
+            Assert.That(travel.Discovery.IsSecretOpen(door), Is.False); // 닫힌 상태 복원
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 비밀벽 개방 입력
+            InputSystem.Update(); // 개방 입력 반영
+            yield return null; // 개방 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 개방 키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return null; // 해제 처리 대기
+            Assert.That(travel.Discovery.IsSecretOpen(door), Is.True); // 양방향 개방 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 열린 비밀 통로 이동 입력
+            InputSystem.Update(); // 이동 입력 반영
+            yield return null; // 이동 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            yield return null; // 도착 처리 대기
+            Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 비밀방 도착 가로 좌표
+            Assert.That(travel.RoomY, Is.EqualTo(door.TargetRoomY)); // 비밀방 도착 세로 좌표
+            player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 재개된 플레이어
+            while (player.IsRoomTransitionLocked) // 방 전환 연출 종료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(app.TrySaveRun(out error), Is.True, error); // 열린 통로와 비밀방 방문 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 열린 통로의 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 던전 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 다시 복원된 던전
+            var reverse = travel.Layout.GetConnection(door.TargetRoomX, door.TargetRoomY, door.RoomX, door.RoomY); // 비밀방에서 복귀하는 연결
+            Assert.That(travel.Discovery.IsSecretOpen(reverse), Is.True); // 개방한 통로의 재개 상태
+            Assert.That(travel.Discovery.GetVisibility(door.TargetRoomX, door.TargetRoomY), Is.EqualTo(RoomVisibility.Visited)); // 방문한 비밀방의 재개 상태
         } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
         public IEnumerator NewGames_UseSeededLayoutsAndResetVisits() // 실제 새 게임 시드와 방문 기록 검증

@@ -14,6 +14,15 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool locked; // 현재 잠금 여부
         public bool forceAttempted; // 강제 개방 시도 여부
     } // 클래스 끝
+    [Serializable] // 비밀 연결 직렬화
+    public sealed class SavedSecretPassage // 발견한 비밀 통로 상태
+    { // 클래스 시작
+        public int fromX; // 출발 방 가로 좌표
+        public int fromY; // 출발 방 세로 좌표
+        public int toX; // 도착 방 가로 좌표
+        public int toY; // 도착 방 세로 좌표
+        public bool opened; // 실제 개방 여부
+    } // 클래스 끝
     [Serializable] // 저장 형식 직렬화
     public sealed class SaveItemSlot // 저장할 아이템 한 칸
     { // 클래스 시작
@@ -33,9 +42,11 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 2; // 새 회차 저장 버전
+        public const int CurrentVersion = 3; // 비밀 통로를 포함한 회차 저장 버전
         public int version; // 회차 저장 버전
         public int seed; // 회차 최초 던전 시드
+        public int generationVersion; // 던전 생성 규칙 버전
+        public SavedSecretPassage[] secretPassages; // 발견한 비밀 통로 목록
         public string layoutFingerprint; // 저장 당시 현재 층 구조 지문
         public int floor; // 현재 층 번호
         public int roomX; // 현재 방 가로 좌표
@@ -57,7 +68,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public SaveItemSlot[] slots; // 인벤토리 슬롯 목록
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
-            if ((version != 1 && version != CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > 10) // 기존과 새 버전 및 진행 상태 범위
+            if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > 10) // 기존과 새 버전 및 진행 상태 범위
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝

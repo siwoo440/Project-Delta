@@ -44,6 +44,49 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 대체 구조 오류 조건 끝
             return fallback; // 검증된 대체 던전 전달
         } // 생성 끝
+        public static DungeonLayout GenerateWithSecret(int seed) // 기존 구조에 시험 비밀방 한 곳 추가
+        { // 생성 시작
+            var baseLayout = Generate(seed); // 기존 생성 규칙의 기본 구조
+            foreach (var room in baseLayout.Rooms) // 기존 방 순서 순회
+            { // 후보 방 검사 시작
+                if (room.Kind != RoomKind.Normal || room.IsSecret) // 일반 방 후보 검사
+                { // 다른 방 조건 시작
+                    continue; // 필수 방 제외
+                } // 다른 방 조건 끝
+                foreach (var direction in Directions) // 네 방향의 빈 좌표 검사
+                { // 방향 검사 시작
+                    var offset = Offset(direction); // 방향의 좌표 변화
+                    var x = room.X + offset.Item1; // 비밀방 가로 좌표
+                    var y = room.Y + offset.Item2; // 비밀방 세로 좌표
+                    if (baseLayout.GetRoom(x, y) != null) // 기존 방의 좌표 중복 검사
+                    { // 중복 조건 시작
+                        continue; // 이미 사용하는 위치 제외
+                    } // 중복 조건 끝
+                    var opposite = Opposite(direction); // 비밀방 복귀 방향
+                    var from = Approach(direction); // 일반 방의 비밀벽 접근 칸
+                    var to = Approach(opposite); // 비밀방의 복귀 접근 칸
+                    var rooms = new List<DungeonRoom>(baseLayout.Rooms); // 기존 방 정의 복사
+                    var doors = new List<RoomDoor>(baseLayout.Doors); // 기존 문 정의 복사
+                    rooms.Add(new DungeonRoom(x, y, true)); // 시험 비밀방 추가
+                    doors.Add(new RoomDoor(room.X, room.Y, from.Item1, from.Item2, direction, x, y, to.Item1, to.Item2, true)); // 비밀방으로 가는 벽
+                    doors.Add(new RoomDoor(x, y, to.Item1, to.Item2, opposite, room.X, room.Y, from.Item1, from.Item2, true)); // 비밀방에서 돌아가는 벽
+                    return new DungeonLayout(rooms.ToArray(), doors.ToArray()); // 검증된 양방향 구조
+                } // 방향 검사 끝
+            } // 후보 방 검사 끝
+            throw new InvalidOperationException("No normal room can host the secret room."); // 비밀방 배치 불가 안내
+        } // 생성 끝
+        public static DungeonLayout GenerateVersioned(int seed, int version) // 저장된 생성 규칙의 구조 복원
+        { // 생성 시작
+            if (version == 1) // 기존 생성 버전 검사
+            { // 기존 버전 시작
+                return Generate(seed); // 비밀방 없는 기존 구조
+            } // 기존 버전 끝
+            if (version == 2) // 비밀방 생성 버전 검사
+            { // 새 버전 시작
+                return GenerateWithSecret(seed); // 시험 비밀방 포함 구조
+            } // 새 버전 끝
+            throw new ArgumentOutOfRangeException(nameof(version)); // 알 수 없는 생성 규칙 거절
+        } // 생성 끝
         private static DungeonLayout TryGenerate(int seed, int attempt) // 주 경로와 갈림길 생성
         { // 생성 시작
             var random = new Random(unchecked(seed ^ (attempt * 7919))); // 시드와 시도별 난수 생성

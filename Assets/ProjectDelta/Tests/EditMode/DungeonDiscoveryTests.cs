@@ -29,8 +29,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 new RoomDoor(1, 0, -5, 0, MoveDirection.Left, 0, 0, 5, 0), // 두 번째 방 왼쪽 문
                 new RoomDoor(1, 0, 2, 3, MoveDirection.Up, 1, 1, 2, -3), // 두 번째 방 위쪽 문
                 new RoomDoor(1, 1, 2, -3, MoveDirection.Down, 1, 0, 2, 3), // 세 번째 방 아래쪽 문
-                new RoomDoor(0, 0, 1, -3, MoveDirection.Down, 0, -1, 1, 3), // 시작 방의 비밀 출구
-                new RoomDoor(0, -1, 1, 3, MoveDirection.Up, 0, 0, 1, -3) // 비밀 방의 복귀 출구
+                new RoomDoor(0, 0, 1, -3, MoveDirection.Down, 0, -1, 1, 3, true), // 시작 방의 비밀 출구
+                new RoomDoor(0, -1, 1, 3, MoveDirection.Up, 0, 0, 1, -3, true) // 비밀 방의 복귀 출구
             }; // 목록 끝
             return new DungeonLayout(rooms, doors); // 순수 방 구조 생성
         } // 구성 끝
@@ -70,8 +70,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 개별 검증 표시
         public void SecretRoom_VisibleOnlyAfterVisit() // 비밀 방과 비밀 연결 정보 보호
         { // 검증 시작
-            var map = new DungeonDiscovery(MakeLayout(), 0, 0); // 새 탐험 지도
+            var layout = MakeLayout(); // 시험 방 구조
+            var map = new DungeonDiscovery(layout, 0, 0); // 새 탐험 지도
             Assert.That(map.GetVisibility(0, -1), Is.EqualTo(RoomVisibility.Hidden)); // 방문 전 비밀 방 가림
+            var secret = layout.GetConnection(0, 0, 0, -1); // 실제 비밀 연결
+            Assert.That(map.TryDiscoverSecret(secret), Is.True); // 비밀 연결 발견
+            Assert.That(map.TryOpenSecret(secret), Is.True); // 발견한 연결 개방
             Assert.That(map.TryVisit(0, -1), Is.True); // 실제 비밀 방 진입 모사
             Assert.That(map.GetVisibility(0, -1), Is.EqualTo(RoomVisibility.Visited)); // 방문 후 비밀 방 표시
             Assert.That(map.IsConnectionVisible(0, 0, 0, -1), Is.True); // 방문 후 연결 표시
@@ -105,6 +109,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var map = new DungeonDiscovery(new DungeonLayout(rooms, doors), 0, 0); // 새 탐험 지도
             Assert.That(map.GetVisibility(0, 1), Is.EqualTo(RoomVisibility.Hidden)); // 비밀 연결 너머 방 가림
             Assert.That(map.IsConnectionVisible(0, 0, 0, 1), Is.False); // 비밀 연결선 가림
+            Assert.That(map.TryDiscoverSecret(doors[2]), Is.True); // 비밀 연결 발견
+            Assert.That(map.TryOpenSecret(doors[2]), Is.True); // 발견한 연결 개방
             Assert.That(map.TryVisit(0, 1), Is.True); // 실제 비밀 연결 통과 모사
             Assert.That(map.GetVisibility(0, 1), Is.EqualTo(RoomVisibility.Visited)); // 직접 방문한 방 표시
             Assert.That(map.IsConnectionVisible(0, 0, 0, 1), Is.True); // 통과하여 발견한 연결 표시
@@ -150,6 +156,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(map.TryVisit(1, 1), Is.True); // 오른쪽 위 방 방문
             Assert.That(map.GetVisibility(0, 1), Is.EqualTo(RoomVisibility.Connected)); // 다른 일반 문으로 알게 된 방
             Assert.That(map.IsConnectionVisible(1, 1, 0, 1), Is.False); // 양쪽 방을 알아도 비밀 연결 가림
+            Assert.That(map.TryDiscoverSecret(doors[7]), Is.True); // 현재 방의 비밀 연결 발견
+            Assert.That(map.TryOpenSecret(doors[7]), Is.True); // 발견한 연결 개방
             Assert.That(map.TryVisit(0, 1), Is.True); // 비밀 연결 통과
             Assert.That(map.IsConnectionVisible(1, 1, 0, 1), Is.True); // 실제 통과 후 연결 표시
         } // 검증 끝

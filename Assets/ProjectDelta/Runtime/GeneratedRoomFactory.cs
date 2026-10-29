@@ -5,6 +5,13 @@ using UnityEngine; // 2D 방 객체와 표시
 using UnityEngine.Tilemaps; // 바닥과 장애물 타일
 namespace ProjectDelta.Runtime // 실행 이름 공간
 { // 이름 공간 시작
+    public sealed class SecretDoorMarker : MonoBehaviour // 실제 비밀벽 표시의 방향 식별
+    { // 클래스 시작
+        public int RoomX; // 출발 방 가로 좌표
+        public int RoomY; // 출발 방 세로 좌표
+        public int TargetX; // 도착 방 가로 좌표
+        public int TargetY; // 도착 방 세로 좌표
+    } // 클래스 끝
     public static class GeneratedRoomFactory // 생성된 방 데이터를 2D 시험 방에 연결
     { // 클래스 시작
         private sealed class MarkerSnapshot // 기존 문 표시의 활성 상태 보관
@@ -297,6 +304,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var marker = new GameObject("DoorMarker", typeof(SpriteRenderer)); // 문 방향 표시 객체 생성
                 createdMarkers.Add(marker); // 실패 시 제거할 새 표시 보관
                 marker.transform.SetParent(root.transform, false); // 해당 방 아래 배치
+                if (door.IsSecret) // 비밀 출구 검사
+                { // 비밀벽 표시 시작
+                    var secret = marker.AddComponent<SecretDoorMarker>(); // 비밀벽 연결 식별 정보
+                    secret.RoomX = door.RoomX; // 출발 방 가로 좌표
+                    secret.RoomY = door.RoomY; // 출발 방 세로 좌표
+                    secret.TargetX = door.TargetRoomX; // 도착 방 가로 좌표
+                    secret.TargetY = door.TargetRoomY; // 도착 방 세로 좌표
+                    marker.SetActive(false); // 발견 전 비밀벽 표시 숨김
+                } // 비밀벽 표시 끝
                 var cellSize = grid.cellSize; // 격자 칸 크기 조회
                 var cellGap = grid.cellGap; // 격자 칸 사이 간격 조회
                 var anchor = floor.tileAnchor; // 바닥 타일 중심 기준

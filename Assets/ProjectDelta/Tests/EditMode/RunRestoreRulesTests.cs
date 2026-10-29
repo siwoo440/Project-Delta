@@ -46,5 +46,31 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(data.version, Is.EqualTo(1)); // 기존 버전 확인
             Assert.That(RunRestoreRules.IsValid(data), Is.True); // 지문이 없는 기존 회차 허용
         } // 검증 끝
+        [Test] // 새로운 던전 생성 버전과 비밀 상태 검증
+        public void Validate_AcceptsVersionedSecretLayoutAndRejectsMissingState() // 비밀 생성과 저장 상태 일치
+        { // 검증 시작
+            var data = ValidSnapshot(); // 정상 이전 회차 준비
+            var layout = DungeonGenerator.GenerateWithSecret(data.seed); // 비밀방 생성 규칙
+            data.version = 3; // 비밀 상태를 포함한 저장 버전
+            data.generationVersion = 2; // 비밀방 생성 버전
+            data.secretPassages = new SavedSecretPassage[0]; // 아직 미발견된 비밀 연결
+            data.doorLock = new DoorLockState(layout).Save(); // 새 구조의 시험 문 상태
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(layout); // 새 구조의 지문
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 새 구조의 재개 허용
+            data.secretPassages = null; // 누락된 비밀 상태
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 누락된 상태 거절
+        } // 검증 끝
+        [Test] // 기존 생성 구조의 새 저장 형식 유지
+        public void Validate_LegacyLayoutCanBeResavedWithOriginalGenerator() // 이전 회차 생성 규칙 보존
+        { // 검증 시작
+            var data = ValidSnapshot(); // 기존 생성 구조의 정상 회차
+            data.version = 3; // 새 저장 형식
+            data.generationVersion = 1; // 기존 던전 생성 규칙
+            data.secretPassages = new SavedSecretPassage[0]; // 기존 구조의 빈 비밀 기록
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(DungeonGenerator.Generate(data.seed)); // 기존 구조 지문
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 기존 구조의 새 형식 저장 허용
+            data.generationVersion = 2; // 잘못된 새 생성 규칙
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 다른 구조로 재생성 거절
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝
