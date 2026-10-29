@@ -24,8 +24,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private string incomingRelic; // 명시적으로 선택한 새 유물
         private string existingRelic; // 교체를 확인할 기존 유물
         private string[] expectedRelics; // 확인 시점의 보유 유물 목록
+        private bool trialRelicsEnabled; // 개발용 무료 유물 허용 여부
         private bool closed; // 중복 닫기 방지
-        public static EconomyScreenView Create(AppRoot owner, Action onClose) // 실제 시험 경제 화면 생성
+        public static EconomyScreenView Create(AppRoot owner, Action onClose, bool allowTrialRelics = true) // 실제 시험 경제 화면 생성
         { // 생성 시작
             if (owner == null || onClose == null || owner.Shop == null || owner.Relics == null) // 회차와 복귀 기능 검사
             { // 생성 오류 시작
@@ -36,6 +37,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 구성 시작
                 var view = root.GetComponent<EconomyScreenView>(); // 새 경제 화면 제어
                 view.owner = owner; // 현재 회차 연결
+                view.trialRelicsEnabled = allowTrialRelics; // 진입 경로별 개발용 유물 제한
                 view.onClose = onClose; // 기존 인벤토리 복귀 연결
                 var canvas = UiFactory.CreateCanvas("EconomyCanvas"); // 독립 경제 화면 캔버스
                 canvas.transform.SetParent(root.transform, false); // 화면 상위 객체 연결
@@ -46,7 +48,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Stretch(main.GetComponent<RectTransform>()); // 화면 전체 배경 확장
                 main.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 입력을 가리는 불투명 배경
                 view.mainGroup = main.GetComponent<CanvasGroup>(); // 확인 중 기존 입력 잠금
-                UiFactory.CreateText(main.transform, "EconomyTitle", "시험 상점 · 유물", 46, new Vector2(0f, 470f), new Vector2(1400f, 70f), Color.white); // 시험 경제 화면 제목
+                UiFactory.CreateText(main.transform, "EconomyTitle", allowTrialRelics ? "시험 상점 · 유물" : "떠돌이 상인 · 시험 상점", 46, new Vector2(0f, 470f), new Vector2(1400f, 70f), Color.white); // 시험 경제 화면 제목
                 view.wallet = UiFactory.CreateText(main.transform, "EconomyWallet", "", 24, new Vector2(0f, 413f), new Vector2(1700f, 55f), Color.white); // 실제 잔액과 선택 안내
                 UiFactory.CreateText(main.transform, "ShopTitle", "상품 · 재고", 27, new Vector2(-570f, 350f), new Vector2(700f, 45f), Color.white); // 상점 상품 제목
                 UiFactory.CreateText(main.transform, "InventoryTitle", "보유 아이템 · 판매할 칸 선택", 27, new Vector2(385f, 350f), new Vector2(1000f, 45f), Color.white); // 실제 소지품 제목
@@ -66,7 +68,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.MakeButton(main.transform, "ShopNextPage", "다음 상품", new Vector2(-565f, -80f), new Vector2(180f, 46f), () => view.ChangePage(1)); // 다음 상품 페이지
                 view.MakeButton(main.transform, "ShopBuyButton", "선택 상품 구매", new Vector2(-370f, -80f), new Vector2(190f, 46f), view.Buy); // 실제 구매 버튼
                 view.MakeButton(main.transform, "ShopSellButton", "선택 아이템 판매", new Vector2(120f, -80f), new Vector2(260f, 46f), view.Sell); // 실제 판매 버튼
-                UiFactory.CreateText(main.transform, "RelicTitle", "시험 유물 · 클릭하여 획득 또는 교체", 25, new Vector2(0f, -145f), new Vector2(1500f, 40f), Color.white); // 시험 유물 안내
+                UiFactory.CreateText(main.transform, "RelicTitle", "시험 유물 · 클릭하여 획득 또는 교체", 25, new Vector2(0f, -145f), new Vector2(1500f, 40f), Color.white).gameObject.SetActive(allowTrialRelics); // 시험 유물 안내
                 var ids = TrialRelicCatalog.Ids(); // 등록된 시험 유물 목록
                 for (var index = 0; index < view.relics.Length && index < ids.Length; index++) // 시험 유물 버튼 순회
                 { // 유물 버튼 생성 시작
@@ -74,9 +76,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     var x = -550f + (index % 3) * 550f; // 세 열의 유물 위치
                     var y = -205f - (index / 3) * 58f; // 두 행의 유물 위치
                     view.relics[index] = view.MakeButton(main.transform, "TrialRelic_" + index, "", new Vector2(x, y), new Vector2(520f, 50f), () => view.AcquireRelic(id)); // 실제 유물 획득 버튼
+                    view.relics[index].gameObject.SetActive(allowTrialRelics); // 상인 화면의 무료 지급 숨김
                 } // 유물 버튼 생성 끝
                 view.notice = UiFactory.CreateText(main.transform, "EconomyNotice", "같은 상품을 선택해 거래 · 개별 장비 판매 가격은 미정", 22, new Vector2(0f, -335f), new Vector2(1700f, 55f), Color.white); // 실제 결과 안내
-                var close = view.MakeButton(main.transform, "CloseEconomyButton", "인벤토리로 돌아가기", new Vector2(0f, -430f), new Vector2(430f, 60f), view.Close); // 화면 복귀 버튼
+                var close = view.MakeButton(main.transform, "CloseEconomyButton", allowTrialRelics ? "인벤토리로 돌아가기" : "상인에게 돌아가기", new Vector2(0f, -430f), new Vector2(430f, 60f), view.Close); // 화면 복귀 버튼
                 view.closeButton = close; // 확인 취소 후 기본 선택 대상
                 view.Refresh(); // 현재 회차의 상품과 자산 표시
                 if (EventSystem.current != null) // 입력 관리자 존재 검사
@@ -176,6 +179,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 판매 끝
         private void AcquireRelic(string id) // 선택한 시험 유물 획득
         { // 획득 시작
+            if (!trialRelicsEnabled) // 상인 서비스의 개발용 지급 검사
+            { // 지급 차단 시작
+                return; // 상인 화면에서 무료 유물 지급 차단
+            } // 지급 차단 끝
             if (owner.Relics.Count < RelicState.Capacity || owner.Relics.Contains(id)) // 여유 공간 또는 중복 검사
             { // 직접 획득 시작
                 owner.TryAcquireRelic(id, null, out var message); // 실제 획득과 중복 거절 요청

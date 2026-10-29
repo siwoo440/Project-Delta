@@ -27,6 +27,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public static bool? RoomContentTestOverride { get; set; } // 자동 검증용 시험 콘텐츠 활성 설정
         public bool RoomContentEnabled { get; private set; } // 현재 회차의 상자와 함정 활성 여부
         public FloorRoomContent CurrentContent => currentContent; // 현재 층 콘텐츠 조회
+        public static bool? TrialNpcTestOverride { get; set; } // 독립 검증의 시험 상인 활성 설정
+        public bool TrialNpcEnabled { get; private set; } // 현재 회차의 시험 상인 활성 여부
+        public DungeonRoom TrialNpcRoom { get; private set; } // 현재 층의 결정적 시험 상인 방
         public static bool? TrialEventTestOverride { get; set; } // 자동 검증의 이벤트 활성 설정
         public bool TrialEventsEnabled { get; private set; } // 현재 회차의 이벤트 활성 여부
         private readonly List<SavedFloorTrialEvent> trialEvents = new List<SavedFloorTrialEvent>(); // 층별 시험 이벤트 기록
@@ -181,6 +184,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 shopStocks = AppRoot.Instance.ShopStocksSnapshot(), // 방문한 층의 상품과 재고
                 roomContentEnabled = RoomContentEnabled, // 현재 회차의 시험 방 콘텐츠 여부
                 roomContents = RoomContentSnapshots(), // 방문한 층의 상자와 함정 기록
+                trialNpcEnabled = TrialNpcEnabled, // 현재 회차의 시험 상인 활성 여부
                 trialEventsEnabled = TrialEventsEnabled, // 현재 회차의 시험 이벤트 활성 여부
                 trialEvents = TrialEventSnapshots(), // 층별 고정 이벤트와 결과
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
@@ -419,6 +423,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 이벤트 오류 시작
                     throw new InvalidOperationException("Invalid trial event placement."); // 기존 콘텐츠와 충돌 차단
                 } // 이벤트 오류 끝
+                TrialNpcEnabled = TrialEventsEnabled && (saved != null && saved.version >= 16 ? saved.trialNpcEnabled : TrialNpcTestOverride ?? true); // 새 회차 또는 저장된 시험 상인 활성 여부
+                TrialNpcRoom = TrialNpcEnabled ? SelectTrialNpc(Layout, Floor, floorSeed, currentContent, TrialEventRoom) : null; // 기존 콘텐츠를 제외한 상인 방
+                AddTrialNpcMarker(rooms, TrialNpcRoom); // 실제 상인 방의 시험 표시
                 AddContentMarkers(rooms, currentContent); // 실제 상자 방의 시험 표시 추가
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
@@ -649,6 +656,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 새 콘텐츠 생성 끝
             return true; // 모든 층 배치 준비 완료
         } // 준비 끝
+        private DungeonRoom SelectTrialNpc(DungeonLayout layout, int floor, int seed, FloorRoomContent content, DungeonRoom eventRoom) // 기존 방과 분리된 시험 상인 선택
+        { // 선택 시작
+            var excluded = TrialRoomContentPlacement.Excluded(layout, floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+            return excluded != null && content != null && TrialNpcPlacement.TrySelect(layout, seed, content.Snapshot(), excluded, eventRoom, out var selected) ? selected : null; // 안전한 후보 또는 상인 없음
+        } // 선택 끝
         private static SavedFloorTrialEvent CopyTrialEvent(SavedFloorTrialEvent record) // 이벤트 기록의 독립 복사
         { // 복사 시작
             return record != null && TrialEventState.TryRestore(record.eventData, out var restored) ? new SavedFloorTrialEvent { floor = record.floor, x = record.x, y = record.y, eventData = restored.Snapshot() } : null; // 좌표와 검증된 독립 상태
@@ -906,6 +918,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
+            if (TrialNpcRoom != null && RoomX == TrialNpcRoom.X && RoomY == TrialNpcRoom.Y && Math.Abs((long)player.X) + Math.Abs((long)player.Y) <= 1) // 현재 방의 인접 상인 검사
+            { // 상인 대화 시작
+                AppRoot.Instance.OpenTrialNpc(); // 실제 대화와 서비스 화면 열기
+                return; // 같은 입력의 다른 상호작용 차단
+            } // 상인 대화 끝
             if (IsTrialEventPending) // 이전 저장에 실패한 이벤트 검사
             { // 이벤트 재시도 시작
                 StartCoroutine(OpenTrialEventAfterTransition(Floor, RoomX, RoomY)); // 현재 방의 이벤트 화면 재시도
@@ -1234,6 +1251,38 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 throw new InvalidOperationException("The encounter cell must be walkable."); // 방 변경 전 충돌 거절
             } // 통행 불가 조건 끝
         } // 검사 끝
+        private static void AddTrialNpcMarker(RoomBinding[] bindings, DungeonRoom npcRoom) // 상인 방의 실제 시안 표시
+        { // 표시 시작
+            if (npcRoom == null) // 상인 배치 검사
+            { // 상인 없음 시작
+                return; // 표시할 상인 없음
+            } // 상인 없음 끝
+            foreach (var binding in bindings) // 현재 층 방 순회
+            { // 방 검사 시작
+                if (binding.X != npcRoom.X || binding.Y != npcRoom.Y) // 상인 방 좌표 검사
+                { // 다른 방 시작
+                    continue; // 다음 방 검사
+                } // 다른 방 끝
+                var floor = binding.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 상인 방의 실제 바닥
+                var marker = new GameObject("TrialNpcMarker", typeof(SpriteRenderer)); // 상인 시험 표시 객체
+                marker.transform.SetParent(binding.Root.transform, false); // 실제 상인 방에 연결
+                marker.transform.position = floor.GetCellCenterWorld(Vector3Int.zero); // 방 중앙에 상인 배치
+                var texture = Resources.Load<Texture2D>("BattlePortraits/MerchantPrototype"); // 시험 상인 이미지
+                var renderer = marker.GetComponent<SpriteRenderer>(); // 실제 이미지 표시
+                if (texture != null) // 이미지 존재 검사
+                { // 이미지 연결 시작
+                    renderer.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width); // 이미지 비율을 유지한 표시
+                    marker.transform.localScale = new Vector3(1.2f, 1.2f, 1f); // 타일 크기에 맞춘 상인 크기
+                } // 이미지 연결 끝
+                else // 이미지 누락 분기
+                { // 대체 표시 시작
+                    renderer.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f); // 기본 표시 이미지
+                    renderer.color = new Color(0.2f, 0.7f, 0.35f); // 상인 구분 색상
+                } // 대체 표시 끝
+                renderer.sortingOrder = 6; // 던전 바닥 위 표시
+                break; // 상인 방 표시 완료
+            } // 방 검사 끝
+        } // 표시 끝
         private static void AddContentMarkers(RoomBinding[] bindings, FloorRoomContent content) // 상자 방에 실제 시험 상자 표시
         { // 표시 시작
             if (content == null) // 비활성 콘텐츠 검사
@@ -1423,6 +1472,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 오류 시작
                     throw new InvalidOperationException("Invalid next floor event."); // 공간 부족 시 기존 층 보존
                 } // 오류 끝
+                var nextEventRoom = nextEvent == null ? null : nextLayout.GetRoom(nextEvent.x, nextEvent.y); // 다음 층의 시험 이벤트 방
+                var nextNpcRoom = TrialNpcEnabled ? SelectTrialNpc(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom) : null; // 기존 콘텐츠와 분리된 다음 상인 방
                 stage = new GameObject("Floor_" + (Floor + 1)); // 새 층의 상위 객체
                 stage.transform.SetParent(transform, false); // 씬 종료 시 함께 정리
                 stage.SetActive(false); // 준비 중 화면 노출 방지
@@ -1441,6 +1492,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
                 } // 상위 객체 연결 끝
                 DungeonPresentation.Apply(nextRooms); // 새 층에도 생성 이미지와 두 배 타일 적용
+                AddTrialNpcMarker(nextRooms, nextNpcRoom); // 다음 층의 상인 표시 생성
                 AddContentMarkers(nextRooms, nextContent); // 다음 층 상자 표시 생성
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
                 AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
@@ -1485,6 +1537,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 이벤트 확정 시작
                     trialEvents.Add(nextEvent); // 이전 층 기록을 보존한 새 이벤트
                 } // 이벤트 확정 끝
+                TrialNpcRoom = nextNpcRoom; // 성공한 다음 층의 상인 확정
                 AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
             catch (Exception exception) // 새 층 준비 실패 처리

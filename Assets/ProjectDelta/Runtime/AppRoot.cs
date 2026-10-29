@@ -25,6 +25,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public static bool? AutomaticEncounterTestOverride { get; set; } // 조우 방식의 독립 검증 설정
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private ChestScreenView chestScreen; // 현재 상자 확인 화면
+        private TrialNpcScreenView trialNpcScreen; // 현재 시험 상인 대화 화면
+        private EconomyScreenView npcShopScreen; // 상인과 연결된 시험 상점 화면
         private TrialEventScreenView trialEventScreen; // 현재 시험 이벤트 화면
         public static System.Func<int, int, int> TrialEventRollOverride { get; set; } // 독립 이벤트 난수 검증
         private readonly System.Random chestRandom = new System.Random(); // 상자와 함정 시험 난수
@@ -956,6 +958,74 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = success + " · 저장 완료"; // 실제 거래와 저장 결과 안내
             return true; // 안전한 거래 확정 완료
         } // 저장 끝
+        public bool OpenTrialNpc() // 현재 방의 시험 상인 대화 시작
+        { // 진입 시작
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            var target = travel == null ? null : travel.TrialNpcRoom; // 현재 층 시험 상인 방
+            if (trialNpcScreen != null || target == null || travel.RoomX != target.X || travel.RoomY != target.Y || !Flow.TryOpenInventory()) // 현재 상인과 탐험 상태 검사
+            { // 오류 시작
+                return false; // 다른 방과 중복 화면 차단
+            } // 오류 끝
+            Input.SetPhase(GamePhase.Inventory); // 탐험 입력 잠금
+            try // 대화 화면 생성 보호
+            { // 생성 시작
+                trialNpcScreen = TrialNpcScreenView.Create(this); // 실제 상인 대화 표시
+                return true; // 대화 진입 완료
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 복구 시작
+                Flow.TryCloseInventory(); // 기존 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Trial merchant screen failed: " + exception.Message); // 실제 화면 오류 기록
+                return false; // 불완전한 대화 화면 차단
+            } // 복구 끝
+        } // 진입 끝
+        public bool TryOpenNpcShop(out string message) // 상인의 실제 시험 상점 열기
+        { // 상점 진입 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (trialNpcScreen == null || npcShopScreen != null || Flow.Phase != GamePhase.Inventory) // 실제 대화와 중복 화면 검사
+            { // 오류 시작
+                message = "상인 상점을 열 수 없습니다."; // 진입 오류 안내
+                return false; // 다른 화면과 중복 진입 차단
+            } // 오류 끝
+            if (!EnsureTrialShop(out message)) // 현재 층 상품과 가격 저장 검사
+            { // 저장 오류 시작
+                return false; // 미저장 상점 차단
+            } // 저장 오류 끝
+            try // 상점 화면 생성 보호
+            { // 생성 시작
+                npcShopScreen = EconomyScreenView.Create(this, CloseNpcShop, false); // 기존 거래 규칙과 무료 시험 유물 차단
+                trialNpcScreen.gameObject.SetActive(false); // 상점 아래 대화의 키보드 입력 차단
+                return true; // 실제 상점 진입 성공
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 오류 시작
+                Debug.LogError("Merchant shop failed: " + exception.Message); // 실제 화면 오류 기록
+                message = "상점 화면을 열 수 없습니다."; // 화면 오류 안내
+                return false; // 저장된 상품과 대화 보존
+            } // 오류 끝
+        } // 상점 진입 끝
+        private void CloseNpcShop() // 상점 종료 후 같은 상인 대화 복귀
+        { // 복귀 시작
+            npcShopScreen = null; // 종료된 상점 참조 해제
+            if (trialNpcScreen != null) // 대화 화면 존재 검사
+            { // 선택 복구 시작
+                trialNpcScreen.gameObject.SetActive(true); // 상점 종료 후 대화 화면 복구
+                trialNpcScreen.SelectDefault(); // 안전한 떠나기 기본 선택
+            } // 선택 복구 끝
+        } // 복귀 끝
+        public void CloseTrialNpc() // 상인 대화를 닫고 탐험 복귀
+        { // 종료 시작
+            if (trialNpcScreen == null || npcShopScreen != null || !Flow.TryCloseInventory()) // 실제 대화와 상점 종료 검사
+            { // 종료 차단 시작
+                return; // 상점 중 대화 종료 차단
+            } // 종료 차단 끝
+            trialNpcScreen.gameObject.SetActive(false); // 이전 대화 입력 차단
+            Destroy(trialNpcScreen.gameObject); // 상인 대화 화면 정리
+            trialNpcScreen = null; // 화면 참조 해제
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 종료 끝
         public TrialEventSaveData CurrentEvent // 현재 방의 독립 이벤트 상태
         { // 속성 시작
             get // 현재 상태 조회
