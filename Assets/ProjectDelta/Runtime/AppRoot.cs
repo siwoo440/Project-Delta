@@ -11,6 +11,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public const int TrialPotionStackLimit = 5; // 미확정 시험 최대 중첩
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
+        private NpcRelationshipStorage relationshipStorage; // 영구 NPC 관계 저장소
+        public const string TrialMerchantId = "trial-merchant"; // 시험 상인의 고유 식별자
+        public NpcRelationshipState NpcRelationships { get; private set; } = NpcRelationshipState.Empty; // 회차 간 유지하는 관계
+        public string RelationshipSaveMessage { get; private set; } = string.Empty; // 관계 저장과 복구 안내
+        public bool CanUseTrialFriendliness => relationshipStorage != null && !relationshipStorage.IsBlocked && !NpcRelationships.HasReceipt(CurrentRunId, TrialMerchantId); // 이번 회차의 우호 선택 가능 여부
         private RunStorage runStorage; // 현재 회차 저장 기능
         private DefeatHistoryStorage defeatStorage; // 독립된 영구 패배 기록
         private RunSaveData savedRun; // 마지막으로 확인한 저장 회차
@@ -137,6 +142,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 observationStorage = null; // 잘못된 저장 경로 차단
                 ObservationSaveMessage = "관찰 저장 경로를 사용할 수 없습니다. 기존 파일을 확인해 주세요."; // 저장 경로 오류 안내
             } // 경로 실패 끝
+            try // 영구 NPC 관계 기록 읽기
+            { // 저장 조회 시작
+                relationshipStorage = new NpcRelationshipStorage(ObservationStorage.ResolveDirectory()); // 관찰 기록과 분리된 관계 파일
+                NpcRelationships = relationshipStorage.Load(out var relationshipWarning); // 검증된 관계와 복구 안내
+                RelationshipSaveMessage = relationshipWarning; // 실제 저장 상태 안내
+            } // 저장 조회 끝
+            catch (System.Exception) // 관계 저장 경로 오류
+            { // 경로 오류 시작
+                relationshipStorage = null; // 잘못된 저장 경로 차단
+                RelationshipSaveMessage = "관계 저장 경로를 사용할 수 없습니다."; // 관계 저장 오류 안내
+            } // 경로 오류 끝
             sceneLoader = GetComponent<SceneLoader>(); // 씬 로더 연결
             try // 회차 저장 읽기
             { // 저장 읽기 시작
@@ -958,6 +974,46 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = success + " · 저장 완료"; // 실제 거래와 저장 결과 안내
             return true; // 안전한 거래 확정 완료
         } // 저장 끝
+        public string TrialMerchantRelationshipText // 시험 상인의 호감도와 기획 단계
+        { // 속성 시작
+            get // 관계 조회
+            { // 조회 시작
+                var value = NpcRelationships.GetAffection(TrialMerchantId); // 현재 상인의 영구 호감도
+                var stage = NpcRelationshipRules.Stage(value); // 기획된 현재 관계 단계
+                var label = stage == NpcRelationshipStage.Neutral ? "중립" : stage == NpcRelationshipStage.Interest ? "관심" : stage == NpcRelationshipStage.Trust ? "신뢰" : stage == NpcRelationshipStage.Special ? "특별" : "엔딩 가능"; // 실제 기획 단계 이름
+                return "호감도 " + value + "/100 · " + label; // 수치와 단계 안내
+            } // 조회 끝
+        } // 속성 끝
+        public bool TryGrantTrialFriendliness(out string message) // 회차당 한 번의 시험 우호 선택
+        { // 적용 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (trialNpcScreen == null || npcShopScreen != null || Flow.Phase != GamePhase.Inventory || relationshipStorage == null) // 실제 상인 화면과 저장소 검사
+            { // 오류 시작
+                message = "관계 기록을 사용할 수 없습니다."; // 저장 상태 안내
+                return false; // 다른 화면에서 우호 적용 차단
+            } // 오류 끝
+            if (NpcRelationships.HasReceipt(CurrentRunId, TrialMerchantId)) // 현재 회차의 적용 이력 검사
+            { // 중복 시작
+                message = "이번 회차에 이미 우호 선택을 했습니다."; // 중복 선택 안내
+                return false; // 같은 회차의 중복 반영 차단
+            } // 중복 끝
+            if (!NpcRelationships.TryGrantFriendliness(CurrentRunId, TrialMerchantId, out var next)) // 독립 관계와 적용 이력 생성
+            { // 오류 시작
+                message = "우호 선택을 확인할 수 없습니다."; // 잘못된 선택 안내
+                return false; // 기존 관계 보존
+            } // 오류 끝
+            var previous = NpcRelationships.GetAffection(TrialMerchantId); // 변경 전 실제 호감도
+            if (!relationshipStorage.TrySave(next, out message)) // 영구 관계와 적용 이력의 단일 저장
+            { // 저장 오류 시작
+                RelationshipSaveMessage = message; // 실제 저장 실패 안내 보관
+                return false; // 저장 실패 시 실제 관계 보존
+            } // 저장 오류 끝
+            NpcRelationships = next; // 저장 성공 후 영구 관계 적용
+            RelationshipSaveMessage = string.Empty; // 이전 저장 오류 해제
+            var gained = next.GetAffection(TrialMerchantId) - previous; // 상한을 반영한 실제 증가량
+            message = "시험 우호 선택 · 호감도 +" + gained + " · 이번 회차 완료"; // 실제 변경량과 제한 안내
+            return true; // 안전한 관계 변경 완료
+        } // 적용 끝
         public bool OpenTrialNpc() // 현재 방의 시험 상인 대화 시작
         { // 진입 시작
             var room = GameObject.Find("RoomTravel"); // 현재 던전 객체

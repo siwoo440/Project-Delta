@@ -8,6 +8,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private AppRoot owner; // 현재 회차 관리자
         private Text dialogue; // 상인의 현재 대화
+        private Text affinity; // 현재 영구 호감도와 단계
+        private Button friendly; // 회차당 한 번의 시험 우호 선택
         private Text notice; // 상점 진입 결과 안내
         private Button leave; // 안전한 기본 종료 버튼
         private int dialogueIndex; // 시험 대화 순서
@@ -53,9 +55,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             dialogue.resizeTextForBestFit = true; // 긴 대사의 표시 영역 맞춤
             dialogue.resizeTextMinSize = 20; // 대사 최소 글자 크기
             notice = UiFactory.CreateText(canvas.transform, "TrialNpcNotice", "", 24, new Vector2(390f, -145f), new Vector2(1000f, 100f), Color.white); // 상점 저장 오류 안내
-            MakeButton(canvas.transform, "TrialNpcTalk", "대화", new Vector2(-60f, -340f), Talk); // 시험 대화 선택
-            MakeButton(canvas.transform, "TrialNpcShop", "상점", new Vector2(360f, -340f), OpenShop); // 시험 상점 선택
-            leave = MakeButton(canvas.transform, "TrialNpcLeave", "떠나기", new Vector2(700f, -340f), Close); // 대화 종료 선택
+            affinity = UiFactory.CreateText(canvas.transform, "TrialNpcAffinity", "", 26, new Vector2(390f, -60f), new Vector2(1000f, 60f), Color.white); // 영구 호감도와 단계
+            MakeButton(canvas.transform, "TrialNpcTalk", "대화", new Vector2(-80f, -340f), Talk); // 시험 대화 선택
+            friendly = MakeButton(canvas.transform, "TrialNpcFriendlyChoice", "우호 +5 (시험)", new Vector2(200f, -340f), Friendly); // 회차당 한 번의 시험 우호 선택
+            MakeButton(canvas.transform, "TrialNpcShop", "상점", new Vector2(480f, -340f), OpenShop); // 시험 상점 선택
+            leave = MakeButton(canvas.transform, "TrialNpcLeave", "떠나기", new Vector2(760f, -340f), Close); // 대화 종료 선택
+            RefreshAffinity(); // 저장된 관계와 선택 가능 상태 표시
         } // 구성 끝
         private static void AddPortrait(Transform parent) // 상인의 실제 초상화 표시
         { // 표시 시작
@@ -79,8 +84,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button MakeButton(Transform parent, string name, string label, Vector2 position, UnityEngine.Events.UnityAction action) // 취소 입력이 연결된 상인 버튼 생성
         { // 생성 시작
             var button = UiFactory.CreateButton(parent, name, label, position); // 공통 화면 버튼
-            button.GetComponent<RectTransform>().sizeDelta = new Vector2(320f, 84f); // 화면 안의 버튼 크기
-            button.transform.Find("Label").GetComponent<RectTransform>().sizeDelta = new Vector2(300f, 80f); // 버튼 글자 영역
+            button.GetComponent<RectTransform>().sizeDelta = new Vector2(250f, 84f); // 화면 안의 버튼 크기
+            button.transform.Find("Label").GetComponent<RectTransform>().sizeDelta = new Vector2(240f, 80f); // 버튼 글자 영역
+            button.transform.Find("Label").GetComponent<Text>().resizeTextForBestFit = true; // 긴 버튼 글자의 영역 맞춤
+            button.transform.Find("Label").GetComponent<Text>().resizeTextMinSize = 14; // 버튼 글자 최소 크기
             button.onClick.AddListener(action); // 실제 행동 연결
             button.gameObject.AddComponent<TrialNpcCancelRelay>().Initialize(this); // 버튼의 취소 입력 연결
             return button; // 생성된 버튼 전달
@@ -89,6 +96,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 선택 시작
             if (EventSystem.current != null && leave != null && gameObject.activeInHierarchy) // 활성 화면과 입력 관리자 검사
             { // 선택 적용 시작
+                RefreshAffinity(); // 현재 관계와 저장 안내 복구
                 EventSystem.current.SetSelectedGameObject(leave.gameObject); // 안전한 떠나기 기본 선택
             } // 선택 적용 끝
         } // 선택 끝
@@ -104,8 +112,35 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 대화 차단 끝
             dialogueIndex = (dialogueIndex + 1) % 3; // 시험 대사 순서 순환
             dialogue.text = dialogueIndex == 1 ? "던전에서는 준비가 목숨을 지켜 주죠." : dialogueIndex == 2 ? "물건을 둘러보고 천천히 결정하세요." : "어서 와요. 필요한 물건이 있나요?"; // 현재 시험 대사 표시
-            notice.text = string.Empty; // 이전 상점 오류 초기화
+            notice.text = owner.RelationshipSaveMessage; // 관계 저장 안내 유지
         } // 대화 끝
+        private void RefreshAffinity() // 현재 관계와 시험 선택 가능 상태 표시
+        { // 갱신 시작
+            affinity.text = owner.TrialMerchantRelationshipText; // 저장된 수치와 관계 단계
+            friendly.interactable = owner.CanUseTrialFriendliness; // 현재 회차 중복과 저장 차단 검사
+            if (!string.IsNullOrEmpty(owner.RelationshipSaveMessage)) // 복구 또는 저장 오류 검사
+            { // 오류 표시 시작
+                notice.text = owner.RelationshipSaveMessage; // 실제 관계 저장 안내
+            } // 오류 표시 끝
+        } // 갱신 끝
+        private void Friendly() // 시험 우호 선택과 영구 저장
+        { // 선택 시작
+            if (busy || ShopVisible()) // 중복 입력과 상점 표시 검사
+            { // 차단 시작
+                return; // 다른 화면과 중복 입력 차단
+            } // 차단 끝
+            busy = true; // 저장 중 중복 입력 잠금
+            try // 실제 관계 저장 요청
+            { // 저장 시작
+                owner.TryGrantTrialFriendliness(out var message); // 시험 우호 선택 적용 요청
+                notice.text = message; // 실제 결과와 실패 안내
+                RefreshAffinity(); // 저장된 수치와 선택 가능 상태 갱신
+            } // 저장 끝
+            finally // 입력 상태 복구
+            { // 복구 시작
+                busy = false; // 다음 입력 허용
+            } // 복구 끝
+        } // 선택 끝
         private void OpenShop() // 상인의 실제 시험 상점 진입
         { // 진입 시작
             if (busy || ShopVisible()) // 중복 입력과 기존 상점 검사
@@ -121,7 +156,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 오류 끝
                 else // 정상 상점 진입 분기
                 { // 진입 성공 시작
-                    notice.text = string.Empty; // 이전 오류 안내 초기화
+                    notice.text = owner.RelationshipSaveMessage; // 관계 저장 안내 유지
                 } // 진입 성공 끝
             } // 요청 끝
             finally // 중복 입력 상태 복구
