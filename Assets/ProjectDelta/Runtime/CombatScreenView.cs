@@ -27,10 +27,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button exit; // 시험 종료 또는 결과 복귀 버튼
         private CombatOutcome outcome; // 현재 전투 승패 상태
         private int lastActionFrame = -1; // 같은 프레임의 중복 행동 차단
+        private bool pendingRetreat; // 성공 후 안전한 방 이동을 기다리는 후퇴
         public static System.Func<int, int, int> RandomOverride // 자동 검증용 난수 지정
         { // 속성 시작
             get; // 지정 난수 조회
             set; // 검증 난수 설정
+        } // 속성 끝
+        public static System.Func<int, int, int> RetreatRollOverride // 자동 검증용 후퇴 주사위 지정
+        { // 속성 시작
+            get; // 지정 주사위 조회
+            set; // 검증 주사위 설정
         } // 속성 끝
         public static CombatScreenView Create(AppRoot owner) // 실제 시험 전투 화면 생성
         { // 생성 시작
@@ -109,7 +115,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 new BattleActor("상위 개체", TrialEnemySpeed, false, 1) // 시험 상대 속도
             }; // 목록 끝
             player = new CombatFighter(participants[0], 100, 50, 40, 90, 40, owner.PlayerHealth); // 기존 기본 플레이어 능력치
-            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 85, 8); // 시험 상위 개체 능력치
+            var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
+            var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+            var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
+            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 85, 8, enemyHealth); // 현재 방의 시험 상위 개체
             round = new BattleRound(participants); // 참가자별 라운드 생성
             if (!round.TryStartRound() || !round.TryNext(out current)) // 첫 라운드와 행동자 검사
             { // 준비 실패 조건 시작
@@ -119,7 +128,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 준비 끝
         private void Advance() // 플레이어 기본 공격과 적 기본 행동
         { // 행동 시작
-            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 중복 또는 잘못된 행동 차단
             } // 행동 거절 조건 끝
@@ -137,7 +146,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 행동 끝
         private void Defend() // 플레이어의 방어 행동
         { // 방어 시작
-            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 중복 또는 잘못된 방어 차단
             } // 행동 거절 조건 끝
@@ -151,7 +160,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 방어 끝
         private void UsePotion() // 플레이어의 시험 회복약 사용 행동
         { // 회복약 사용 시작
-            if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
             { // 행동 거절 조건 시작
                 return; // 잘못된 회복약 행동 차단
             } // 행동 거절 조건 끝
@@ -166,29 +175,53 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             UpdateHealth(); // 전투 체력 즉시 갱신
             CompletePlayerTurn(); // 회복 행동 소모와 상대 행동
         } // 회복약 사용 끝
-        private void Flee() // 정식 도주 시도
-        { // 도주 시작
+        private void Flee() // 일반 전투의 속도 주사위 후퇴
+        { // 후퇴 시작
             if (outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
             { // 행동 거절 조건 시작
-                return; // 잘못된 도주 차단
+                return; // 잘못된 후퇴 행동 차단
             } // 행동 거절 조건 끝
-            var roll = Roll(0, 100); // 기존 도주 난수
-            if (!FleeRules.TryFlee(current, participants, roll, out var escaped)) // 도주 판정 유효성 검사
-            { // 도주 거절 조건 시작
-                return; // 잘못된 도주 행동 차단
-            } // 도주 거절 조건 끝
+            var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
+            var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
+            if (travel == null || !travel.CanReturnToPreviousRoom()) // 직전 방과 도착 가능 여부 검사
+            { // 이동 불가 조건 시작
+                notice.text = "이전 방으로 이동할 수 없습니다"; // 안전하지 않은 후퇴 안내
+                return; // 주사위와 기존 전투 보존
+            } // 이동 불가 조건 끝
             lastActionFrame = Time.frameCount; // 같은 프레임의 재요청 차단
-            if (escaped) // 도주 성공 검사
-            { // 도주 성공 처리 시작
-                var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
-                var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
-                travel?.CompleteCurrentEncounter(); // 기존 규칙의 조우 완료와 대상 제거
-                owner.EndCombat(); // 보상 없이 탐험 복귀
-                return; // 종료한 전투의 추가 행동 차단
-            } // 도주 성공 처리 끝
-            notice.text = "도주 실패 · 성공률 " + FleeRules.Chance(current, participants) + "%"; // 실제 실패와 확률 안내
-            CompletePlayerTurn(); // 실패한 행동 소모와 상대 행동
-        } // 도주 끝
+            if (!pendingRetreat) // 아직 판정하지 않은 후퇴 검사
+            { // 후퇴 판정 시작
+                var playerRoll = RetreatRollOverride == null ? random.Next(1, 21) : RetreatRollOverride(1, 21); // 플레이어의 후퇴 주사위
+                var enemyRoll = RetreatRollOverride == null ? random.Next(1, 21) : RetreatRollOverride(1, 21); // 상대의 추격 주사위
+                if (!CombatRetreatRules.TryResolve(current, participants, 0, 0, playerRoll, enemyRoll, out var escaped)) // 속도와 양쪽 주사위 검사
+                { // 판정 오류 조건 시작
+                    notice.text = "후퇴 판정을 처리할 수 없습니다"; // 잘못된 후퇴 판정 안내
+                    return; // 전투와 행동 보존
+                } // 판정 오류 조건 끝
+                if (!escaped) // 후퇴 실패 검사
+                { // 실패 조건 시작
+                    notice.text = "후퇴 실패"; // 실패한 후퇴 안내
+                    CompletePlayerTurn(); // 플레이어 행동 소모와 상대 행동
+                    return; // 이전 방 이동 차단
+                } // 실패 조건 끝
+                pendingRetreat = true; // 성공 판정의 안전한 이동 대기
+                advance.interactable = false; // 성공한 후퇴 이후 공격 차단
+                defend.interactable = false; // 성공한 후퇴 이후 방어 차단
+                potion.interactable = false; // 성공한 후퇴 이후 회복약 차단
+                exit.interactable = false; // 성공한 후퇴 이후 시험 종료 차단
+            } // 후퇴 판정 끝
+            if (!travel.StoreCurrentEncounterHealth(enemy.Health)) // 현재 조우의 적 체력 보관 검사
+            { // 체력 보관 실패 조건 시작
+                notice.text = "적 체력을 보관할 수 없습니다 · 후퇴를 다시 선택하세요"; // 판정 보존과 재시도 안내
+                return; // 현재 전투와 성공 판정 유지
+            } // 체력 보관 실패 조건 끝
+            if (!travel.TryReturnToPreviousRoom()) // 실제 직전 방의 안전한 이동 검사
+            { // 이동 실패 조건 시작
+                notice.text = "이동 실패 · 후퇴를 다시 선택하세요"; // 판정 보존과 재시도 안내
+                return; // 현재 전투와 성공 판정 유지
+            } // 이동 실패 조건 끝
+            owner.EndCombat(); // 보상 없는 전투 종료와 탐험 복귀
+        } // 후퇴 끝
         private void CompletePlayerTurn() // 플레이어 행동 후 적 행동과 다음 라운드
         { // 턴 진행 시작
             round.TryCompleteAction(); // 플레이어 행동 완료
@@ -255,6 +288,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 확인 끝
         private void Complete() // 시험 종료 또는 전투 결과 확정
         { // 완료 시작
+            if (pendingRetreat) // 성공한 후퇴의 이동 대기 검사
+            { // 후퇴 대기 조건 시작
+                return; // 확정된 후퇴 중 다른 전투 종료 차단
+            } // 후퇴 대기 조건 끝
             if (outcome == CombatOutcome.Defeat) // 플레이어 패배 검사
             { // 패배 조건 시작
                 owner.ReturnToTitle(); // 패배 후 타이틀 복귀

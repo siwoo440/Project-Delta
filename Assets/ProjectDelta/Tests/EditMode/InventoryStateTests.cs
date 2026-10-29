@@ -160,6 +160,53 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(fighter.Health, Is.EqualTo(80)); // 실패 후 전투 체력 보존
             Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 다른 회복약 수량 보존
         } // 검증 끝
+        [TestCase(10, 5, 1, 6, false)] // 동점 후퇴 실패
+        [TestCase(10, 5, 20, 1, true)] // 높은 플레이어 판정 성공
+        [TestCase(10, 5, 1, 20, false)] // 높은 상대 판정 실패
+        public void CombatRetreat_UsesBothDiceAndTieFails(int speed, int enemySpeed, int playerRoll, int enemyRoll, bool expected) // 속도와 주사위 비교
+        { // 검증 시작
+            var player = new BattleActor("플레이어", speed, true, 0); // 시험 플레이어
+            var enemy = new BattleActor("적", enemySpeed, false, 1); // 시험 상대
+            var participants = new[] // 전투 참가자 목록
+            { // 참가자 목록 시작
+                player, enemy // 플레이어와 적
+            }; // 참가자 목록 끝
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.CombatRetreatRules"); // 전투 후퇴 규칙 조회
+            Assert.That(type, Is.Not.Null); // 전투 후퇴 규칙 제공 확인
+            var args = new object[] // 후퇴 판정 인수
+            { // 인수 목록 시작
+                player, participants, 0, 0, playerRoll, enemyRoll, false // 참가자와 보정 및 주사위
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryResolve").Invoke(null, args), Is.True); // 유효한 후퇴 판정
+            Assert.That(args[6], Is.EqualTo(expected)); // 동점 실패와 성공 결과
+        } // 검증 끝
+        [Test] // 가장 빠른 적과 양쪽 보정 검증
+        public void CombatRetreat_UsesFastestLivingEnemyAndModifiers() // 생존 상대 선택과 보정 확인
+        { // 검증 시작
+            var player = new BattleActor("플레이어", 10, true, 0); // 시험 플레이어
+            var slow = new BattleActor("느린 적", 3, false, 1); // 느린 생존 상대
+            var fast = new BattleActor("빠른 적", 15, false, 2); // 빠른 생존 상대
+            var participants = new[] // 전투 참가자 목록
+            { // 참가자 목록 시작
+                player, slow, fast // 플레이어와 두 상대
+            }; // 참가자 목록 끝
+            var type = typeof(InventoryState).Assembly.GetType("ProjectDelta.Core.CombatRetreatRules"); // 전투 후퇴 규칙 조회
+            Assert.That(type, Is.Not.Null); // 전투 후퇴 규칙 제공 확인
+            var args = new object[] // 후퇴 판정 인수
+            { // 인수 목록 시작
+                player, participants, 4, 0, 10, 10, false // 가장 빠른 적과 플레이어 보정
+            }; // 인수 목록 끝
+            Assert.That(type.GetMethod("TryResolve").Invoke(null, args), Is.True); // 유효한 후퇴 판정
+            Assert.That(args[6], Is.False); // 가장 빠른 적에 따른 실패
+            args[2] = 6; // 플레이어 보정 증가
+            Assert.That(type.GetMethod("TryResolve").Invoke(null, args), Is.True); // 보정된 후퇴 판정
+            Assert.That(args[6], Is.True); // 보정에 따른 성공
+            args[3] = 1; // 상대 보정 추가
+            Assert.That(type.GetMethod("TryResolve").Invoke(null, args), Is.True); // 상대 보정 판정
+            Assert.That(args[6], Is.False); // 보정 후 동점 실패
+            args[4] = 0; // 잘못된 플레이어 주사위
+            Assert.That(type.GetMethod("TryResolve").Invoke(null, args), Is.False); // 유효하지 않은 주사위 거절
+        } // 검증 끝
         [Test] // 기본 슬롯 검증
         public void NewInventory_HasTenEmptySlots() // 새 게임의 빈 슬롯 확인
         { // 검증 시작

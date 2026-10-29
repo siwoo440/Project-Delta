@@ -22,6 +22,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
         private readonly HashSet<string> completedEncounters = new HashSet<string>(); // 층별 완료 조우 기록
+        private readonly Dictionary<string, int> encounterHealth = new Dictionary<string, int>(); // 층과 방별 후퇴한 시험 적의 체력
         private RoomBinding[] templates; // 변경 전 보존한 방 원형
         private DoorBinding[] templateDoors; // 원형의 기존 문 정의
         private GameObject templateHolder; // 숨긴 방 원형 보관 객체
@@ -109,7 +110,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 검사 끝
         public bool TryReturnToPreviousRoom() // 성공한 조우 도망의 안전한 방 복귀
         { // 복귀 시작
-            if (AppRoot.Instance == null || AppRoot.Instance.Flow.Phase != GamePhase.Encounter || !CanReturnToPreviousRoom()) // 조우 상태와 안전한 이전 방 검사
+            if (AppRoot.Instance == null || (AppRoot.Instance.Flow.Phase != GamePhase.Encounter && AppRoot.Instance.Flow.Phase != GamePhase.Combat) || !CanReturnToPreviousRoom()) // 조우 상태와 안전한 이전 방 검사
             { // 복귀 거절 조건 시작
                 return false; // 잘못된 방 이동 차단
             } // 복귀 거절 조건 끝
@@ -290,6 +291,23 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 AppRoot.Instance.StartEncounter(); // 조우 선택 화면과 대기 이동 취소
             } // 자동 조우 조건 끝
         } // 검사 끝
+        public int CurrentEncounterHealth() // 현재 방의 후퇴한 시험 적 체력 조회
+        { // 조회 시작
+            if (!IsReady) // 현재 던전 준비 상태 검사
+            { // 준비 안 됨 조건 시작
+                return CombatScreenView.TrialEnemyHealth; // 시험 적의 기본 최대 체력
+            } // 준비 안 됨 조건 끝
+            return encounterHealth.TryGetValue(EncounterKey(), out var health) ? health : CombatScreenView.TrialEnemyHealth; // 보관한 체력 또는 기본 체력
+        } // 조회 끝
+        public bool StoreCurrentEncounterHealth(int health) // 후퇴 전 현재 방의 시험 적 체력 보관
+        { // 보관 시작
+            if (!CanCompleteCurrentEncounter() || health <= 0 || health > CombatScreenView.TrialEnemyHealth) // 미완료 조우와 생존 체력 검사
+            { // 잘못된 보관 조건 시작
+                return false; // 다른 방과 잘못된 적 체력 저장 차단
+            } // 잘못된 보관 조건 끝
+            encounterHealth[EncounterKey()] = health; // 같은 층과 방의 현재 적 체력 보관
+            return true; // 현재 조우의 체력 보관 완료
+        } // 보관 끝
         public bool CanCompleteCurrentEncounter() // 현재 방에서 시험 조우 완료 가능 여부
         { // 검사 시작
             if (!IsReady) // 방 준비 상태 검사
