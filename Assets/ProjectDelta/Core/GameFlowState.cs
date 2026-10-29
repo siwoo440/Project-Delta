@@ -11,6 +11,24 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 상태 읽기
             private set; // 내부 상태 변경
         } = GamePhase.Initializing; // 초기 준비 상태
+        public bool TryOpenHistory() // 탐험 중 회차 기록 진입
+        { // 진입 시작
+            if (Phase != GamePhase.Exploration) // 탐험 상태 검사
+            { // 진입 거절 조건 시작
+                return false; // 탐험 외 기록 화면 차단
+            } // 진입 거절 조건 끝
+            Phase = GamePhase.History; // 회차 기록 화면 상태 적용
+            return true; // 기록 화면 진입 허용
+        } // 진입 끝
+        public bool TryCloseHistory() // 회차 기록에서 탐험 복귀
+        { // 복귀 시작
+            if (Phase != GamePhase.History) // 기록 화면 상태 검사
+            { // 복귀 거절 조건 시작
+                return false; // 잘못된 닫기 요청 차단
+            } // 복귀 거절 조건 끝
+            Phase = GamePhase.Exploration; // 기존 탐험 상태 복구
+            return true; // 기록 화면 닫기 허용
+        } // 복귀 끝
         public bool TryOpenFullMap() // 탐험 중 전체 지도 진입
         { // 진입 시작
             if (Phase != GamePhase.Exploration) // 탐험 상태 검사

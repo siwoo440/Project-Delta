@@ -13,6 +13,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private InputActionMap uiMap; // 타이틀 화면 입력
         private InputActionMap explorationMap; // 던전 탐험 입력
         private InputActionMap fullMapInput; // 전체 지도 닫기 입력
+        private InputActionMap historyInput; // 회차 기록 화면 입력
+        private bool historyToggleArmed; // 기록 단축키 해제 여부
         private bool mapToggleArmed; // 지도 단축키 해제 여부
         private InputAction moveUp; // 위쪽 버튼 입력
         private InputAction moveDown; // 아래쪽 버튼 입력
@@ -31,6 +33,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action InventoryRequested; // 인벤토리 열기 요청 알림
         public event Action FullMapRequested; // 전체 지도 열기 요청 알림
         public event Action FullMapCloseRequested; // 전체 지도 닫기 요청 알림
+        public event Action HistoryRequested; // 회차 기록 열기 요청 알림
+        public event Action HistoryCloseRequested; // 회차 기록 닫기 요청 알림
+        public event Action<int> HistoryPageRequested; // 회차 기록 페이지 이동 알림
         public event Action ExplorationLocked; // 탐험 입력 잠금 알림
         public bool IsUiEnabled => uiMap != null && uiMap.enabled; // 실제 화면 입력 상태
         public bool IsExplorationEnabled => explorationMap != null && explorationMap.enabled; // 실제 탐험 입력 상태
@@ -41,9 +46,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             uiMap = new InputActionMap("UI"); // 화면 입력 묶음 생성
             explorationMap = new InputActionMap("Exploration"); // 탐험 입력 묶음 생성
             fullMapInput = new InputActionMap("FullMap"); // 전체 지도 전용 입력 묶음
+            historyInput = new InputActionMap("History"); // 회차 기록 전용 입력 묶음
             actions.AddActionMap(uiMap); // 화면 입력 묶음 등록
             actions.AddActionMap(explorationMap); // 탐험 입력 묶음 등록
             actions.AddActionMap(fullMapInput); // 전체 지도 입력 묶음 등록
+            actions.AddActionMap(historyInput); // 회차 기록 입력 묶음 등록
             var navigate = AddDirectionAction(uiMap, "Navigate", InputActionType.PassThrough); // 화면 방향 입력 생성
             var submit = uiMap.AddAction("Submit", InputActionType.Button); // 화면 선택 입력 생성
             submit.AddBinding("<Keyboard>/enter"); // Enter 선택 연결
@@ -85,6 +92,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var closeMap = fullMapInput.AddAction("CloseFullMap", InputActionType.Button, "<Keyboard>/escape"); // 지도 취소 입력
             closeMap.AddBinding("<Gamepad>/buttonEast"); // 게임패드 지도 닫기
             closeMap.performed += OnCloseFullMap; // 취소 요청 감지
+            var openHistory = explorationMap.AddAction("OpenHistory", InputActionType.Button, "<Keyboard>/h"); // 회차 기록 열기 단축키
+            openHistory.AddBinding("<Gamepad>/leftStickPress"); // 게임패드 왼쪽 스틱 버튼
+            openHistory.performed += OnOpenHistory; // 기록 열기 요청 감지
+            var toggleHistory = historyInput.AddAction("ToggleHistory", InputActionType.Button, "<Keyboard>/h"); // 같은 단축키로 기록 닫기
+            toggleHistory.AddBinding("<Gamepad>/leftStickPress"); // 게임패드 스틱 버튼 닫기
+            toggleHistory.performed += OnToggleHistory; // 단축키 닫기 감지
+            var closeHistory = historyInput.AddAction("CloseHistory", InputActionType.Button, "<Keyboard>/escape"); // 기록 화면 취소 입력
+            closeHistory.AddBinding("<Gamepad>/buttonEast"); // 게임패드 기록 닫기
+            closeHistory.performed += OnCloseHistory; // 취소 요청 감지
+            var previousHistory = historyInput.AddAction("PreviousHistory", InputActionType.Button, "<Keyboard>/leftArrow"); // 이전 기록 페이지 입력
+            previousHistory.AddBinding("<Gamepad>/dpad/left"); // 게임패드 이전 페이지
+            previousHistory.performed += OnPreviousHistory; // 이전 페이지 요청 감지
+            var nextHistory = historyInput.AddAction("NextHistory", InputActionType.Button, "<Keyboard>/rightArrow"); // 다음 기록 페이지 입력
+            nextHistory.AddBinding("<Gamepad>/dpad/right"); // 게임패드 다음 페이지
+            nextHistory.performed += OnNextHistory; // 다음 페이지 요청 감지
             var eventObject = new GameObject("EventSystem"); // 단일 화면 입력 객체
             eventObject.SetActive(false); // 연결 전 입력 활성화 방지
             eventObject.transform.SetParent(transform, false); // 공통 객체 아래 배치
@@ -128,6 +150,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 uiModule.enabled = true; // 화면 입력 전달 활성화
                 uiMap.Enable(); // 타이틀 입력만 활성화
             } // 화면 입력 조건 끝
+            else if (phase == GamePhase.History) // 회차 기록 화면 상태 검사
+            { // 기록 입력 시작
+                historyToggleArmed = false; // 열기에 사용한 키의 즉시 닫기 방지
+                historyInput.Enable(); // 기록 전용 입력 활성화
+            } // 기록 입력 끝
             else if (phase == GamePhase.FullMap) // 전체 지도 상태 검사
             { // 지도 입력 시작
                 mapToggleArmed = false; // 열기에 사용한 키의 즉시 닫기 방지
@@ -156,11 +183,56 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         private void Update() // 지도 단축키 해제 확인
         { // 갱신 시작
+            if (historyInput != null && historyInput.enabled && HistoryToggleReleased()) // 기록 화면과 모든 단축키 해제 검사
+            { // 기록 단축키 준비 시작
+                historyToggleArmed = true; // 다음 누름의 기록 닫기 허용
+            } // 기록 단축키 준비 끝
             if (fullMapInput != null && fullMapInput.enabled && MapToggleReleased()) // 지도 화면과 모든 단축키 해제 검사
             { // 단축키 준비 시작
                 mapToggleArmed = true; // 다음 누름의 지도 닫기 허용
             } // 단축키 준비 끝
         } // 갱신 끝
+        private static bool HistoryToggleReleased() // 기록 단축키와 게임패드 버튼 해제 검사
+        { // 검사 시작
+            if (Keyboard.current != null && Keyboard.current.hKey.isPressed) // 키보드 기록 키 누름 검사
+            { // 키보드 조건 시작
+                return false; // 키보드 단축키 해제 대기
+            } // 키보드 조건 끝
+            foreach (var pad in Gamepad.all) // 연결된 모든 게임패드 순회
+            { // 게임패드 검사 시작
+                if (pad.leftStickButton.isPressed) // 스틱 버튼 누름 검사
+                { // 버튼 조건 시작
+                    return false; // 버튼 해제 대기
+                } // 버튼 조건 끝
+            } // 게임패드 검사 끝
+            return true; // 모든 기록 단축키 해제 확인
+        } // 검사 끝
+        private void OnOpenHistory(InputAction.CallbackContext context) // 기록 화면 열기 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                HistoryRequested?.Invoke(); // 기록 화면 열기 요청
+            } // 탐험 조건 끝
+        } // 전달 끝
+        private void OnToggleHistory(InputAction.CallbackContext context) // 같은 단축키의 기록 닫기
+        { // 전달 시작
+            if (historyToggleArmed) // 열기 단축키 해제 여부 검사
+            { // 닫기 조건 시작
+                HistoryCloseRequested?.Invoke(); // 기록 화면 닫기 요청
+            } // 닫기 조건 끝
+        } // 전달 끝
+        private void OnCloseHistory(InputAction.CallbackContext context) // 취소 버튼의 기록 닫기
+        { // 전달 시작
+            HistoryCloseRequested?.Invoke(); // 기록 화면 닫기 요청
+        } // 전달 끝
+        private void OnPreviousHistory(InputAction.CallbackContext context) // 이전 기록 페이지 요청
+        { // 전달 시작
+            HistoryPageRequested?.Invoke(-1); // 이전 페이지 전달
+        } // 전달 끝
+        private void OnNextHistory(InputAction.CallbackContext context) // 다음 기록 페이지 요청
+        { // 전달 시작
+            HistoryPageRequested?.Invoke(1); // 다음 페이지 전달
+        } // 전달 끝
         private static bool MapToggleReleased() // 지도 단축키와 게임패드 버튼 해제 검사
         { // 검사 시작
             if (Keyboard.current != null && Keyboard.current.mKey.isPressed) // 키보드 지도 키 누름 검사

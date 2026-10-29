@@ -219,10 +219,14 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 { // 전환 대기 시작
                     yield return null; // 다음 프레임 대기
                 } // 전환 대기 끝
-                var capture = typeof(DungeonRuntimeGenerationTests).GetMethod("CaptureScreen", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic); // 실제 탐험 화면 캡처 도구
-                var image = (Texture2D)capture.Invoke(null, new object[] { "DungeonCanvas" }); // 최근 기록이 보이는 탐험 화면
+                AppRoot.Instance.OpenHistory(); // 실제 방 이동 기록 화면 열기
+                yield return null; // 기록 화면 구성 대기
+                Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 실제 기록 화면 상태 확인
+                var capture = typeof(DungeonRuntimeGenerationTests).GetMethod("CaptureScreen", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic); // 실제 화면 캡처 도구
+                var image = (Texture2D)capture.Invoke(null, new object[] { "HistoryCanvas" }); // 실제 방 이동 기록 화면
                 System.IO.File.WriteAllBytes(logCapturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
                 Object.Destroy(image); // 임시 이미지 정리
+                AppRoot.Instance.CloseHistory(); // 기록 화면 닫고 탐험 복귀
             } // 캡처 조건 끝
             Assert.That(GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<Image>().color, Is.Not.EqualTo(connectedColor)); // 방문 방의 표시 변경
             var currentRect = GameObject.Find("DungeonMiniMap/MapContent/Room_1_0").GetComponent<RectTransform>(); // 새 현재 방의 지도 위치

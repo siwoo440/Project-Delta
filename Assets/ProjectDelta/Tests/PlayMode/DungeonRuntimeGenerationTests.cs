@@ -332,6 +332,93 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(controls.GetComponent<UnityEngine.UI.Image>().raycastTarget, Is.False); // 하단 배경 입력 통과 확인
             Assert.That(controls.GetComponent<UnityEngine.UI.Image>().color.a, Is.GreaterThan(0.7f)); // 바닥과 글씨 분리 확인
         } // 검증 끝
+        [UnityTest] // 회차 기록 열람과 페이지 이동 검증
+        public IEnumerator History_OpensPagesAndRestoresExploration() // 실제 기록 화면과 키 입력 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 12; index++) // 여러 페이지의 기록 준비
+            { // 기록 순회 시작
+                AppRoot.Instance.RecordExplorationEvent("시험 기록 " + index); // 시간순 시험 기록
+            } // 기록 순회 끝
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.H)); // 기록 화면 열기
+            InputSystem.Update(); // 기록 열기 처리
+            yield return null; // 기록 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 기록 화면 상태 확인
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 탐험 입력 잠금 확인
+            var entries = GameObject.Find("HistoryEntries").GetComponent<UnityEngine.UI.Text>(); // 실제 기록 내용
+            Assert.That(entries.text, Does.Contain("시험 기록 0")); // 첫 페이지의 오래된 기록 확인
+            Assert.That(entries.text, Does.Not.Contain("시험 기록 11")); // 다음 페이지 기록 구분
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 열기 키 해제
+            InputSystem.Update(); // 해제 반영
+            yield return null; // 키 해제 처리 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.RightArrow)); // 다음 기록 페이지
+            InputSystem.Update(); // 페이지 입력 반영
+            yield return null; // 페이지 갱신 대기
+            Assert.That(entries.text, Does.Contain("시험 기록 11")); // 다음 페이지의 최신 기록 확인
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Escape)); // 취소로 기록 닫기
+            InputSystem.Update(); // 기록 닫기 처리
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 상태 복구
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구
+        } // 검증 끝
+        [UnityTest] // 게임패드의 기록 화면과 페이지 이동 검증
+        public IEnumerator History_OpensAndClosesWithGamepad() // 게임패드 기록 화면 왕복 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 두 페이지의 기록 준비
+            { // 기록 순회 시작
+                AppRoot.Instance.RecordExplorationEvent("패드 기록 " + index); // 시간순 시험 기록
+            } // 기록 순회 끝
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.LeftStick)); // 스틱 버튼으로 기록 열기
+            InputSystem.Update(); // 기록 열기 처리
+            yield return null; // 기록 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 열린 기록 화면 확인
+            yield return null; // 버튼을 누른 상태 유지
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 열린 화면의 즉시 닫기 방지
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 스틱 버튼 해제
+            InputSystem.Update(); // 버튼 해제 처리
+            yield return null; // 해제 상태 반영
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 다음 페이지 입력
+            InputSystem.Update(); // 페이지 입력 반영
+            yield return null; // 기록 페이지 갱신 대기
+            Assert.That(GameObject.Find("HistoryEntries").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("패드 기록 9")); // 다음 페이지 기록 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.East)); // 게임패드 취소 입력
+            InputSystem.Update(); // 기록 닫기 처리
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 게임패드 취소 후 탐험 복구
+        } // 검증 끝
+        [UnityTest] // 마우스 기록 화면 열기와 닫기 검증
+        public IEnumerator History_OpensAndClosesWithMouse() // 마우스 버튼의 기록 화면 왕복 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var mouse = InputSystem.AddDevice<Mouse>(); // 시험 마우스 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var open = GameObject.Find("HistoryOpenButton"); // 탐험 화면의 기록 열기 버튼
+            Assert.That(open, Is.Not.Null); // 기록 열기 버튼 확인
+            var openPosition = RectTransformUtility.WorldToScreenPoint(null, open.GetComponent<RectTransform>().position); // 열기 버튼 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }.WithButton(MouseButton.Left)); // 기록 열기 클릭
+            InputSystem.Update(); // 클릭 입력 반영
+            yield return null; // 기록 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.History)); // 마우스 기록 진입 확인
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = openPosition }); // 마우스 버튼 해제
+            InputSystem.Update(); // 버튼 해제 반영
+            yield return null; // 해제 처리 대기
+            var close = GameObject.Find("CloseHistoryButton"); // 기록 화면의 닫기 버튼
+            Assert.That(close, Is.Not.Null); // 기록 닫기 버튼 확인
+            var closePosition = RectTransformUtility.WorldToScreenPoint(null, close.GetComponent<RectTransform>().position); // 닫기 버튼 화면 좌표
+            InputSystem.QueueStateEvent(mouse, new MouseState { position = closePosition }.WithButton(MouseButton.Left)); // 기록 닫기 클릭
+            InputSystem.Update(); // 클릭 입력 반영
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 마우스 탐험 복귀 확인
+            InputSystem.RemoveDevice(mouse); // 시험 마우스 연결 해제
+        } // 검증 끝
         [UnityTest] // 전체 회차 기록과 최근 화면 표시 검증
         public IEnumerator ExplorationHistory_RetainsOlderEventsWhileHudShowsFour() // 전체 기록과 최근 표시 분리 확인
         { // 검증 시작

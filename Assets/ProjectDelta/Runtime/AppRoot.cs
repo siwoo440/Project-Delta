@@ -15,6 +15,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
+        private HistoryScreenView historyScreen; // 현재 회차 기록 화면
         public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
         { // 속성 시작
             get; // 탐험 기록 조회
@@ -95,6 +96,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             Input.InventoryRequested += OpenInventory; // 인벤토리 열기 입력 연결
             Input.FullMapRequested += OpenFullMap; // 전체 지도 열기 입력 연결
             Input.FullMapCloseRequested += CloseFullMap; // 전체 지도 닫기 입력 연결
+            Input.HistoryRequested += OpenHistory; // 회차 기록 열기 입력 연결
+            Input.HistoryCloseRequested += CloseHistory; // 회차 기록 닫기 입력 연결
+            Input.HistoryPageRequested += MoveHistoryPage; // 회차 기록 페이지 입력 연결
             Application.targetFrameRate = 60; // 기본 목표 프레임
         } // 초기 준비 끝
         private void Start() // 최초 실행 흐름
@@ -119,6 +123,47 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청
         } // 메서드 끝
+        public void OpenHistory() // 탐험 중 회차 기록 화면 열기
+        { // 열기 시작
+            var room = GameObject.Find("RoomTravel"); // 실제 던전 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 던전 상태
+            if (travel == null || !travel.IsReady || !Flow.TryOpenHistory()) // 던전 준비와 탐험 상태 검사
+            { // 진입 거절 조건 시작
+                return; // 준비되지 않은 기록 화면 차단
+            } // 진입 거절 조건 끝
+            Input.SetPhase(GamePhase.History); // 탐험 입력 잠금과 기록 입력 활성화
+            try // 실제 기록 화면 준비
+            { // 화면 준비 시작
+                historyScreen = HistoryScreenView.Create(this, travel.transform); // 현재 회차 기록 화면 생성
+            } // 화면 준비 끝
+            catch (System.Exception exception) // 기록 화면 생성 실패 복구
+            { // 실패 복구 시작
+                Flow.TryCloseHistory(); // 기존 탐험 상태 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("History screen failed: " + exception.Message); // 실제 오류 기록
+            } // 실패 복구 끝
+        } // 열기 끝
+        public void CloseHistory() // 회차 기록 닫고 탐험 복귀
+        { // 닫기 시작
+            if (!Flow.TryCloseHistory()) // 실제 기록 화면 상태 검사
+            { // 닫기 거절 조건 시작
+                return; // 중복 또는 잘못된 닫기 차단
+            } // 닫기 거절 조건 끝
+            if (historyScreen != null) // 기록 화면 존재 검사
+            { // 화면 정리 시작
+                historyScreen.gameObject.SetActive(false); // 화면 즉시 숨김
+                Destroy(historyScreen.gameObject); // 기록 화면 객체 정리
+                historyScreen = null; // 기록 화면 참조 해제
+            } // 화면 정리 끝
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 닫기 끝
+        private void MoveHistoryPage(int direction) // 현재 기록 화면의 페이지 이동
+        { // 이동 시작
+            if (Flow.Phase == GamePhase.History && historyScreen != null) // 기록 화면 활성 상태 검사
+            { // 이동 조건 시작
+                historyScreen.MovePage(direction); // 요청한 기록 페이지 표시
+            } // 이동 조건 끝
+        } // 이동 끝
         public void OpenFullMap() // 탐험 중 전체 지도 열기
         { // 열기 시작
             var room = GameObject.Find("RoomTravel"); // 실제 던전 이동 객체
@@ -392,6 +437,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 Input.InventoryRequested -= OpenInventory; // 인벤토리 열기 연결 해제
                 Input.FullMapRequested -= OpenFullMap; // 전체 지도 열기 연결 해제
                 Input.FullMapCloseRequested -= CloseFullMap; // 전체 지도 닫기 연결 해제
+                Input.HistoryRequested -= OpenHistory; // 회차 기록 열기 연결 해제
+                Input.HistoryCloseRequested -= CloseHistory; // 회차 기록 닫기 연결 해제
+                Input.HistoryPageRequested -= MoveHistoryPage; // 회차 기록 페이지 연결 해제
             } // 해제 조건 끝
             Instance = null; // 공통 객체 등록 해제
         } // 해제 끝
