@@ -11,14 +11,14 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             var raw = 90L + attacker.Accuracy - (long)defender.Evasion / 2; // 기본 명중과 절반 회피 적용
             return (int)System.Math.Max(5L, System.Math.Min(95L, raw)); // 명중률의 5~95% 제한
         } // 계산 끝
-        public static int Damage(CombatFighter attacker, CombatFighter defender) // 최신 기획 피해 계산
+        public static int Damage(CombatFighter attacker, CombatFighter defender, int attackBonus = 0) // 최신 기획 피해 계산
         { // 계산 시작
             if (attacker == null || defender == null) // 공격자와 방어자 검사
             { // 참가자 누락 조건 시작
                 return 0; // 잘못된 피해 계산 차단
             } // 참가자 누락 조건 끝
             var defense = (long)defender.Defense + (defender.IsDefending ? 10L : 0L); // 방어 행동의 적용 방어력
-            var damage = (long)attacker.Attack - defense; // 공격력에서 적용 방어력 차감
+            var damage = (long)attacker.Attack + attackBonus - defense; // 공격 보정과 적용 방어력 차감
             return (int)System.Math.Min(int.MaxValue, System.Math.Max(1L, damage)); // 최소 피해와 정수 범위 보장
         } // 계산 끝
         public static bool TryAttack(CombatFighter attacker, CombatFighter defender, int hitRoll, out int applied) // 명중과 체력 감소 처리

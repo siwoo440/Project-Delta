@@ -8,6 +8,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         private Text status; // 현재 방 이름 표시
         private Text playerHealth; // 현재 플레이어 체력 표시
+        private Text playerMana; // 현재 플레이어 마나 표시
         private Text explorationLog; // 최근 탐험 기록 표시
         private readonly Queue<string> recentEvents = new Queue<string>(); // 최근 탐험 기록 목록
         private Text doorNotice; // 잠긴 문과 열쇠 안내
@@ -24,7 +25,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             UiFactory.CreateText(canvas.transform, "LogTitle", "최근 기록", 24, new Vector2(750f, 45f), new Vector2(380f, 45f), Color.white); // 탐험 기록 제목
             explorationLog = UiFactory.CreateText(canvas.transform, "ExplorationLog", "", 20, new Vector2(750f, -65f), new Vector2(380f, 150f), new Color(0.88f, 0.93f, 0.92f)); // 최근 탐험 기록 내용
             explorationLog.alignment = TextAnchor.UpperLeft; // 최근 기록의 왼쪽 정렬
-            playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 28, new Vector2(-750f, -465f), new Vector2(280f, 65f), Color.white); // 하단 플레이어 체력 안내
+            playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealthStatus", "체력 100 / 100", 25, new Vector2(-750f, -447f), new Vector2(280f, 38f), Color.white); // 하단 플레이어 체력 안내
+            playerMana = UiFactory.CreateText(canvas.transform, "PlayerManaStatus", "마나 50 / 50", 23, new Vector2(-750f, -485f), new Vector2(280f, 38f), new Color(0.58f, 0.76f, 1f)); // 하단 플레이어 마나 안내
             UiFactory.CreateText(canvas.transform, "Header", "던전 탐험", 27, new Vector2(0f, 505f), new Vector2(510f, 36f), Color.white); // 상단 던전 제목
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 20, new Vector2(0f, 470f), new Vector2(510f, 36f), mint); // 상단 현재 방 안내
             doorNotice = UiFactory.CreateText(canvas.transform, "DoorNotice", "", 23, new Vector2(0f, -340f), new Vector2(1200f, 60f), mint); // 문 상호작용 안내
@@ -85,6 +87,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var health = AppRoot.Instance.PlayerHealth; // 현재 플레이어 체력
             playerHealth.text = "체력 " + health + " / 100" + (health <= 25 ? " ! 위험" : string.Empty); // 현재 체력과 낮은 체력 경고
             playerHealth.color = health <= 25 ? new Color(1f, 0.48f, 0.42f) : Color.white; // 낮은 체력의 경고 색상
+            playerMana.text = "마나 " + AppRoot.Instance.PlayerMana + " / 50"; // 실제 회차 마나 갱신
         } // 갱신 끝
         private static void CreateBackground(Transform parent, string name, Vector2 position, Vector2 size) // 안내 문구용 입력 통과 배경
         { // 생성 시작

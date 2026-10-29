@@ -137,6 +137,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return EnterDungeon(); // 실제 던전 진입
             var app = AppRoot.Instance; // 현재 회차 관리자
             app.UpdatePlayerHealth(51); // 기존 회차의 실제 체력
+            app.UpdatePlayerMana(31); // 기존 회차의 실제 마나
             app.OpenPause(); // 안정된 탐험의 메뉴 진입
             Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 일시정지 상태 확인
             var originalInventory = app.Inventory; // 기존 인벤토리 참조
@@ -145,7 +146,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             typeof(AppRoot).GetField("loadRollbackKeys", flags).SetValue(app, app.Keys); // 실제 복구용 열쇠 설정
             typeof(AppRoot).GetField("loadRollbackHistory", flags).SetValue(app, app.ExplorationHistory); // 실제 복구용 기록 설정
             typeof(AppRoot).GetField("loadRollbackHealth", flags).SetValue(app, app.PlayerHealth); // 실제 복구용 체력 설정
+            typeof(AppRoot).GetField("loadRollbackMana", flags).SetValue(app, app.PlayerMana); // 실제 복구용 마나 설정
             app.UpdatePlayerHealth(80); // 불러오기 중 임시 적용된 체력
+            app.UpdatePlayerMana(12); // 불러오기 중 임시 적용된 마나
             Assert.That(app.Flow.TryBeginTransition(GamePhase.Exploration), Is.True); // 메뉴에서 씬 전환 시작
             app.Input.SetPhase(GamePhase.Loading); // 전환 중 입력 잠금
             LogAssert.Expect(LogType.Error, "Scene is not registered: Missing_Pause_Run_Scene"); // 실제 씬 누락 오류 확인
@@ -153,6 +156,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return app.StartCoroutine((IEnumerator)transition.Invoke(app, new object[] { "Missing_Pause_Run_Scene" })); // 누락된 씬의 실패 경로 실행
             Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Pause)); // 기존 메뉴 상태 복원 확인
             Assert.That(app.PlayerHealth, Is.EqualTo(51)); // 전환 전 체력 복원 확인
+            Assert.That(app.PlayerMana, Is.EqualTo(31)); // 전환 전 마나 복원 확인
             Assert.That(app.Inventory, Is.SameAs(originalInventory)); // 기존 인벤토리 보존 확인
             Assert.That(app.Input.IsUiEnabled, Is.True); // 메뉴 입력 복구 확인
         } // 검증 끝
@@ -828,6 +832,69 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전
             Assert.That(travel.TutorialCompleted, Is.True); // 완료 상태의 저장 복원
             Assert.That(app.Observations.Contains("MON_SLIME"), Is.True); // 슬라임 영구 관찰 기록 복원
+        } // 검증 끝
+        [UnityTest] // 시험 기술과 저장된 마나 검증
+        public IEnumerator StrongStrike_CriticalSpendsManaAndRestores() // 실제 기술 사용과 저장 재개 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "SkillRunTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            CombatScreenView.RandomOverride = (minimum, maximum) => maximum - 1; // 기술의 빗나감 방지용 난수 설정
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            Assert.That(app.PlayerMana, Is.EqualTo(50)); // 기본 마나 확인
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum == 0 && maximum == 100 ? 0 : minimum; // 확정 명중과 치명타 난수
+            Assert.That(app.StartCombat(), Is.True); // 실제 시험 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            var button = GameObject.Find("StrongStrikeButton"); // 실제 기술 버튼 조회
+            Assert.That(button, Is.Not.Null); // 기술 버튼 존재 확인
+            button.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 기술 사용
+            yield return null; // 전투 처리 대기
+            Assert.That(app.PlayerMana, Is.EqualTo(40)); // 기술 마나 소모 확인
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("승리")); // 치명타를 적용한 승리 확인
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 탐험 복귀
+            yield return null; // 탐험 화면 복귀 대기
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 사용한 마나 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
+            Assert.That(app.PlayerMana, Is.EqualTo(40)); // 저장된 마나 복원 확인
+        } // 검증 끝
+        [UnityTest] // 기술 마나 부족과 자기 차례 대기 검증
+        public IEnumerator StrongStrike_RejectsLowManaAndNextTurnCooldown() // 실패 시 마나와 행동 보존 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.UpdatePlayerMana(9); // 기술 비용보다 적은 마나
+            var rolls = new Queue<int>(new[] { 0, 99, 0, 0, 0, 99 }); // 명중과 치명타의 시험 난수
+            CombatScreenView.RandomOverride = (minimum, maximum) => rolls.Count > 0 ? rolls.Dequeue() : 0; // 재현 가능한 전투 난수
+            Assert.That(app.StartCombat(), Is.True); // 실제 전투 진입
+            yield return null; // 전투 화면 준비 대기
+            var skill = GameObject.Find("StrongStrikeButton").GetComponent<UnityEngine.UI.Button>(); // 기술 버튼 조회
+            var round = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 행동 차례 조회
+            skill.onClick.Invoke(); // 마나 부족 기술 사용 시도
+            Assert.That(app.PlayerMana, Is.EqualTo(9)); // 부족한 마나 보존
+            Assert.That(round.text, Does.Contain("1라운드")); // 실패 시 행동 차례 보존
+            app.UpdatePlayerMana(50); // 시험을 위한 마나 회복
+            skill.onClick.Invoke(); // 정상 기술 사용
+            yield return null; // 다음 행동 차례 대기
+            Assert.That(app.PlayerMana, Is.EqualTo(40)); // 실제 기술 비용 차감
+            Assert.That(round.text, Does.Contain("2라운드")); // 첫 기술 이후 다음 차례
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 화면 캡처 검사
+            { // 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 기술을 사용한 실제 전투 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 끝
+            skill.onClick.Invoke(); // 대기 중 기술 재사용 시도
+            Assert.That(app.PlayerMana, Is.EqualTo(40)); // 대기 중 마나 보존
+            Assert.That(round.text, Does.Contain("2라운드")); // 대기 중 행동 차례 보존
+            GameObject.Find("DefendBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 다른 행동으로 대기 차례 소모
+            yield return null; // 다음 행동 차례 대기
+            Assert.That(round.text, Does.Contain("3라운드")); // 다음 차례 도착
+            skill.onClick.Invoke(); // 대기 해제 후 기술 사용
+            Assert.That(app.PlayerMana, Is.EqualTo(30)); // 해제 후 두 번째 비용 차감
+            Assert.That(round.text, Does.Contain("승리")); // 기술 재사용 후 전투 승리
         } // 검증 끝
         [UnityTest] // 빠른 상대의 선행 행동 검증
         public IEnumerator Combat_FasterEnemyActsBeforeEachPlayerTurn() // 첫 행동과 다음 라운드 순서 확인

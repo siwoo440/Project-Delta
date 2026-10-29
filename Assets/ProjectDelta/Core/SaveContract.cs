@@ -42,7 +42,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 4; // 첫 조우를 포함한 회차 저장 버전
+        public const int CurrentVersion = 5; // 마나를 포함한 회차 저장 버전
         public int version; // 회차 저장 버전
         public int seed; // 회차 최초 던전 시드
         public int generationVersion; // 던전 생성 규칙 버전
@@ -57,6 +57,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public int playerY; // 플레이어 세로 칸
         public int health; // 현재 체력
         public int maxHealth; // 최대 체력
+        public int mana; // 현재 마나
+        public int maxMana; // 최대 마나
         public int facing; // 플레이어 방향
         public int keys; // 시험 열쇠 수량
         public bool hasPreviousRoom; // 이전 방 연결 여부
@@ -74,6 +76,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 오류 조건 시작
                 return false; // 잘못된 회차 거절
             } // 오류 조건 끝
+            if (version >= 5 && (maxMana < 1 || mana < 0 || mana > maxMana)) // 새 저장의 마나 범위 검사
+            { // 마나 오류 시작
+                return false; // 잘못된 마나 저장 거절
+            } // 마나 오류 끝
             foreach (var slot in slots) // 저장 슬롯 순회
             { // 순회 시작
                 if (slot == null || !slot.IsValid()) // 누락 또는 잘못된 슬롯 검사

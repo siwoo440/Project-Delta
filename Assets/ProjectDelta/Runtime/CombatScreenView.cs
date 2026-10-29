@@ -24,6 +24,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button flee; // 정식 도주 버튼
         private Button defend; // 방어 행동 버튼
         private Button potion; // 시험 회복약 행동 버튼
+        private Button skill; // 강한 일격 시험 기술 버튼
+        private Text playerMana; // 현재 플레이어 마나 표시
+        private readonly SkillCooldownState skillCooldown = new SkillCooldownState(); // 기술의 자기 차례 대기 상태
         private Button exit; // 시험 종료 또는 결과 복귀 버튼
         private CombatOutcome outcome; // 현재 전투 승패 상태
         private int lastActionFrame = -1; // 같은 프레임의 중복 행동 차단
@@ -80,6 +83,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
                 UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 실제 상대 이름
                 view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-260f, -20f), new Vector2(300f, 65f), Color.white); // 플레이어 체력
+                view.playerMana = UiFactory.CreateText(canvas.transform, "PlayerMana", "", 23, new Vector2(-260f, -75f), new Vector2(300f, 50f), new Color(0.58f, 0.76f, 1f)); // 플레이어 마나
                 view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
                 view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 25, new Vector2(0f, -175f), new Vector2(1200f, 70f), Color.white); // 최근 행동 결과
@@ -91,9 +95,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.defend.onClick.AddListener(view.Defend); // 실제 방어 행동 연결
                 view.potion = UiFactory.CreateButton(canvas.transform, "BattlePotionButton", "회복약", new Vector2(705f, -275f)); // 시험 회복약 사용 버튼
                 view.potion.onClick.AddListener(view.UsePotion); // 전투 회복약 행동 연결
+                view.skill = UiFactory.CreateButton(canvas.transform, "StrongStrikeButton", "강한 일격", new Vector2(0f, -275f)); // 시험 전투 기술 버튼
+                view.skill.onClick.AddListener(view.StrongStrike); // 실제 기술 사용 연결
                 view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "시험 종료", new Vector2(0f, -390f)); // 시험 종료와 결과 복귀 버튼
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
-                canvas.gameObject.AddComponent<CombatActionLayout>().Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion); // 화면 너비별 행동 버튼 배치
+                canvas.gameObject.AddComponent<CombatActionLayout>().Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill); // 화면 너비별 행동 버튼 배치
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
                 { // 기본 선택 시작
@@ -177,6 +183,40 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             notice.text = "방어 · 방어력 +10"; // 방어 행동의 적용 방어력 안내
             CompletePlayerTurn(); // 방어 행동 소모와 상대 행동
         } // 방어 끝
+        private void StrongStrike() // 시험 기술 강한 일격 사용
+        { // 기술 시작
+            if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 실제 전투와 행동 검사
+            { // 기술 거절 시작
+                return; // 잘못된 기술 요청 차단
+            } // 기술 거절 끝
+            var mana = owner.PlayerMana; // 현재 회차 마나 조회
+            if (!skillCooldown.TryUse(ref mana, 10, 1)) // 마나 10과 대기 1턴의 사용 검사
+            { // 사용 실패 시작
+                notice.text = "마나가 부족하거나 기술이 대기 중입니다"; // 현재 행동을 보존하는 안내
+                return; // 마나와 행동 차례 보존
+            } // 사용 실패 끝
+            lastActionFrame = Time.frameCount; // 같은 프레임 중복 행동 차단
+            owner.UpdatePlayerMana(mana); // 실제 회차 마나 차감
+            var hitRoll = Roll(0, 100); // 기술 명중 난수
+            if (hitRoll < CombatRules.HitChance(player, enemy)) // 실제 대상의 명중 판정
+            { // 명중 처리 시작
+                var damage = CombatRules.Damage(player, enemy, 10); // 기획 시험 공격 보정 10
+                var criticalRoll = Roll(0, 100); // 기술 치명타 난수
+                CriticalHitRules.TryApply(damage, 40, criticalRoll, 150, out var finalDamage, out var critical); // 시험 확률과 맨손 배율 적용
+                var applied = enemy.ApplyDamage(finalDamage); // 실제 상대 체력 감소
+                notice.text = "강한 일격" + (critical ? " · 치명타" : "") + " · " + applied + " 피해"; // 실제 기술 결과 표시
+            } // 명중 처리 끝
+            else // 빗나간 기술 분기
+            { // 빗나감 처리 시작
+                notice.text = "강한 일격 · 빗나감"; // 실패한 명중 안내
+            } // 빗나감 처리 끝
+            UpdateHealth(); // 실제 마나와 체력 표시 갱신
+            if (FinishIfNeeded()) // 기술 사용 후 승패 검사
+            { // 전투 종료 시작
+                return; // 종료된 전투의 추가 행동 차단
+            } // 전투 종료 끝
+            CompletePlayerTurn(); // 기술 행동 소모와 상대 차례
+        } // 기술 끝
         private void UsePotion() // 플레이어의 시험 회복약 사용 행동
         { // 회복약 사용 시작
             if (pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
@@ -227,6 +267,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 advance.interactable = false; // 성공한 후퇴 이후 공격 차단
                 defend.interactable = false; // 성공한 후퇴 이후 방어 차단
                 potion.interactable = false; // 성공한 후퇴 이후 회복약 차단
+                skill.interactable = false; // 성공한 후퇴 이후 기술 차단
                 exit.interactable = false; // 성공한 후퇴 이후 시험 종료 차단
             } // 후퇴 판정 끝
             if (!travel.StoreCurrentEncounterHealth(enemy.Health)) // 현재 조우의 적 체력 보관 검사
@@ -281,6 +322,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 } // 선택 실패 끝
             } // 상대 행동 끝
             player.EndDefense(); // 플레이어의 이전 방어 상태 해제
+            skillCooldown.BeginTurn(); // 새 플레이어 차례의 기술 대기 갱신
             UpdateDisplay(); // 현재 라운드와 체력 갱신
         } // 처리 끝
         private bool ResolveAttack(CombatFighter attacker, CombatFighter defender) // 한 참가자의 기본 공격 처리
@@ -312,6 +354,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             flee.interactable = false; // 종료된 전투의 도주 차단
             defend.interactable = false; // 종료된 전투의 방어 차단
             potion.interactable = false; // 종료된 전투의 회복약 사용 차단
+            skill.interactable = false; // 종료된 전투의 기술 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             return true; // 전투 종료 확인
@@ -344,6 +387,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 표시 시작
             playerHealth.text = "체력 " + player.Health + "/" + player.MaxHealth; // 플레이어 체력 표시
             enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
+            playerMana.text = "마나 " + owner.PlayerMana + "/50"; // 실제 회차 마나 표시
         } // 표시 끝
     } // 클래스 끝
     public sealed class CombatActionLayout : MonoBehaviour // 화면 너비에 맞는 행동 버튼 배치
@@ -353,14 +397,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button flee; // 도주 버튼
         private Button defend; // 방어 버튼
         private Button fourth; // 선택적인 네 번째 행동 버튼
+        private Button fifth; // 선택적인 다섯 번째 행동 버튼
         private float lastWidth = -1f; // 이전에 적용한 화면 너비
-        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton, Button fourthButton = null) // 화면과 행동 버튼 연결
+        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton, Button fourthButton = null, Button fifthButton = null) // 화면과 행동 버튼 연결
         { // 연결 시작
             canvasRect = canvas; // 화면 크기 연결
             attack = attackButton; // 공격 버튼 연결
             flee = fleeButton; // 도주 버튼 연결
             defend = defendButton; // 방어 버튼 연결
             fourth = fourthButton; // 선택적인 네 번째 버튼 연결
+            fifth = fifthButton; // 선택적인 다섯 번째 버튼 연결
             Refresh(canvasRect.rect.width); // 최초 화면 크기 반영
         } // 연결 끝
         private void LateUpdate() // 화면 너비 변경 감지
@@ -373,7 +419,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public void Refresh(float canvasWidth) // 주어진 화면 너비의 버튼 크기와 위치
         { // 배치 시작
             lastWidth = canvasWidth; // 적용한 화면 너비 기록
-            var count = fourth == null ? 3 : 4; // 실제 행동 버튼 개수
+            var count = fifth != null ? 5 : fourth == null ? 3 : 4; // 실제 행동 버튼 개수
             var width = Mathf.Min(320f, Mathf.Max(0f, (canvasWidth - 64f - 24f * (count - 1)) / count)); // 양쪽 여백과 버튼 간격 확보
             var offset = width + 24f; // 버튼 사이 간격을 포함한 위치
             var left = -(count - 1) * offset / 2f; // 전체 버튼의 왼쪽 시작 위치
@@ -384,6 +430,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 추가 행동 조건 시작
                 Place(fourth, left + 3f * offset, width); // 네 번째 행동 버튼 배치
             } // 추가 행동 조건 끝
+            if (fifth != null) // 다섯 번째 행동 제공 검사
+            { // 추가 기술 조건 시작
+                Place(fifth, left + 4f * offset, width); // 다섯 번째 행동 버튼 배치
+            } // 추가 기술 조건 끝
         } // 배치 끝
         private static void Place(Button button, float x, float width) // 한 행동 버튼의 위치와 글자 영역
         { // 배치 시작

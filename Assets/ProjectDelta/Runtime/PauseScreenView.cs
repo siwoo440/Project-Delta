@@ -112,7 +112,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var history = owner.ExplorationHistory.Entries; // 현재 회차 기록 조회
             var room = GameObject.Find("RoomTravel"); // 현재 던전 객체 조회
             var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방과 층 조회
-            runStatus.text = travel == null ? "체력 " + owner.PlayerHealth + " / 100" : travel.Floor + "층 · 방 (" + travel.RoomX + ", " + travel.RoomY + ") · 체력 " + owner.PlayerHealth + " / 100 · 열쇠 " + owner.Keys.Count; // 실제 회차 상태 표시
+            runStatus.text = travel == null ? "체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50" : travel.Floor + "층 · 방 (" + travel.RoomX + ", " + travel.RoomY + ") · 체력 " + owner.PlayerHealth + " / 100 · 마나 " + owner.PlayerMana + " / 50 · 열쇠 " + owner.Keys.Count; // 실제 회차 상태 표시
             var total = Math.Max(1, (history.Count + PageSize - 1) / PageSize); // 기록 페이지 수
             page = Mathf.Clamp(page, 0, total - 1); // 페이지 범위 보호
             var lines = new List<string>(); // 현재 페이지 기록 목록

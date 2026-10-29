@@ -89,5 +89,22 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             data.tutorialHealth = 0; // 완료 상태의 체력 기록 제거
             Assert.That(RunRestoreRules.IsValid(data), Is.True); // 완료한 첫 조우 허용
         } // 검증 끝
+        [Test] // 마나를 포함한 저장과 기존 저장 호환 검증
+        public void Validate_ManaSnapshotRequiresValidBounds() // 새 회차의 마나 범위 확인
+        { // 검증 시작
+            var data = ValidSnapshot(); // 기존 회차 저장 준비
+            data.version = 5; // 마나를 포함하는 저장 버전
+            data.generationVersion = 1; // 기존 던전 생성 규칙
+            data.secretPassages = new SavedSecretPassage[0]; // 기존 구조의 비밀 기록
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(DungeonGenerator.Generate(data.seed)); // 기존 구조 지문
+            data.mana = 25; // 현재 마나 설정
+            data.maxMana = 50; // 기본 최대 마나 설정
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 마나가 유효한 저장 허용
+            data.mana = 51; // 최대치를 넘는 마나 설정
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 잘못된 마나 저장 차단
+            data.mana = -1; // 음수 마나 설정
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 음수 마나 저장 차단
+            Assert.That(RunRestoreRules.IsValid(ValidSnapshot()), Is.True); // 마나가 없는 기존 저장 허용
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝

@@ -110,6 +110,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 facing = (int)player.Facing, // 현재 바라보는 방향
                 health = AppRoot.Instance.PlayerHealth, // 플레이어 현재 체력
                 maxHealth = 100, // 시험 최대 체력
+                mana = AppRoot.Instance.PlayerMana, // 현재 회차 마나
+                maxMana = 50, // 기획 기본 최대 마나
                 keys = AppRoot.Instance.Keys.Count, // 시험 열쇠 수량
                 slots = AppRoot.Instance.Inventory.SaveSlots(), // 아이템 칸과 수량
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록

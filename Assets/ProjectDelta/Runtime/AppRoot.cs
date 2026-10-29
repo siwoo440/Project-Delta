@@ -27,6 +27,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private DoorKeyRing loadRollbackKeys; // 불러오기 실패 시 이전 열쇠
         private ExplorationHistory loadRollbackHistory; // 불러오기 실패 시 이전 기록
         private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
+        private int loadRollbackMana; // 불러오기 실패 시 이전 마나
         public ExplorationHistory ExplorationHistory // 현재 회차의 전체 탐험 기록
         { // 속성 시작
             get; // 탐험 기록 조회
@@ -65,6 +66,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             get; // 현재 체력 조회
             private set; // 내부 체력 변경
         } = 100; // 최초 체력 설정
+        public int PlayerMana // 현재 회차의 플레이어 마나
+        { // 속성 시작
+            get; // 현재 마나 조회
+            private set; // 내부 마나 변경
+        } = 50; // 기획 기본 마나 설정
         public static AppRoot Instance // 유일한 공통 객체
         { // 속성 시작
             get; // 객체 읽기
@@ -136,6 +142,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 새 게임 조건 시작
                 PendingRun = null; // 이전 복원 요청 해제
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
+                PlayerMana = 50; // 새 회차 기본 마나 초기화
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
                 Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
@@ -186,11 +193,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 loadRollbackKeys = Keys; // 기존 열쇠 보관
                 loadRollbackHistory = ExplorationHistory; // 기존 기록 보관
                 loadRollbackHealth = PlayerHealth; // 기존 체력 보관
+                loadRollbackMana = PlayerMana; // 기존 마나 보관
             } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
             Keys = restoredKeys; // 복원한 열쇠 적용
             ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
             PlayerHealth = savedRun.health; // 저장된 체력 적용
+            PlayerMana = savedRun.version < 5 ? 50 : savedRun.mana; // 이전 저장의 기본 마나와 새 저장 복원
             PendingRun = savedRun; // 던전 씬에 복원 상태 전달
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 탐험 재개 요청
             return true; // 재개 요청 승인
@@ -465,6 +474,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             RecordExplorationEvent(message); // 실제 회복 성공의 탐험 기록 보관
             return true; // 체력 회복과 아이템 소비 완료
         } // 사용 끝
+        public void UpdatePlayerMana(int mana) // 전투 후 현재 마나 반영
+        { // 갱신 시작
+            PlayerMana = Mathf.Clamp(mana, 0, 50); // 기획 기본 마나 범위 유지
+        } // 갱신 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
         { // 반영 시작
             PlayerHealth = Mathf.Clamp(health, 0, 100); // 원본 기본 최대 체력 범위 유지
@@ -582,6 +595,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     Keys = loadRollbackKeys; // 이전 열쇠 복원
                     ExplorationHistory = loadRollbackHistory; // 이전 회차 기록 복원
                     PlayerHealth = loadRollbackHealth; // 이전 체력 복원
+                    PlayerMana = loadRollbackMana; // 이전 마나 복원
                     PendingRun = null; // 실패한 회차 복원 요청 해제
                     ClearLoadRollback(); // 복구 대상 해제
                 } // 기존 회차 복구 끝

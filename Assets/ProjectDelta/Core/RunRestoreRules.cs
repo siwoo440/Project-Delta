@@ -17,6 +17,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 잘못된 기록 거절
                 } // 기록 오류 끝
             } // 기록 검사 끝
+            if (data.version >= 5 && data.maxMana != 50) // 현재 시험 회차의 최대 마나 검사
+            { // 마나 범위 오류 시작
+                return false; // 아직 지원하지 않는 최대 마나 거절
+            } // 마나 범위 오류 끝
             var generationVersion = data.version < 3 ? 1 : data.generationVersion; // 기존 저장과 새 생성 버전 구분
             if (generationVersion < 1 || generationVersion > 3 || (data.version < 4 && generationVersion > 2) || (data.version >= 3 && data.secretPassages == null)) // 생성 버전과 비밀 상태 검사
             { // 생성 오류 시작
