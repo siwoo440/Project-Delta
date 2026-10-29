@@ -29,6 +29,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private PauseScreenView pauseScreen; // 탐험 일시정지 메뉴
         private InventoryState loadRollbackInventory; // 불러오기 실패 시 이전 인벤토리
         private EquipmentState loadRollbackEquipment; // 불러오기 실패 시 이전 장비
+        private RelicState loadRollbackRelics; // 불러오기 실패 시 이전 유물
+        private ShopStockData[] loadRollbackShops; // 불러오기 실패 시 이전 상점 목록
+        private ShopState loadRollbackShop; // 불러오기 실패 시 이전 열린 상점
+        private ShopStockData[] shopStocks = new ShopStockData[0]; // 방문한 층의 고정 상점 목록
+        public RelicState Relics { get; private set; } = RelicState.Empty; // 현재 회차의 독립 유물
+        public ShopState Shop { get; private set; } // 현재 층에서 선택한 시험 상점
         private DoorKeyRing loadRollbackKeys; // 불러오기 실패 시 이전 열쇠
         private ExplorationHistory loadRollbackHistory; // 불러오기 실패 시 이전 기록
         private int loadRollbackHealth; // 불러오기 실패 시 이전 체력
@@ -172,6 +178,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
                 Equipment = EquipmentState.Empty; // 새 회차 시작 장비 없음
+                Relics = RelicState.Empty; // 새 회차 유물 초기화
+                shopStocks = new ShopStockData[0]; // 새 회차 상점 가격과 재고 초기화
+                Shop = null; // 이전 회차 상점 해제
                 Keys = new DoorKeyRing(); // 새 게임의 열쇠 초기화
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
@@ -204,6 +213,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 재개 차단
             } // 재개 거절 조건 끝
             var restoredInventory = InventoryState.FromSavedSlots(savedRun.slots); // 독립 인벤토리 복원
+            var restoredRelics = RelicState.Empty; // 이전 저장의 빈 유물
+            if (savedRun.version >= 13 && !RelicState.TryRestore(savedRun.relicIds, out restoredRelics)) // 저장된 유물 검사
+            { // 유물 복원 오류 시작
+                return false; // 잘못된 유물 차단
+            } // 유물 복원 오류 끝
+            var restoredShops = savedRun.version < 13 ? new ShopStockData[0] : CopyShopStocks(savedRun.shopStocks); // 이전 저장 또는 검증된 층별 상점 복원
+            if (restoredShops == null) // 상점 복원 오류 검사
+            { // 상점 복원 오류 시작
+                return false; // 손상된 상점 차단
+            } // 상점 복원 오류 끝
             var restoredEquipment = EquipmentState.Empty; // 이전 저장의 빈 장비
             if (savedRun.version >= 11 && !EquipmentState.TryRestore(savedRun.weaponId, savedRun.armorId, savedRun.accessoryId, savedRun.bagId, savedRun.version >= 12 ? savedRun.weaponVariant : null, savedRun.version >= 12 ? savedRun.armorVariant : null, savedRun.version >= 12 ? savedRun.accessoryVariant : null, savedRun.version >= 12 ? savedRun.bagVariant : null, out restoredEquipment)) // 저장 장비와 개별 특성 검사
             { // 장비 복원 오류 시작
@@ -223,6 +242,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 실패 복구 준비 시작
                 loadRollbackInventory = Inventory; // 기존 인벤토리 보관
                 loadRollbackEquipment = Equipment; // 기존 장비 보관
+                loadRollbackRelics = Relics; // 기존 유물 보관
+                loadRollbackShops = shopStocks; // 기존 층별 상점 보관
+                loadRollbackShop = Shop; // 기존 열린 상점 보관
                 loadRollbackKeys = Keys; // 기존 열쇠 보관
                 loadRollbackHistory = ExplorationHistory; // 기존 기록 보관
                 loadRollbackHealth = PlayerHealth; // 기존 체력 보관
@@ -236,6 +258,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 실패 복구 준비 끝
             Inventory = restoredInventory; // 복원한 인벤토리 적용
             Equipment = restoredEquipment; // 복원한 장비 적용
+            Relics = restoredRelics; // 복원한 유물 적용
+            shopStocks = restoredShops; // 복원한 층별 상점 적용
+            Shop = null; // 현재 층 상점의 재방문 준비
             Keys = restoredKeys; // 복원한 열쇠 적용
             ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
             PlayerHealth = savedRun.health; // 저장된 체력 적용
@@ -801,6 +826,152 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             RecordExplorationEvent(message); // 성공한 아이템 사용 기록
             return true; // 확인된 소비와 회복 성공
         } // 사용 끝
+        public bool EnsureTrialShop(out string message) // 현재 층의 시험 상점 준비와 저장
+        { // 준비 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 층과 이동 상태
+            if (Flow.Phase != GamePhase.Inventory || travel == null || !travel.IsReady) // 실제 인벤토리와 안정된 던전 검사
+            { // 준비 오류 시작
+                message = "현재 상점을 열 수 없습니다."; // 잘못된 위치 안내
+                return false; // 잘못된 상점 진입 차단
+            } // 준비 오류 끝
+            foreach (var saved in shopStocks) // 이전에 방문한 층별 상점 순회
+            { // 상점 조회 시작
+                if (saved.floor == travel.Floor) // 현재 층의 기존 상점 검사
+                { // 기존 상점 시작
+                    if (!ShopState.TryRestore(saved, out var restored)) // 기존 가격과 재고 복원 검사
+                    { // 복원 오류 시작
+                        message = "저장된 상점을 확인할 수 없습니다."; // 손상된 상점 안내
+                        return false; // 다른 가격 재생성 차단
+                    } // 복원 오류 끝
+                    Shop = restored; // 저장된 현재 층 상점 연결
+                    return true; // 기존 상품과 재고 재사용
+                } // 기존 상점 끝
+            } // 상점 조회 끝
+            var generated = TrialShopCatalog.Create(travel.Floor, new System.Random()); // 기획 범위 내 최초 시험 가격 생성
+            if (!ShopState.TryRestore(generated, out var shop)) // 실제 상품과 가격 검증
+            { // 생성 오류 시작
+                message = "시험 상점을 준비할 수 없습니다."; // 생성 오류 안내
+                return false; // 잘못된 상점 차단
+            } // 생성 오류 끝
+            return TryPersistEconomy(Inventory, Relics, shop, Gold, "시험 상점 준비", out message); // 상품 가격의 사전 저장
+        } // 준비 끝
+        public bool TryBuyShopItem(int offerIndex, out string message) // 확인한 상점 상품의 원자적 구매
+        { // 구매 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (Flow.Phase != GamePhase.Inventory || Shop == null) // 실제 상점 진입 상태 검사
+            { // 상태 오류 시작
+                message = "상점이 열려 있지 않습니다."; // 잘못된 화면 안내
+                return false; // 잘못된 구매 차단
+            } // 상태 오류 끝
+            if (!Shop.TryBuy(offerIndex, 1, Gold, Inventory, out var result, out message)) // 재고와 잔액 및 수용 검사
+            { // 구매 거절 시작
+                return false; // 기존 골드와 상품 및 아이템 보존
+            } // 구매 거절 끝
+            return TryPersistEconomy(result.Inventory, Relics, result.Shop, result.Gold, "상품 구매", out message); // 안전한 저장 후 거래 확정
+        } // 구매 끝
+        public bool TrySellShopItem(int offerIndex, int inventoryIndex, out string message) // 확인한 가격과 보유품의 원자적 판매
+        { // 판매 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (Flow.Phase != GamePhase.Inventory || Shop == null) // 실제 상점 진입 상태 검사
+            { // 상태 오류 시작
+                message = "상점이 열려 있지 않습니다."; // 잘못된 화면 안내
+                return false; // 잘못된 판매 차단
+            } // 상태 오류 끝
+            if (!Shop.TrySell(offerIndex, inventoryIndex, 1, Gold, Inventory, out var result, out message)) // 같은 상품 가격과 실제 보유품 검사
+            { // 판매 거절 시작
+                return false; // 기존 골드와 상품 및 아이템 보존
+            } // 판매 거절 끝
+            return TryPersistEconomy(result.Inventory, Relics, result.Shop, result.Gold, "아이템 판매", out message); // 안전한 저장 후 거래 확정
+        } // 판매 끝
+        public bool TryAcquireRelic(string id, string replaceId, out string message) // 시험 유물 획득 또는 명시적 교체
+        { // 획득 시작
+            message = string.Empty; // 기본 안내 초기화
+            if (Flow.Phase != GamePhase.Inventory || Shop == null) // 실제 시험 경제 화면 상태 검사
+            { // 상태 오류 시작
+                message = "시험 유물을 받을 수 없습니다."; // 잘못된 위치 안내
+                return false; // 다른 화면의 획득 차단
+            } // 상태 오류 끝
+            var valid = string.IsNullOrEmpty(replaceId) ? Relics.TryAcquire(id, out var next) : Relics.TryReplace(replaceId, id, out next); // 확인한 기존 유물 또는 빈 슬롯 적용
+            if (!valid) // 유물 한도와 중복 및 실제 대상 검사
+            { // 획득 거절 시작
+                message = "유물이 중복되었거나 보유 한도에 도달했습니다."; // 실제 획득 불가 안내
+                return false; // 기존 유물과 효과 보존
+            } // 획득 거절 끝
+            return TryPersistEconomy(Inventory, next, Shop, Gold, "시험 유물 획득", out message); // 안전한 저장 후 유물 효과 적용
+        } // 획득 끝
+        private bool TryPersistEconomy(InventoryState inventory, RelicState relics, ShopState shop, int gold, string success, out string message) // 골드와 유물 및 상점 거래의 단일 저장
+        { // 저장 시작
+            message = string.Empty; // 기본 안내 초기화
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 회차 식별자
+            if (runStorage == null || savedId != null && savedId != CurrentRunId || inventory == null || relics == null || shop == null || gold < 0) // 저장 기능과 기존 회차 및 거래 결과 검사
+            { // 저장 거절 시작
+                message = "기존 회차 저장 또는 거래 상태를 확인해 주세요."; // 기존 저장 보호 안내
+                return false; // 다른 회차 덮어쓰기와 잘못된 거래 차단
+            } // 저장 거절 끝
+            var room = GameObject.Find("RoomTravel"); // 실제 방 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 탐험 상태
+            var data = travel == null ? null : travel.CaptureInventoryRun(); // 안정된 인벤토리 상태의 저장본
+            var changed = shop.Snapshot(); // 거래 후 층별 상품과 재고
+            if (data == null || changed.floor != data.floor) // 실제 현재 층과 상점 일치 검사
+            { // 층 오류 시작
+                message = "현재 층의 상점을 저장할 수 없습니다."; // 층 불일치 안내
+                return false; // 다른 층 거래 차단
+            } // 층 오류 끝
+            var shops = new System.Collections.Generic.List<ShopStockData>(CopyShopStocks(shopStocks)); // 이전 상점의 독립 복사
+            var found = shops.FindIndex(value => value.floor == changed.floor); // 현재 층 상점의 저장 위치
+            if (found < 0) // 처음 방문한 층 검사
+            { // 새 상점 시작
+                shops.Add(changed); // 고정된 새 상품과 재고 추가
+            } // 새 상점 끝
+            else // 기존 층 상점 분기
+            { // 기존 상점 시작
+                shops[found] = changed; // 거래 후 상품과 재고 반영
+            } // 기존 상점 끝
+            data.gold = gold; // 거래 후 골드 잔액
+            data.slots = inventory.SaveSlots(); // 거래 후 독립 인벤토리
+            data.relicIds = relics.SaveIds(); // 변경할 유물 목록
+            data.shopStocks = shops.ToArray(); // 모든 방문 층의 상품과 재고
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 안전한 회차 저장 검사
+            { // 저장 실패 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 오류 안내 시작
+                    message = "거래를 저장할 수 없습니다."; // 기본 저장 실패 안내
+                } // 오류 안내 끝
+                return false; // 원본 골드와 아이템 및 재고 보존
+            } // 저장 실패 끝
+            Inventory = inventory; // 검증된 소지품 적용
+            Relics = relics; // 저장된 유물 효과 적용
+            Gold = gold; // 저장된 골드 반영
+            Shop = shop; // 저장된 현재 상점 반영
+            shopStocks = data.shopStocks; // 저장된 층별 상점 목록 반영
+            savedRun = data; // 마지막 정상 저장 갱신
+            savedRunValid = true; // 저장된 회차 재개 허용
+            message = success + " · 저장 완료"; // 실제 거래와 저장 결과 안내
+            return true; // 안전한 거래 확정 완료
+        } // 저장 끝
+        public ShopStockData[] ShopStocksSnapshot() // 전체 방문 상점의 독립 저장본
+        { // 저장본 생성 시작
+            return CopyShopStocks(shopStocks); // 원본을 보호하는 전체 상점 복사
+        } // 저장본 생성 끝
+        private static ShopStockData[] CopyShopStocks(ShopStockData[] source) // 검증된 층별 상점의 심층 복사
+        { // 복사 시작
+            if (source == null) // 누락된 상점 목록 검사
+            { // 누락 오류 시작
+                return null; // 복원 불가능한 목록 차단
+            } // 누락 오류 끝
+            var result = new ShopStockData[source.Length]; // 독립 상점 목록 생성
+            for (var index = 0; index < source.Length; index++) // 저장된 상점 순회
+            { // 상점 복사 시작
+                if (!ShopState.TryRestore(source[index], out var shop)) // 가격과 재고 복원 검사
+                { // 복원 오류 시작
+                    return null; // 손상된 상점 목록 차단
+                } // 복원 오류 끝
+                result[index] = shop.Snapshot(); // 검증된 상품과 재고 복사
+            } // 상점 복사 끝
+            return result; // 안전한 상점 목록 전달
+        } // 복사 끝
         public bool TryEquipInventoryItem(int index, out string message) // 보유 장비의 원자적 장착
         { // 장착 시작
             message = "장착할 장비를 선택하세요."; // 기본 선택 안내
@@ -1076,6 +1247,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 기존 회차 복구 시작
                     Inventory = loadRollbackInventory; // 이전 인벤토리 복원
                     Equipment = loadRollbackEquipment; // 이전 장비 복원
+                    Relics = loadRollbackRelics; // 이전 유물 복원
+                    shopStocks = loadRollbackShops; // 이전 상점 목록 복원
+                    Shop = loadRollbackShop; // 이전 상점 복원
                     Keys = loadRollbackKeys; // 이전 열쇠 복원
                     ExplorationHistory = loadRollbackHistory; // 이전 회차 기록 복원
                     PlayerHealth = loadRollbackHealth; // 이전 체력 복원
@@ -1096,6 +1270,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 해제 시작
             loadRollbackInventory = null; // 이전 인벤토리 참조 해제
             loadRollbackEquipment = null; // 이전 장비 참조 해제
+            loadRollbackRelics = null; // 이전 유물 참조 해제
+            loadRollbackShops = null; // 이전 상점 목록 참조 해제
+            loadRollbackShop = null; // 이전 상점 참조 해제
             loadRollbackKeys = null; // 이전 열쇠 참조 해제
             loadRollbackHistory = null; // 이전 기록 참조 해제
             loadRollbackRunId = null; // 이전 회차 식별자 참조 해제

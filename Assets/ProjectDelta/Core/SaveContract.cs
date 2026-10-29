@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 12; // 개별 장비 특성을 포함한 저장 버전
+        public const int CurrentVersion = 13; // 유물과 층별 상점을 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -114,6 +114,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public EquipmentVariantData armorVariant; // 장착한 방어구의 개별 특성
         public EquipmentVariantData accessoryVariant; // 장착한 장신구의 개별 특성
         public EquipmentVariantData bagVariant; // 장착한 가방의 개별 특성
+        public string[] relicIds; // 현재 회차의 보유 유물 식별자
+        public ShopStockData[] shopStocks; // 방문한 층의 확정된 상품과 재고
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작
             if ((version < 1 || version > CurrentVersion) || floor < 1 || maxHealth < 1 || health < 0 || health > maxHealth || slots == null || slots.Length > (version >= 11 ? 23 : 10)) // 기존과 새 버전 및 진행 상태 범위
@@ -124,13 +126,28 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 장비 저장 오류 시작
                 return false; // 알 수 없는 장비와 잘못된 용량 차단
             } // 장비 저장 오류 끝
+            if (version >= 13 && (!RelicState.TryRestore(relicIds, out _) || shopStocks == null || shopStocks.Length > 2)) // 유물과 현재 시험 층의 상점 수 검사
+            { // 경제 저장 오류 시작
+                return false; // 잘못된 유물과 상점 목록 차단
+            } // 경제 저장 오류 끝
+            if (version >= 13) // 층별 시험 상점 검사
+            { // 상점 검사 시작
+                var seenFloors = new HashSet<int>(); // 상점 층 중복 검사
+                foreach (var shop in shopStocks) // 저장된 층별 상점 순회
+                { // 상점 검증 시작
+                    if (shop == null || shop.floor < 1 || shop.floor > floor || !seenFloors.Add(shop.floor) || !ShopState.TryRestore(shop, out _)) // 층 범위와 상품 상태 검사
+                    { // 상점 오류 시작
+                        return false; // 중복 또는 손상 상점 차단
+                    } // 상점 오류 끝
+                } // 상점 검증 끝
+            } // 상점 검사 끝
             if (version >= 12) // 개별 장비 저장 검사
             { // 개별 장비 검사 시작
                 if (!EquipmentState.TryRestore(weaponId, armorId, accessoryId, bagId, weaponVariant, armorVariant, accessoryVariant, bagVariant, out _)) // 부위별 개별 장비와 기본 정의 일치 검사
                 { // 장착 오류 시작
                     return false; // 잘못된 장착 장비 차단
                 } // 장착 오류 끝
-                var seenItems = new HashSet<string>(StringComparer.Ordinal); // 회차 전체 장비 인스턴스 중복 검사
+                var seenItems = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // 회차 전체 장비 인스턴스 중복 검사
                 foreach (var variant in new[] { weaponVariant, armorVariant, accessoryVariant, bagVariant }) // 장착 장비 순회
                 { // 장착 중복 검사 시작
                     if (variant != null && !seenItems.Add(variant.instanceId)) // 동일한 장비의 중복 장착 검사
@@ -149,6 +166,19 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                         return false; // 같은 장비의 중복 보유 차단
                     } // 중복 오류 끝
                 } // 소지 중복 검사 끝
+                if (version >= 13) // 상점에 남은 개별 장비 검사
+                { // 상점 중복 검사 시작
+                    foreach (var shop in shopStocks) // 검증한 층별 상점 순회
+                    { // 상점 상품 검사 시작
+                        foreach (var offer in shop.offers) // 실제 상품 순회
+                        { // 상품 중복 검사 시작
+                            if (offer.remaining > 0 && offer.equipment != null && !seenItems.Add(offer.equipment.instanceId)) // 재고로 남은 개별 장비의 중복 검사
+                            { // 중복 오류 시작
+                                return false; // 보유 또는 다른 상품과 중복 차단
+                            } // 중복 오류 끝
+                        } // 상품 중복 검사 끝
+                    } // 상점 상품 검사 끝
+                } // 상점 중복 검사 끝
             } // 개별 장비 검사 끝
             if (version >= 5 && (maxMana < 1 || mana < 0 || mana > maxMana)) // 새 저장의 마나 범위 검사
             { // 마나 오류 시작

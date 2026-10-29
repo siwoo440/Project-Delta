@@ -2662,6 +2662,137 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(app.Equipment.GetVariant(EquipmentSlot.Weapon).cursed, Is.True); // 실제 저주 보존
             Assert.That(app.Inventory.Slots[0].Equipment.instanceId, Is.EqualTo(first.instanceId)); // 기존 일반 검 복원
         } // 검증 끝
+        [UnityTest] // 실제 시험 상점의 거래와 유물 저장 검증
+        public IEnumerator Economy_TradeRelicAndRestore() // 가격·재고·잔액과 유물 효과 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EconomyTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            typeof(AppRoot).GetProperty("Gold").GetSetMethod(true).Invoke(app, new object[] { 100 }); // 거래 검증용 골드 준비
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 상점 진입
+            Assert.That(GameObject.Find("EconomyCanvas"), Is.Not.Null); // 실제 경제 화면 생성
+            var offer = app.Shop.Snapshot().offers[0]; // 고정된 첫 상품과 가격
+            Assert.That(offer.price, Is.InRange(20, 60)); // 기획 가격 범위 확인
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 캡처 환경 확인
+            { // 화면 저장 시작
+                var image = CaptureScreen("EconomyCanvas"); // 실제 상점과 유물 화면 캡처
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 화면 저장 끝
+            GameObject.Find("ShopOffer_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 상품 선택
+            GameObject.Find("ShopBuyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 상품 구매
+            Assert.That(app.Gold, Is.EqualTo(100 - offer.price)); // 실제 구매 금액 차감
+            Assert.That(app.Inventory.Slots[0].ItemId, Is.EqualTo(offer.itemId)); // 구매한 아이템 획득
+            Assert.That(app.Shop.Snapshot().offers[0].remaining, Is.EqualTo(offer.remaining - 1)); // 구매 재고 차감
+            GameObject.Find("ShopInventory_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 구매한 물건 선택
+            GameObject.Find("ShopSellButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 반값 판매
+            Assert.That(app.Gold, Is.EqualTo(100 - offer.price + offer.price / 2)); // 시험 버림 판매가 반영
+            Assert.That(app.Inventory.Slots[0].IsEmpty, Is.True); // 판매한 아이템 제거
+            GameObject.Find("TrialRelic_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 공격 유물 획득
+            Assert.That(app.Relics.Contains(TrialRelicCatalog.AttackId), Is.True); // 실제 유물 보유
+            var balance = app.Gold; // 저장된 최종 잔액
+            var stock = app.Shop.Snapshot().offers[0].remaining; // 저장된 남은 재고
+            GameObject.Find("CloseEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 인벤토리 복귀
+            app.CloseInventory(); // 탐험 복귀
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 확정 명중 난수
+            Assert.That(app.StartCombat(), Is.True); // 유물을 가진 실제 전투 진입
+            yield return null; // 전투 화면 준비
+            Assert.That(GameObject.Find("RelicStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("유물 1/5")); // 전투 상단 보유 유물 표시
+            GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 유물 효과가 반영된 공격
+            Assert.That(GameObject.Find("EnemyHealth").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("25/70")); // 기본 공격력 50과 유물 2의 실제 피해 확인
+            Object.Destroy(app.gameObject); // 현재 실행 중단
+            yield return null; // 공통 객체 정리
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 관리자
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 복원 대기
+            Assert.That(app.Gold, Is.EqualTo(balance)); // 거래 잔액 복원
+            Assert.That(app.Relics.Contains(TrialRelicCatalog.AttackId), Is.True); // 보유 유물 복원
+            app.OpenInventory(); // 상점 재방문 준비
+            yield return null; // 인벤토리 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 같은 층 상점 재방문
+            Assert.That(app.Shop.Snapshot().offers[0].price, Is.EqualTo(offer.price)); // 재방문 시 고정 가격 보존
+            Assert.That(app.Shop.Snapshot().offers[0].remaining, Is.EqualTo(stock)); // 재방문 시 남은 재고 보존
+        } // 검증 끝
+        [UnityTest] // 층별 상점의 별도 저장 검증
+        public IEnumerator Economy_StoresIndependentShopForEachFloor() // 다음 층의 상품과 기존 층 보존 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EconomyTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 층 이동 제어
+            app.OpenInventory(); // 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 층 상점 생성과 저장
+            var firstPrice = app.Shop.Snapshot().offers[0].price; // 첫 층에서 결정된 가격
+            GameObject.Find("CloseEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 인벤토리 복귀
+            app.CloseInventory(); // 탐험 복귀
+            travel.SendMessage("TryNextFloor"); // 기존 실제 다음 층 전환
+            yield return null; // 새 층 준비 대기
+            Assert.That(travel.Floor, Is.EqualTo(2)); // 실제 두 번째 층 도착
+            app.OpenInventory(); // 두 번째 층 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 층 상점 생성과 저장
+            Assert.That(app.Shop.Snapshot().floor, Is.EqualTo(2)); // 현재 층에 맞는 상점 확인
+            var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out var warning); // 독립 저장소의 실제 회차
+            Assert.That(warning, Is.Empty); // 정상적인 상점 저장 확인
+            Assert.That(saved.shopStocks.Length, Is.EqualTo(2)); // 층별 상점 각각 보관
+            Assert.That(saved.shopStocks.First(value => value.floor == 1).offers[0].price, Is.EqualTo(firstPrice)); // 이전 층의 확정 가격 보존
+            Assert.That(saved.shopStocks.First(value => value.floor == 2).offers[0].price, Is.EqualTo(app.Shop.Snapshot().offers[0].price)); // 현재 층의 가격 저장 확인
+        } // 검증 끝
+        [UnityTest] // 상점 거래 거절과 저장 충돌 검증
+        public IEnumerator Economy_FailedPurchasePreservesGoldInventoryAndStock() // 잔액 부족과 저장 충돌의 원본 보존
+        { // 검증 시작
+            var root = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EconomyTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            RunStorage.TestDirectoryOverride = root; // 시험 저장 경로 연결
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.OpenInventory(); // 실제 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 상점 진입과 가격 저장
+            var offer = app.Shop.Snapshot().offers[0]; // 저장된 첫 상품과 재고
+            Assert.That(app.TryBuyShopItem(0, out var message), Is.False); // 골드 부족 구매 거절
+            Assert.That(message, Does.Contain("부족")); // 잔액 부족 안내
+            Assert.That(app.Gold, Is.Zero); // 기존 골드 보존
+            Assert.That(app.Inventory.Slots[0].IsEmpty, Is.True); // 아이템 미지급 확인
+            Assert.That(app.Shop.Snapshot().offers[0].remaining, Is.EqualTo(offer.remaining)); // 상품 재고 보존
+            typeof(AppRoot).GetProperty("Gold").GetSetMethod(true).Invoke(app, new object[] { 100 }); // 저장 충돌 시험용 잔액 준비
+            System.IO.File.WriteAllText(System.IO.Path.Combine(root, "run-v1.json"), "changed"); // 외부 저장 파일 변경 모사
+            Assert.That(app.TryBuyShopItem(0, out message), Is.False); // 저장 충돌 시 실제 거래 거절
+            Assert.That(app.Gold, Is.EqualTo(100)); // 충돌 전 골드 보존
+            Assert.That(app.Inventory.Slots[0].IsEmpty, Is.True); // 충돌 시 아이템 미지급
+            Assert.That(app.Shop.Snapshot().offers[0].remaining, Is.EqualTo(offer.remaining)); // 충돌 시 상점 재고 보존
+        } // 검증 끝
+        [UnityTest] // 유물 한도에서 명시적인 교체 검증
+        public IEnumerator Economy_RelicLimitRequiresConfirmation() // 취소와 선택 교체의 보유 상태 확인
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "EconomyTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            app.OpenInventory(); // 인벤토리 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("OpenEconomyButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 시험 경제 화면 진입
+            for (var index = 0; index < 5; index++) // 기본 유물 한도 채우기
+            { // 유물 획득 시작
+                GameObject.Find("TrialRelic_" + index).GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 시험 유물 획득
+            } // 유물 획득 끝
+            Assert.That(app.Relics.Count, Is.EqualTo(5)); // 기본 유물 한도 확인
+            GameObject.Find("TrialRelic_5").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 여섯 번째 유물 선택
+            GameObject.Find("RelicReplacement_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 보유 유물 선택
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CancelRelicConfirmation")); // 최종 기본 아니요 선택
+            GameObject.Find("CancelRelicConfirmation").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 유물 교체 취소
+            Assert.That(app.Relics.Contains(TrialRelicCatalog.AttackId), Is.True); // 취소한 유물 보존
+            GameObject.Find("TrialRelic_5").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 새 유물 재선택
+            GameObject.Find("RelicReplacement_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체할 기존 유물 재선택
+            GameObject.Find("ConfirmRelicReplacement").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 확인한 교체 확정
+            Assert.That(app.Relics.Contains(TrialRelicCatalog.AttackId), Is.False); // 기존 유물 제거
+            Assert.That(app.Relics.Contains(TrialRelicCatalog.SpeedId), Is.True); // 선택한 새 유물 획득
+            Assert.That(app.Relics.Count, Is.EqualTo(5)); // 교체 후 한도 유지
+        } // 검증 끝
         [UnityTest] // 전투 중 선택한 소비품 사용 검증
         public IEnumerator Combat_SelectedManaPotionConsumesOnlyOnRecovery() // 실패와 성공의 행동 소비 확인
         { // 검증 시작

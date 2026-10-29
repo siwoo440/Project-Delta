@@ -30,7 +30,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 확장 실패 시작
                 return null; // 잘못된 목록 거절
             } // 확장 실패 끝
-            var seenEquipment = new HashSet<string>(StringComparer.Ordinal); // 동일 장비 인스턴스 중복 검사
+            var seenEquipment = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // 동일 장비 인스턴스 중복 검사
             for (var index = 0; index < saved.Length; index++) // 저장된 순서 순회
             { // 복원 순회 시작
                 var slot = saved[index]; // 저장된 슬롯 조회
@@ -155,7 +155,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             foreach (var slot in slots) // 기존 슬롯 순회
             { // 슬롯 검사 시작
                 var existing = slot.Equipment; // 외부에 노출되지 않는 독립 장비 조회
-                if (existing != null && existing.instanceId == item.instanceId) // 동일 인스턴스 보유 검사
+                if (existing != null && string.Equals(existing.instanceId, item.instanceId, StringComparison.OrdinalIgnoreCase)) // 동일 인스턴스 보유 검사
                 { // 중복 오류 시작
                     return false; // 같은 장비 중복 획득 차단
                 } // 중복 오류 끝
@@ -187,7 +187,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 입력 오류 끝
             foreach (var slot in slots) // 다른 인벤토리 장비 순회
             { // 중복 검사 시작
-                if (slot.Equipment != null && slot.Equipment.instanceId == item.instanceId) // 동일한 개별 장비 보유 검사
+                if (slot.Equipment != null && string.Equals(slot.Equipment.instanceId, item.instanceId, StringComparison.OrdinalIgnoreCase)) // 동일한 개별 장비 보유 검사
                 { // 중복 오류 시작
                     return false; // 기존 장비 중복 차단
                 } // 중복 오류 끝

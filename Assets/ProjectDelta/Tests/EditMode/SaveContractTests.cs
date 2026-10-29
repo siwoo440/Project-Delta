@@ -13,7 +13,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [Test] // 회차 버전과 체력 검증
         public void Run_RejectsUnknownVersionAndInvalidHealth() // 버전과 체력 오류 거절
         { // 검증 시작
-            var run = new RunSaveData { version = 13, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
+            var run = new RunSaveData { version = 14, floor = 1, health = 1, maxHealth = 1, slots = new SaveItemSlot[0] }; // 알 수 없는 버전
             Assert.That(run.IsValid(), Is.False); // 새 버전 거절 확인
             run.version = 1; // 지원 버전 설정
             run.health = 2; // 최대치 초과 체력
@@ -90,6 +90,30 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(run.IsValid(), Is.True); // 이전 고정 장비와 새로운 보유 장비 허용
             run.slots[0].equipment.options[0].optionId = "unknown"; // 알 수 없는 추가 옵션
             Assert.That(run.IsValid(), Is.False); // 손상된 옵션 저장 거절
+        } // 검증 끝
+        [Test] // 유물 저장의 중복과 이전 회차 호환 검증
+        public void Run_RejectsDuplicateRelicsAndPreservesLegacy() // 유물 저장 범위 확인
+        { // 검증 시작
+            var run = new RunSaveData { version = 13, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, statPoints = 5, slots = new InventoryState().SaveSlots(), relicIds = new[] { TrialRelicCatalog.AttackId, TrialRelicCatalog.AttackId }, shopStocks = new ShopStockData[0] }; // 중복된 유물을 보유한 저장
+            Assert.That(run.IsValid(), Is.False); // 같은 유물 중복 차단
+            run.relicIds = new[] { TrialRelicCatalog.AttackId }; // 유효한 단일 유물
+            Assert.That(run.IsValid(), Is.True); // 정상 유물 저장 허용
+            run.relicIds = null; // 누락된 새 유물 목록
+            Assert.That(run.IsValid(), Is.False); // 새 저장의 누락 목록 거절
+            run.version = 12; // 유물 저장이 없는 이전 버전
+            Assert.That(run.IsValid(), Is.True); // 이전 저장의 빈 유물 호환
+        } // 검증 끝
+        [Test] // 상점과 소지품 사이의 장비 중복 저장 검증
+        public void Run_RejectsStockedEquipmentAlreadyOwned() // 품절 전 장비의 중복 보유 차단
+        { // 검증 시작
+            var item = TrialEquipmentTraits.Create(EquipmentCatalog.BasicSwordId, EquipmentVariantRules.Rare, true); // 고유 시험 검
+            var inventory = new InventoryState(); // 빈 인벤토리
+            Assert.That(inventory.TryAddEquipment(item), Is.True); // 개별 장비 보관
+            var offer = new ShopOfferData { offerId = "sword", itemId = item.definitionId, price = 100, initialStock = 1, remaining = 1, equipment = item }; // 같은 장비가 남은 상점
+            var run = new RunSaveData { version = 13, floor = 1, health = 1, maxHealth = 1, maxMana = 50, mana = 50, level = 1, statPoints = 5, slots = inventory.SaveSlots(), relicIds = new string[0], shopStocks = new[] { new ShopStockData { floor = 1, offers = new[] { offer } } } }; // 장비 중복 회차
+            Assert.That(run.IsValid(), Is.False); // 재고와 소지품의 같은 인스턴스 차단
+            offer.remaining = 0; // 이미 구매된 상점 상품
+            Assert.That(run.IsValid(), Is.True); // 품절된 가격 기록과 보유 장비 허용
         } // 검증 끝
         [Test] // 아이템 수량과 빈 칸 검증
         public void Run_RejectsInvalidSlots() // 잘못된 아이템 거절

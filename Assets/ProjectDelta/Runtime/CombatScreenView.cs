@@ -108,7 +108,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     AddBattlePortrait(canvas.transform, "EnemyPortrait2", enemyImage, false, 1); // 위쪽 두 번째 상대 초상화
                 } // 다수 초상화 끝
                 UiFactory.CreateText(canvas.transform, "Header", "전투", 42, new Vector2(-730f, 480f), new Vector2(300f, 75f), Color.white); // 상단 전투 제목
-                UiFactory.CreateText(canvas.transform, "RelicStatus", "유물 · 준비 중", 24, new Vector2(700f, 480f), new Vector2(380f, 60f), accent); // 미구현 유물 보유 영역
+                UiFactory.CreateText(canvas.transform, "RelicStatus", "유물 " + owner.Relics.Count + "/" + RelicState.Capacity + " · 공격+" + owner.Relics.AttackBonus + " 방어+" + owner.Relics.DefenseBonus + " 속도+" + owner.Relics.SpeedBonus, 20, new Vector2(700f, 480f), new Vector2(450f, 60f), accent); // 실제 보유 유물과 시험 효과 표시
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 480f), new Vector2(900f, 60f), Color.white); // 상단 라운드와 행동자 표시
                 UiFactory.CreateText(canvas.transform, "Status", "적 행동 예고 · 준비 중", 21, new Vector2(0f, 405f), new Vector2(800f, 45f), accent); // 미구현 적 행동 예고 안내
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 30, new Vector2(-320f, -245f), new Vector2(300f, 70f), accent); // 하단 플레이어 이름
@@ -228,7 +228,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
             var grouped = travel != null && travel.IsGroupEncounter; // 현재 시험 다수 조우 여부
             var groupName = grouped && travel.CurrentMonsterId == "MON_GOBLIN" ? "고블린" : "슬라임"; // 현재 저장의 실제 다수 적 이름
-            if (!owner.Equipment.TryCalculate(50, 40, TrialPlayerSpeed, 0, 150, 10, out var stats)) // 장비 보정을 적용한 능력치 검사
+            if (!owner.Equipment.TryCalculate(50 + owner.Relics.AttackBonus, 40 + owner.Relics.DefenseBonus, TrialPlayerSpeed + owner.Relics.SpeedBonus, 0, 150, 10, out var stats)) // 장비 보정을 적용한 능력치 검사
             { // 능력치 오류 시작
                 throw new System.InvalidOperationException("Invalid equipment stats."); // 잘못된 장비의 전투 진입 차단
             } // 능력치 오류 끝

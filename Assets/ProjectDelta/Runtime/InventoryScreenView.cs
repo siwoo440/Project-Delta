@@ -12,6 +12,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly Button[] equipmentButtons = new Button[10]; // 장비 지급과 장착 및 해제 버튼
         private Button trialVariantButton; // 시험 희귀 저주 장비 지급 버튼
         private Button purifyButton; // 선택 저주 장비 정화 버튼
+        private Button economyButton; // 시험 상점과 유물 화면 버튼
+        private EconomyScreenView economyScreen; // 현재 열린 독립 경제 화면
         private Text equipmentText; // 현재 장착 장비 표시
         private Text selectedDetails; // 선택 장비의 공개 효과 표시
         private enum OfferStage // 가득 찬 인벤토리 획득 단계
@@ -151,7 +153,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.equipmentButtons[8] = view.CreateEquipmentAction("UnequipBagButton", "가방 해제", () => view.Unequip(EquipmentSlot.Bag)); // 가방 해제 버튼
                 view.trialVariantButton = view.CreateEquipmentAction("TrialVariantButton", "시험 희귀 저주 검", view.ShowTrialVariant); // 시험 장비의 획득 전 확인
                 view.purifyButton = view.CreateEquipmentAction("PurifySelectedButton", "선택 장비 정화", view.ShowPurifyConfirmation); // 선택 장비의 정화 확인
-                var controls = new[] { pickup, key, view.potionButton, view.usePotionButton, close, view.largePotionButton, view.manaPotionButton, view.useSelectedButton, view.discardButton, view.equipmentButtons[4], view.equipmentButtons[0], view.equipmentButtons[1], view.equipmentButtons[2], view.equipmentButtons[3], view.equipmentButtons[9], view.equipmentButtons[5], view.equipmentButtons[6], view.equipmentButtons[7], view.equipmentButtons[8], view.trialVariantButton, view.purifyButton }; // 다섯 줄의 모든 행동 버튼
+                view.economyButton = view.CreateEquipmentAction("OpenEconomyButton", "시험 상점 · 유물", view.OpenTrialEconomy); // 독립 시험 경제 화면 진입
+                var controls = new[] { pickup, key, view.potionButton, view.usePotionButton, close, view.largePotionButton, view.manaPotionButton, view.useSelectedButton, view.discardButton, view.equipmentButtons[4], view.equipmentButtons[0], view.equipmentButtons[1], view.equipmentButtons[2], view.equipmentButtons[3], view.equipmentButtons[9], view.equipmentButtons[5], view.equipmentButtons[6], view.equipmentButtons[7], view.equipmentButtons[8], view.trialVariantButton, view.purifyButton, view.economyButton }; // 다섯 줄의 모든 행동 버튼
                 for (var index = 0; index < controls.Length; index++) // 행동 버튼 순회
                 { // 행동 버튼 배치 시작
                     controls[index].GetComponent<RectTransform>().anchoredPosition = new Vector2(-760f + (index % 5) * 380f, -245f - (index / 5) * 53f); // 다섯 열 다섯 줄 행동 버튼 배치
@@ -283,6 +286,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             discardButton.interactable = footerEnabled; // 선택 아이템 버리기 가능 여부
             trialVariantButton.interactable = footerEnabled; // 시험 장비 지급 가능 여부
             purifyButton.interactable = footerEnabled; // 장비 정화 가능 여부
+            economyButton.interactable = footerEnabled; // 시험 상점 진입 가능 여부
             foreach (var button in equipmentButtons) // 장비 버튼 순회
             { // 장비 버튼 설정 시작
                 button.interactable = footerEnabled; // 모달 중 장비 행동 잠금
@@ -455,6 +459,47 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 생성 시작
             equipmentButtons[index] = CreateEquipmentAction("TrialEquipmentButton_" + index, label, () => AddTrialEquipment(id)); // 실제 장비 정의 획득 연결
         } // 생성 끝
+        private void OpenTrialEconomy() // 인벤토리에서 독립 시험 상점 열기
+        { // 열기 시작
+            if (offerStage != OfferStage.None || draggedSlot >= 0 || economyScreen != null) // 다른 선택과 중복 화면 검사
+            { // 진입 거절 시작
+                return; // 중복 상점 화면 차단
+            } // 진입 거절 끝
+            if (!owner.EnsureTrialShop(out var message)) // 현재 층의 고정 상품 사전 저장 검사
+            { // 준비 오류 시작
+                status.text = message; // 상점 준비 실패 안내
+                return; // 저장되지 않은 상점 표시 차단
+            } // 준비 오류 끝
+            gameObject.SetActive(false); // 아래 인벤토리의 모든 입력 차단
+            try // 독립 경제 화면 생성
+            { // 화면 생성 시작
+                economyScreen = EconomyScreenView.Create(owner, CloseTrialEconomy); // 실제 시험 상점과 유물 화면 생성
+            } // 화면 생성 끝
+            catch (System.Exception) // 화면 생성 실패 검사
+            { // 복구 시작
+                gameObject.SetActive(true); // 기존 인벤토리 입력 복원
+                Refresh(); // 실제 저장된 상태 표시
+                status.text = "시험 상점을 열 수 없습니다"; // 화면 준비 오류 안내
+            } // 복구 끝
+        } // 열기 끝
+        private void CloseTrialEconomy() // 경제 화면에서 인벤토리 복귀
+        { // 복귀 시작
+            economyScreen = null; // 닫힌 화면 참조 해제
+            gameObject.SetActive(true); // 기존 인벤토리 복구
+            selectedSlot = -1; // 거래 이전 슬롯 선택 해제
+            Refresh(); // 거래 후 보유 상태 표시
+            if (EventSystem.current != null) // 입력 관리자 검사
+            { // 선택 복구 시작
+                EventSystem.current.SetSelectedGameObject(economyButton.gameObject); // 이전 상점 버튼 선택
+            } // 선택 복구 끝
+        } // 복귀 끝
+        private void OnDestroy() // 상위 인벤토리 제거 처리
+        { // 정리 시작
+            if (economyScreen != null) // 열린 경제 화면 검사
+            { // 경제 화면 정리 시작
+                Destroy(economyScreen.gameObject); // 별도 캔버스와 입력 정리
+            } // 경제 화면 정리 끝
+        } // 정리 끝
         private static string EquipmentSnapshot(EquipmentVariantData item) // 확인 전후 개별 장비 비교값
         { // 비교값 시작
             return item == null ? string.Empty : JsonUtility.ToJson(item); // 전체 인스턴스와 옵션의 직렬화
