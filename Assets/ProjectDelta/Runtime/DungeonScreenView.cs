@@ -37,6 +37,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 인벤토리 연결 시작
                 MapPointerButton.Create(canvas.transform, "MapOpenButton", "전체 지도", new Vector2(750f, 190f), AppRoot.Instance.OpenFullMap); // 마우스 지도 열기 버튼
                 AppRoot.Instance.InventoryClosed += ClearDoorNotice; // 인벤토리 복귀 시 안내 초기화
+                AppRoot.Instance.ExplorationEvent += AppendLog; // 성공한 탐험 행동 기록 연결
             } // 인벤토리 연결 끝
             if (travel != null && travel.IsReady) // 생성된 방 구조와 실제 상태 검사
             { // 방 정보 연결 시작
@@ -71,6 +72,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (AppRoot.Instance != null) // 공통 게임 객체 존재 검사
             { // 인벤토리 연결 해제 시작
                 AppRoot.Instance.InventoryClosed -= ClearDoorNotice; // 인벤토리 복귀 연결 해제
+                AppRoot.Instance.ExplorationEvent -= AppendLog; // 탐험 행동 기록 연결 해제
             } // 인벤토리 연결 해제 끝
             if (travel != null) // 방 이동 객체 존재 검사
             { // 연결 해제 시작

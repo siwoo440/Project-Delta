@@ -1196,6 +1196,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             AppRoot.Instance.UpdatePlayerHealth(50); // 피해를 받은 시험 체력
             AppRoot.Instance.Inventory.Add("trial-small-potion", "시험 소형 회복약", 1, 5); // 시험 회복약 보관
             Assert.That(AppRoot.Instance.TryUseTrialPotion(out _), Is.False); // 탐험 화면에서 직접 사용 차단
+            var explorationLog = GameObject.Find("ExplorationLog").GetComponent<UnityEngine.UI.Text>(); // 실제 탐험 기록
+            Assert.That(explorationLog.text, Does.Not.Contain("회복약 1개 사용")); // 실패한 회복의 성공 기록 방지
             Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(50)); // 잘못된 상태의 체력 보존
             Assert.That(AppRoot.Instance.Inventory.Slots[0].Quantity, Is.EqualTo(1)); // 잘못된 상태의 아이템 보존
             gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
@@ -1211,6 +1213,16 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 해제 반영 대기
             Assert.That(AppRoot.Instance.PlayerHealth, Is.EqualTo(75)); // 기획 기준 체력 25 회복
             Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 마지막 회복약 소비와 슬롯 비움
+            Assert.That(explorationLog.text, Does.Contain("회복약 1개 사용")); // 성공한 회복약 사용 기록 확인
+            AppRoot.Instance.CloseInventory(); // 탐험 화면 복귀
+            yield return null; // 복귀 화면 갱신 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 요청 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 실제 회복약 기록 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
         } // 검증 끝
         [UnityTest] // 가득 찬 상태의 회복약 교체 검증
         public IEnumerator Inventory_Potion_FullInventoryReplacesConfirmedStack() // 회복약 지급의 기존 획득 선택 재사용

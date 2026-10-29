@@ -42,6 +42,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } = string.Empty; // 기본 대기 대상 없음
         public bool ObservationSaveBlocked => observationStorage == null || observationStorage.IsBlocked; // 복구 또는 재시작이 필요한 저장 상태
         public event System.Action InventoryClosed; // 인벤토리 복귀 알림
+        public event System.Action<string> ExplorationEvent; // 실제 탐험 행동 기록 알림
         public int PlayerHealth // 탐험 중 플레이어 현재 체력
         { // 속성 시작
             get; // 현재 체력 조회
@@ -243,6 +244,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var amount = recovered - PlayerHealth; // 실제 회복한 체력
             UpdatePlayerHealth(recovered); // 최대 체력 안에서 회복 적용
             message = "체력 " + amount + " 회복 · 소형 회복약 1개 사용"; // 실제 회복과 소비 안내
+            ExplorationEvent?.Invoke(message); // 실제 회복 성공의 탐험 기록 전달
             return true; // 체력 회복과 아이템 소비 완료
         } // 사용 끝
         public void UpdatePlayerHealth(int health) // 전투 후 탐험 체력 반영
