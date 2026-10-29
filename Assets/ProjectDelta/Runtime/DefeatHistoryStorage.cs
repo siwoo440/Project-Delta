@@ -44,6 +44,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly string current; // 패배 기록 현재 파일
         private readonly Func<string, bool> validTarget; // 실제 등록 대상 검사
         private string expectedHash; // 마지막으로 읽은 파일의 해시
+        public bool HasVerifiedCurrentFile => expectedHash != null; // 마지막으로 확인한 현재 파일 존재 여부
         private bool loaded; // 최초 검증 완료 상태
         private bool blocked; // 손상 또는 동시 변경 보호 상태
         public bool IsBlocked => blocked; // 쓰기 보호 상태 조회

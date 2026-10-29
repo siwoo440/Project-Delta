@@ -25,6 +25,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly string root; // 2D 전용 저장 폴더
         private readonly string current; // 현재 관찰 기록 파일
         private string expectedHash; // 읽은 현재 파일의 전체 해시
+        public bool HasVerifiedCurrentFile => expectedHash != null; // 마지막으로 확인한 현재 파일 존재 여부
         private bool blocked; // 손상 또는 충돌로 인한 저장 차단
         public bool IsBlocked => blocked; // 수동 복구가 필요한 저장 차단 상태
         public static string TestDirectoryOverride // 자동 검증용 독립 저장 경로

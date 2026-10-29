@@ -50,6 +50,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private readonly string current; // 현재 결말 기록 파일
         private List<EndingHistoryEntry> entries = new List<EndingHistoryEntry>(); // 검증된 실제 결말 기록
         private string expectedHash; // 마지막으로 읽은 파일 해시
+        public bool HasVerifiedCurrentFile => expectedHash != null; // 마지막으로 확인한 현재 파일 존재 여부
         private bool loaded; // 최초 조회 완료 여부
         private bool blocked; // 손상 또는 동시 변경 보호 상태
         public bool IsBlocked => blocked; // 원본 확인 전 쓰기 차단 여부

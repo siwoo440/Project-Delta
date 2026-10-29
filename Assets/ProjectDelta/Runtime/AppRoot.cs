@@ -18,6 +18,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public bool CanUseTrialFriendliness => relationshipStorage != null && !relationshipStorage.IsBlocked && !NpcRelationships.HasReceipt(CurrentRunId, TrialMerchantId); // 이번 회차의 우호 선택 가능 여부
         private RunStorage runStorage; // 현재 회차 저장 기능
         private DefeatHistoryStorage defeatStorage; // 독립된 영구 패배 기록
+        public bool HasVerifiedDefeatFile => defeatStorage != null && defeatStorage.HasVerifiedCurrentFile; // 이전에 확인한 패배 파일 존재 여부
+        public bool HasVerifiedObservationFile => observationStorage != null && observationStorage.HasVerifiedCurrentFile; // 이전에 확인한 관찰 파일 존재 여부
         private RunSaveData savedRun; // 마지막으로 확인한 저장 회차
         private bool savedRunValid; // 마지막 회차의 복원 가능 여부
         public RunSaveData PendingRun { get; private set; } // 씬에 전달할 복원 대기 회차
@@ -27,6 +29,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private BossPreparationScreenView bossPreparation; // 마왕 방 진입 전 준비 화면
         private BossResultScreenView bossResult; // 저장된 마왕 결과 대기 화면
         private EndingHistoryStorage endingStorage; // 독립 결말과 파편 영구 저장소
+        public bool HasVerifiedEndingFile => endingStorage != null && endingStorage.HasVerifiedCurrentFile; // 이전에 확인한 결말 파일 존재 여부
         public bool TryGetEarnedEndingShards(out int shards) // 검증된 결말 최초 해금 파편 누적 조회
         { // 조회 시작
             shards = 0; // 기본 조회 실패 값
