@@ -818,6 +818,147 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             attack.onClick.Invoke(); // 다음 프레임의 새 공격 요청
             Assert.That(health.text, Does.Contain("0/70")); // 새 공격과 승리 처리 확인
         } // 검증 끝
+        [UnityTest] // 인벤토리 가득 참의 두고 가기 검증
+        public IEnumerator Inventory_FullOffer_LeavePreservesAllItems() // 새 아이템 포기 시 기존 인벤토리 보존
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 없는 시험 획득
+            var leave = GameObject.Find("LeaveItemButton"); // 새 아이템 포기 버튼
+            Assert.That(leave, Is.Not.Null); // 가득 참 선택 제공 확인
+            Assert.That(GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 선택 중 다른 획득 차단
+            leave.GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 새 아이템 두고 가기
+            yield return null; // 선택 종료 대기
+            Assert.That(GameObject.Find("LeaveItemButton"), Is.Null); // 획득 선택 닫기
+            for (var index = 0; index < 10; index++) // 기존 슬롯 확인
+            { // 슬롯 검사 시작
+                Assert.That(AppRoot.Instance.Inventory.Slots[index].ItemId, Is.EqualTo("old-" + index)); // 모든 기존 아이템 보존
+            } // 슬롯 검사 끝
+        } // 검증 끝
+        [UnityTest] // 교체 취소와 확인 검증
+        public IEnumerator Inventory_FullOffer_ConfirmAndCancel() // 기존 묶음의 명시적인 교체 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 없는 시험 획득
+            GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 아이템 교체 선택
+            GameObject.Find("InventorySlotButton_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체할 기존 슬롯 선택
+            var confirm = GameObject.Find("ConfirmReplaceButton"); // 기존 묶음 교체 확인 버튼
+            Assert.That(confirm, Is.Not.Null); // 교체 확인 화면 제공
+            Assert.That(GameObject.Find("ReplaceConfirmMessage").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("기존 아이템 2")); // 버릴 대상 안내 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("old-2")); // 확인 전 기존 아이템 보존
+            GameObject.Find("CancelReplaceButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 취소
+            yield return null; // 획득 선택 복귀 대기
+            Assert.That(GameObject.Find("ReplaceItemButton"), Is.Not.Null); // 획득 선택 복귀 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("old-2")); // 취소 후 기존 아이템 보존
+            GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 다시 선택
+            GameObject.Find("InventorySlotButton_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 동일한 슬롯 재선택
+            yield return null; // 확인 화면 배치 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("InventoryCanvas"); // 실제 교체 확인 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+            GameObject.Find("ConfirmReplaceButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 최종 확인
+            yield return null; // 교체 결과 반영 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("ITEM_DAY80_TEST_DROP")); // 새 시험 아이템 획득
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].Quantity, Is.EqualTo(1)); // 새 아이템 수량 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].ItemId, Is.EqualTo("old-1")); // 다른 슬롯 보존
+            Assert.That(AppRoot.Instance.Inventory.Slots[3].ItemId, Is.EqualTo("old-3")); // 다음 슬롯 보존
+        } // 검증 끝
+        [UnityTest] // 획득 선택 전 이동 표시 초기화 검증
+        public IEnumerator Inventory_FullOffer_ClearsPendingMoveIndicator() // 교체 대상 선택 시 오래된 이동 표시 제거
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("InventorySlotButton_0").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 이동할 출발 슬롯 선택
+            Assert.That(GameObject.Find("InventorySlot_0").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("▶")); // 출발 슬롯 표시 확인
+            GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 가득 찬 상태의 획득 요청
+            GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 대상 선택
+            Assert.That(GameObject.Find("InventorySlot_0").GetComponent<UnityEngine.UI.Text>().text, Does.Not.Contain("▶")); // 이전 이동 표시 제거 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].ItemId, Is.EqualTo("old-0")); // 표시 변경 중 기존 아이템 보존
+        } // 검증 끝
+        [UnityTest] // 교체 확인 중 기존 아이템 변경 보호 검증
+        public IEnumerator Inventory_FullOffer_ChangedTargetIsNotOverwritten() // 확인 후 변경된 슬롯 보존
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            GameObject.Find("TrialPickupButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 공간 없는 시험 획득
+            GameObject.Find("ReplaceItemButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 교체 대상 선택
+            GameObject.Find("InventorySlotButton_2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 기존 슬롯 선택
+            Assert.That(AppRoot.Instance.Inventory.Remove(2, 1, out _), Is.True); // 외부 상태 변경 모사
+            Assert.That(AppRoot.Instance.Inventory.Add("different", "변경된 아이템", 1, 1).Added, Is.EqualTo(1)); // 변경된 슬롯 채우기
+            GameObject.Find("ConfirmReplaceButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 오래된 확인 요청
+            yield return null; // 획득 선택 복귀 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[2].ItemId, Is.EqualTo("different")); // 변경된 아이템 덮어쓰기 차단
+            Assert.That(GameObject.Find("FullOfferMessage").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("변경")); // 실제 화면의 취소 이유 안내
+        } // 검증 끝
+        [UnityTest] // 게임패드의 가득 참 교체 흐름 검증
+        public IEnumerator Inventory_FullOffer_GamepadConfirmsReplacement() // 실제 게임패드 선택과 최종 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            for (var index = 0; index < 10; index++) // 기본 슬롯 채우기
+            { // 아이템 추가 시작
+                AppRoot.Instance.Inventory.Add("old-" + index, "기존 아이템 " + index, 1, 1); // 슬롯별 기존 아이템
+            } // 아이템 추가 끝
+            AppRoot.Instance.OpenInventory(); // 인벤토리 화면 열기
+            yield return null; // 화면 준비 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 시험 아이템 획득 선택
+            yield return null; // 획득 선택 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(GameObject.Find("ReplaceItemButton"), Is.Not.Null); // 가득 참 선택 제공 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 교체 선택 이동
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 선택 변경 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(GameObject.Find("ReplaceItemButton"))); // 교체 버튼 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 교체 대상 선택 시작
+            yield return null; // 대상 화면 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(GameObject.Find("InventorySlotButton_0"))); // 첫 대상 슬롯 선택 확인
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 첫 슬롯의 교체 확인
+            yield return null; // 확인 화면 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(GameObject.Find("CancelReplaceButton"))); // 안전한 취소 기본 선택
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.DpadRight)); // 최종 교체 선택 이동
+            yield return null; // 방향 입력 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 방향 버튼 해제
+            yield return null; // 선택 변경 대기
+            Assert.That(UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject, Is.SameAs(GameObject.Find("ConfirmReplaceButton"))); // 최종 확인 선택
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 교체 최종 확정
+            yield return null; // 교체 결과 반영 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 선택 버튼 해제
+            yield return null; // 해제 반영 대기
+            Assert.That(AppRoot.Instance.Inventory.Slots[0].ItemId, Is.EqualTo("ITEM_DAY80_TEST_DROP")); // 실제 게임패드 교체 확인
+            Assert.That(AppRoot.Instance.Inventory.Slots[1].ItemId, Is.EqualTo("old-1")); // 다른 기존 아이템 보존
+        } // 검증 끝
         [UnityTest] // 키보드 슬롯 이동과 취소 검증
         public IEnumerator Inventory_SlotMove_KeyboardAndCancel() // 실제 키보드 선택과 수량 보존
         { // 검증 시작
@@ -931,14 +1072,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var second = GameObject.Find("InventorySlotButton_1").GetComponent<RectTransform>(); // 도착 슬롯 위치
             var start = RectTransformUtility.WorldToScreenPoint(null, first.position); // 출발 슬롯 화면 좌표
             var end = RectTransformUtility.WorldToScreenPoint(null, second.position); // 도착 슬롯 화면 좌표
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = start }); // 출발 위치로 마우스 이동
+            var mouseState = new MouseState(); // 시험 마우스 상태
+            mouseState.position = start; // 출발 위치 지정
+            InputSystem.QueueStateEvent(mouse, mouseState); // 출발 위치로 마우스 이동
             yield return null; // 위치 반영 대기
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = start }.WithButton(MouseButton.Left)); // 출발 슬롯 누름
+            InputSystem.QueueStateEvent(mouse, mouseState.WithButton(MouseButton.Left)); // 출발 슬롯 누름
             yield return null; // 누름 처리 대기
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = end }.WithButton(MouseButton.Left)); // 도착 슬롯으로 드래그
+            mouseState.position = end; // 도착 위치 지정
+            InputSystem.QueueStateEvent(mouse, mouseState.WithButton(MouseButton.Left)); // 도착 슬롯으로 드래그
             yield return null; // 드래그 처리 대기
             yield return null; // 도착 슬롯 반영 대기
-            InputSystem.QueueStateEvent(mouse, new MouseState { position = end }); // 도착 슬롯에서 버튼 해제
+            mouseState = new MouseState(); // 버튼이 해제된 마우스 상태
+            mouseState.position = end; // 도착 위치 유지
+            InputSystem.QueueStateEvent(mouse, mouseState); // 도착 슬롯에서 버튼 해제
             yield return null; // 놓기 처리 대기
             Assert.That(AppRoot.Instance.Inventory.Slots[0].IsEmpty, Is.True); // 실제 입력의 출발 슬롯 비움
             Assert.That(AppRoot.Instance.Inventory.Slots[1].Quantity, Is.EqualTo(3)); // 실제 입력의 수량 보존

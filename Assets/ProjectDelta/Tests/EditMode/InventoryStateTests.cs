@@ -12,12 +12,18 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             inventory.Add("herb", "약초", 2, 3); // 두 번째 아이템 묶음
             var method = typeof(InventoryState).GetMethod("TrySwap"); // 슬롯 교환 규칙 조회
             Assert.That(method, Is.Not.Null); // 슬롯 교환 기능 제공 확인
-            Assert.That(method.Invoke(inventory, new object[] { 0, 8 }), Is.True); // 빈 칸으로 이동
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, 8 // 슬롯과 아이템 인수
+            }), Is.True); // 빈 칸으로 이동
             Assert.That(inventory.Slots[0].IsEmpty, Is.True); // 이전 칸 비움
             Assert.That(inventory.Slots[8].ItemId, Is.EqualTo("potion")); // 이동한 아이템 확인
             Assert.That(inventory.Slots[8].Quantity, Is.EqualTo(3)); // 이동한 수량 확인
             Assert.That(inventory.Slots[8].StackLimit, Is.EqualTo(5)); // 이동한 중첩 한도 확인
-            Assert.That(method.Invoke(inventory, new object[] { 8, 1 }), Is.True); // 두 묶음 교환
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                8, 1 // 슬롯과 아이템 인수
+            }), Is.True); // 두 묶음 교환
             Assert.That(inventory.Slots[1].ItemId, Is.EqualTo("potion")); // 첫 묶음 위치 확인
             Assert.That(inventory.Slots[8].ItemId, Is.EqualTo("herb")); // 두 번째 묶음 위치 확인
             Assert.That(inventory.Slots[8].Quantity, Is.EqualTo(2)); // 두 번째 묶음 수량 확인
@@ -30,11 +36,49 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             inventory.Add("potion", "물약", 2, 5); // 시험 아이템 보관
             var method = typeof(InventoryState).GetMethod("TrySwap"); // 슬롯 교환 규칙 조회
             Assert.That(method, Is.Not.Null); // 슬롯 교환 기능 제공 확인
-            Assert.That(method.Invoke(inventory, new object[] { -1, 0 }), Is.False); // 범위 밖 출발 거절
-            Assert.That(method.Invoke(inventory, new object[] { 0, 10 }), Is.False); // 범위 밖 도착 거절
-            Assert.That(method.Invoke(inventory, new object[] { 0, 0 }), Is.True); // 같은 칸 선택 처리
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                -1, 0 // 슬롯과 아이템 인수
+            }), Is.False); // 범위 밖 출발 거절
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, 10 // 슬롯과 아이템 인수
+            }), Is.False); // 범위 밖 도착 거절
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, 0 // 슬롯과 아이템 인수
+            }), Is.True); // 같은 칸 선택 처리
             Assert.That(inventory.Slots[0].ItemId, Is.EqualTo("potion")); // 기존 아이템 보존
             Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(2)); // 기존 수량 보존
+        } // 검증 끝
+        [Test] // 가득 찬 슬롯의 안전한 교체 검증
+        public void Replace_ValidatesBeforeReplacingWholeStack() // 확인된 슬롯의 전체 묶음 교체
+        { // 검증 시작
+            var inventory = new InventoryState(); // 새 인벤토리
+            inventory.Add("herb", "약초", 3, 5); // 기존 아이템 묶음
+            var method = typeof(InventoryState).GetMethod("TryReplace"); // 슬롯 교체 규칙 조회
+            Assert.That(method, Is.Not.Null); // 안전한 교체 기능 제공 확인
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, "", "새 아이템", 1, 1 // 슬롯과 아이템 인수
+            }), Is.False); // 빈 아이템 식별자 거절
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, "new", "새 아이템", 2, 1 // 슬롯과 아이템 인수
+            }), Is.False); // 중첩 한도 초과 거절
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                1, "new", "새 아이템", 1, 1 // 슬롯과 아이템 인수
+            }), Is.False); // 빈 슬롯의 교체 거절
+            Assert.That(inventory.Slots[0].ItemId, Is.EqualTo("herb")); // 잘못된 요청 후 기존 아이템 보존
+            Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(3)); // 기존 수량 보존
+            Assert.That(method.Invoke(inventory, new object[] // 판정 인수
+            { // 인수 목록 시작
+                0, "new", "새 아이템", 1, 1 // 슬롯과 아이템 인수
+            }), Is.True); // 확인된 슬롯 교체
+            Assert.That(inventory.Slots[0].ItemId, Is.EqualTo("new")); // 새 아이템 확인
+            Assert.That(inventory.Slots[0].Quantity, Is.EqualTo(1)); // 새 수량 확인
+            Assert.That(inventory.Slots[0].StackLimit, Is.EqualTo(1)); // 새 중첩 한도 확인
         } // 검증 끝
         [Test] // 기본 슬롯 검증
         public void NewInventory_HasTenEmptySlots() // 새 게임의 빈 슬롯 확인

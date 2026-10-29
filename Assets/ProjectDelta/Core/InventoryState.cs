@@ -58,6 +58,22 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 새 묶음 채우기 끝
             return new InventoryAddResult(requested - remaining, remaining); // 실제 추가와 남은 수량 전달
         } // 획득 끝
+        public bool TryReplace(int slotIndex, string itemId, string name, int quantity, int stackLimit) // 확인된 기존 묶음을 새 묶음으로 교체
+        { // 교체 시작
+            if (slotIndex < 0 || slotIndex >= slots.Count || slots[slotIndex].IsEmpty || string.IsNullOrWhiteSpace(itemId) || quantity <= 0 || stackLimit <= 0 || quantity > stackLimit) // 대상과 새 묶음의 유효성 검사
+            { // 잘못된 교체 조건 시작
+                return false; // 기존 아이템 변경 차단
+            } // 잘못된 교체 조건 끝
+            var replacement = new InventorySlot // 검증된 새 아이템 묶음 준비
+            { // 묶음 생성 시작
+                ItemId = itemId, // 새 아이템 식별자
+                Name = string.IsNullOrEmpty(name) ? itemId : name, // 새 아이템 표시 이름
+                Quantity = quantity, // 새 아이템 수량
+                StackLimit = stackLimit // 새 아이템 중첩 한도
+            }; // 묶음 생성 끝
+            slots[slotIndex] = replacement; // 검증 후 선택한 슬롯만 교체
+            return true; // 안전한 묶음 교체 완료
+        } // 교체 끝
         public bool TrySwap(int first, int second) // 두 슬롯의 전체 아이템 교환
         { // 교환 시작
             if (first < 0 || first >= slots.Count || second < 0 || second >= slots.Count) // 두 슬롯의 범위 검사
