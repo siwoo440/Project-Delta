@@ -136,6 +136,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             entryDoor = reverse; // 복귀한 방의 이전 연결 보관
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 중복 이동 차단
             DoorNoticeChanged?.Invoke(string.Empty); // 이전 문의 안내 제거
+            BeginRoomTransition(reverse.Direction); // 이전 방으로 부드러운 화면 이동 시작
             RoomChanged?.Invoke(); // 실제 방 복귀의 화면 갱신
             return true; // 안전한 이전 방 복귀 성공
         } // 복귀 끝
@@ -241,6 +242,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
+                DungeonPresentation.Apply(rooms); // 생성 이미지와 두 배 타일 표시 적용
                 Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
@@ -261,6 +263,32 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             state = new RoomTransitionState(0, 0); // 시작 방 좌표 초기화
             input = AppRoot.Instance.Input; // 공통 탐험 입력 조회
         } // 초기화 끝
+        private void Start() // 확대된 시작 방과 추적 카메라 연결
+        { // 시작 준비 시작
+            if (!IsReady) // 던전 생성 준비 검사
+            { // 준비 안 됨 조건 시작
+                return; // 잘못된 던전 화면 변경 차단
+            } // 준비 안 됨 조건 끝
+            var root = FindRoom(state.RoomX, state.RoomY); // 현재 시작 방 객체
+            var floor = root == null ? null : root.transform.Find("Floor").GetComponent<Tilemap>(); // 현재 방 바닥
+            var obstacles = root == null ? null : root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 현재 방 장애물
+            if (!player.ChangeRoom(floor, obstacles, player.X, player.Y)) // 확대된 현재 칸에 플레이어 배치
+            { // 배치 실패 조건 시작
+                Debug.LogWarning("Dungeon player could not be aligned to the expanded grid."); // 배치 실패 안내
+                return; // 잘못된 추적 카메라 연결 차단
+            } // 배치 실패 조건 끝
+            player.transform.localScale = Vector3.Scale(player.transform.localScale, new Vector3(2f, 2f, 1f)); // 확대된 타일에 맞춘 플레이어 크기
+            var camera = Camera.main; // 실제 던전 카메라 조회
+            if (camera != null) // 카메라 존재 검사
+            { // 카메라 연결 시작
+                var motion = camera.GetComponent<DungeonCameraMotion>(); // 기존 추적 구성 조회
+                if (motion == null) // 추적 구성 부재 검사
+                { // 추적 구성 생성 시작
+                    motion = camera.gameObject.AddComponent<DungeonCameraMotion>(); // 부드러운 추적 구성 추가
+                } // 추적 구성 생성 끝
+                motion.Initialize(player); // 실제 플레이어 추적 시작
+            } // 카메라 연결 끝
+        } // 시작 준비 끝
         private void OnEnable() // 상호작용 입력 연결
         { // 연결 시작
             if (input != null) // 입력 준비 검사
@@ -343,7 +371,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 식별 끝
         private void OnForceDoor() // 정면 잠긴 문의 공격력 판정
         { // 강제 개방 시작
-            if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 탐험 상태와 중복 입력 검사
+            if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || player.IsRoomTransitionLocked || lastTransitionFrame == Time.frameCount) // 탐험 상태와 중복 입력 검사
             { // 입력 차단 조건 시작
                 return; // 이동 중과 중복 요청 무시
             } // 입력 차단 조건 끝
@@ -373,7 +401,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 강제 개방 끝
         private void OnInteraction() // 실제 문 앞 상호작용 처리
         { // 처리 시작
-            if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || lastTransitionFrame == Time.frameCount) // 입력 상태와 이동 완료 검사
+            if (input == null || !input.IsExplorationEnabled || state == null || player.IsMoving || player.IsRoomTransitionLocked || lastTransitionFrame == Time.frameCount) // 입력 상태와 이동 완료 검사
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
@@ -447,8 +475,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             entryDoor = door; // 실제로 들어온 방 연결 기록
             Discovery.TryVisit(door.TargetRoomX, door.TargetRoomY); // 실제 도착한 방만 방문 기록
             lastTransitionFrame = Time.frameCount; // 같은 프레임의 재전환 차단
+            BeginRoomTransition(door.Direction); // 도착 방으로 부드러운 화면 이동 시작
             RoomChanged?.Invoke(); // 실제 방 이동 성공 알림
         } // 처리 끝
+        private static void BeginRoomTransition(MoveDirection direction) // 도착 방의 부드러운 화면 전환
+        { // 전환 시작
+            var camera = Camera.main; // 실제 던전 카메라 조회
+            var motion = camera == null ? null : camera.GetComponent<DungeonCameraMotion>(); // 현재 카메라 전환 구성
+            if (motion != null) // 전환 구성 존재 검사
+            { // 화면 이동 시작
+                motion.BeginTransition(direction); // 출구 방향으로 화면 이동
+            } // 화면 이동 끝
+        } // 전환 끝
         private void SaveTemplates() // 기존 씬 방을 변경 전 복제
         { // 보관 시작
             templateHolder = new GameObject("FloorTemplates"); // 숨긴 원형 보관 객체
@@ -663,7 +701,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 문 표시 검사 시작
                 if (child.name == "DoorMarker" && child.gameObject.activeSelf && Vector3.Distance(child.position, position) < 0.01f) // 해당 문 표시 검사
                 { // 일치 조건 시작
-                    child.GetComponent<SpriteRenderer>().color = locked ? new Color(0.68f, 0.42f, 1f) : new Color(1f, 0.88f, 0.2f); // 잠금에 따른 문 색상
+                    var renderer = child.GetComponent<SpriteRenderer>(); // 실제 문 표시 렌더러
+                    var generated = renderer.sprite != null && renderer.sprite.texture != null && renderer.sprite.texture.name == "DungeonDoor"; // 생성 문 이미지 검사
+                    renderer.color = locked ? new Color(0.68f, 0.42f, 1f) : (generated ? Color.white : new Color(1f, 0.88f, 0.2f)); // 잠금과 문 이미지에 따른 색상
                 } // 일치 조건 끝
             } // 문 표시 검사 끝
         } // 표시 갱신 끝
@@ -702,6 +742,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 상위 객체 연결 시작
                     room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
                 } // 상위 객체 연결 끝
+                DungeonPresentation.Apply(nextRooms); // 새 층에도 생성 이미지와 두 배 타일 적용
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
                 AddEncounterMarker(nextLayout, nextRooms); // 새 층 시험 대상 표시 생성
                 UpdateLockMarkers(nextLayout, nextRooms, nextLocks); // 새 층 잠긴 문 표시

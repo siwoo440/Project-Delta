@@ -146,6 +146,123 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 Object.Destroy(image); // 임시 이미지 정리
             } // 캡처 조건 끝
         } // 검증 끝
+        [UnityTest] // 두 배 타일과 생성 이미지 연결 검증
+        public IEnumerator DungeonVisuals_DoubleCellSizeAndGeneratedArt() // 격자 크기와 실제 리소스 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 조회
+            var args = new object[] // 시작 방 조회 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 현재 방 좌표
+            }; // 인수 목록 끝
+            var room = (GameObject)finder.Invoke(travel, args); // 실제 시작 방
+            var floor = room.transform.Find("Floor").GetComponent<Tilemap>(); // 실제 바닥 타일맵
+            var obstacles = room.transform.Find("Obstacles").GetComponent<Tilemap>(); // 실제 장애물 타일맵
+            var origin = floor.GetCellCenterWorld(Vector3Int.zero); // 기준 칸의 월드 중심
+            var next = floor.GetCellCenterWorld(Vector3Int.right); // 인접 칸의 월드 중심
+            Assert.That(Vector3.Distance(origin, next), Is.EqualTo(2f).Within(0.001f)); // 기존 한 칸의 두 배 크기
+            Assert.That(Vector3.Distance(player.transform.position, floor.GetCellCenterWorld(new Vector3Int(player.X, player.Y, 0))), Is.LessThan(0.001f)); // 확대 후 플레이어 칸 중심
+            Assert.That(player.transform.localScale.x, Is.EqualTo(1.3f).Within(0.001f)); // 확대된 플레이어 가로 크기 확인
+            Assert.That(player.transform.localScale.y, Is.EqualTo(1.3f).Within(0.001f)); // 확대된 플레이어 세로 크기 확인
+            var borders = room.transform.Find("TileBorders"); // 각 칸의 검은 테두리 타일맵
+            Assert.That(borders, Is.Not.Null); // 검은 격자 표시 존재 확인
+            var borderMap = borders.GetComponent<Tilemap>(); // 실제 격자 표시 타일맵
+            Assert.That(borderMap.HasTile(Vector3Int.zero), Is.True); // 바닥 칸의 격자 표시 확인
+            Assert.That(borderMap.GetTile(Vector3Int.zero).name, Is.EqualTo("DungeonTileBorder")); // 전용 테두리 타일 확인
+            Assert.That(floor.GetTile(Vector3Int.zero).name, Is.EqualTo("GeneratedDungeonFloor")); // 생성한 바닥 타일 적용
+            Assert.That(obstacles.GetTile(new Vector3Int(3, 0, 0)).name, Is.EqualTo("GeneratedDungeonObstacle")); // 생성한 장애물 타일 적용
+            var door = room.transform.Cast<Transform>().First(child => child.name == "DoorMarker" && child.gameObject.activeSelf); // 실제 출구 표시
+            Assert.That(door.GetComponent<SpriteRenderer>().sprite.texture.name, Is.EqualTo("DungeonDoor")); // 생성한 문 이미지 적용
+            Assert.That(Camera.main.GetComponent("DungeonCameraMotion"), Is.Not.Null); // 플레이어 추적 카메라 제공 확인
+        } // 검증 끝
+        [UnityTest] // 방 이동 화면 전환과 입력 잠금 검증
+        public IEnumerator DungeonVisuals_RoomTransition_SlidesAndBlocksInput() // 실제 방 이동과 부드러운 카메라 전환
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var door = travel.Layout.Doors.First(value => value.RoomX == travel.RoomX && value.RoomY == travel.RoomY); // 시작 방의 실제 출구
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 조회
+            var args = new object[] // 현재 방 조회 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 현재 방 좌표
+            }; // 인수 목록 끝
+            var room = (GameObject)finder.Invoke(travel, args); // 현재 방 객체
+            var floor = room.transform.Find("Floor").GetComponent<Tilemap>(); // 현재 방 바닥
+            var obstacles = room.transform.Find("Obstacles").GetComponent<Tilemap>(); // 현재 방 장애물
+            var offset = Offset(door.Direction); // 출구 방향의 한 칸
+            var before = new Vector3Int(door.ApproachX, door.ApproachY, 0) - offset; // 출구에 접근하기 전 칸
+            Assert.That(player.ChangeRoom(floor, obstacles, before.x, before.y), Is.True); // 현재 방의 접근 칸 배치
+            yield return null; // 위치 변경 반영 대기
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(DirectionKey(door.Direction))); // 문 방향 이동
+            InputSystem.Update(); // 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            while (player.IsMoving) // 문 앞 이동 완료 대기
+            { // 이동 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 이동 대기 끝
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 실제 문 상호작용
+            InputSystem.Update(); // 방 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 반영
+            Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 실제 도착 방 확인
+            var motion = Camera.main.GetComponent("DungeonCameraMotion"); // 실제 카메라 전환 구성
+            Assert.That(motion, Is.Not.Null); // 부드러운 방 전환 제공 확인
+            var property = motion.GetType().GetProperty("IsTransitioning"); // 전환 진행 상태 조회
+            Assert.That(property, Is.Not.Null); // 전환 상태 제공 확인
+            Assert.That(property.GetValue(motion), Is.True); // 방 이동 직후 전환 진행 확인
+            var initial = Camera.main.transform.position; // 전환 시작 카메라 위치
+            var savedX = player.X; // 전환 중 플레이어 가로 칸
+            var savedY = player.Y; // 전환 중 플레이어 세로 칸
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 전환 중 이동 요청
+            InputSystem.Update(); // 이동 입력 반영
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
+            InputSystem.Update(); // 해제 반영
+            Assert.That(player.X, Is.EqualTo(savedX)); // 전환 중 가로 이동 차단
+            Assert.That(player.Y, Is.EqualTo(savedY)); // 전환 중 세로 이동 차단
+            var deadline = Time.realtimeSinceStartup + 10f; // 전환 대기 제한
+            while ((bool)property.GetValue(motion) && Time.realtimeSinceStartup < deadline) // 부드러운 전환 완료 대기
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(property.GetValue(motion), Is.False); // 실제 전환 완료
+            Assert.That(Vector3.Distance(initial, Camera.main.transform.position), Is.GreaterThan(0.1f)); // 전환 중 카메라 이동 확인
+            var destinationArgs = new object[] // 도착 방 조회 인수
+            { // 인수 목록 시작
+                travel.RoomX, travel.RoomY // 실제 도착 방 좌표
+            }; // 인수 목록 끝
+            var destination = (GameObject)finder.Invoke(travel, destinationArgs); // 실제 도착 방 객체
+            var destinationFloor = destination.transform.Find("Floor").GetComponent<Tilemap>(); // 도착 방 바닥
+            var left = destinationFloor.GetCellCenterWorld(new Vector3Int(-6, 0, 0)); // 왼쪽 끝 타일 중심
+            var right = destinationFloor.GetCellCenterWorld(new Vector3Int(6, 0, 0)); // 오른쪽 끝 타일 중심
+            var halfWidth = Camera.main.orthographicSize * Camera.main.aspect; // 화면 가로의 절반
+            var roomWidth = right.x - left.x + 2f; // 두 배 타일을 포함한 방 가로 크기
+            if (halfWidth * 2f >= roomWidth) // 화면이 방보다 넓은 경우
+            { // 가운데 정렬 확인 시작
+                Assert.That(Camera.main.transform.position.x, Is.EqualTo((left.x + right.x) * 0.5f).Within(0.05f)); // 방보다 넓은 화면의 가운데 정렬
+            } // 가운데 정렬 확인 끝
+            else // 화면이 방보다 좁은 경우
+            { // 화면 범위 확인 시작
+                Assert.That(Camera.main.transform.position.x, Is.InRange(left.x - 1f + halfWidth - 0.05f, right.x + 1f - halfWidth + 0.05f)); // 방 바깥의 빈 화면 제한
+            } // 화면 범위 확인 끝
+            var viewport = Camera.main.WorldToViewportPoint(player.transform.position); // 플레이어의 화면 내 좌표
+            Assert.That(viewport.x, Is.InRange(0f, 1f)); // 플레이어의 화면 가로 범위 유지
+            Assert.That(viewport.y, Is.InRange(0f, 1f)); // 플레이어의 화면 세로 범위 유지
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 화면 없는 캡처 검사
+            { // 캡처 조건 시작
+                var image = CaptureScreen("DungeonCanvas"); // 실제 확대된 던전 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 조건 끝
+        } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
         public IEnumerator GeneratedRooms_HaveUsableDoorsAndCorrectMiniMap() // 생성된 모든 방과 문 연결 검증
         { // 검증 시작
@@ -381,6 +498,14 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.RoomY, Is.EqualTo(0)); // 새 층 시작 방 세로 좌표
             Assert.That(player.X, Is.EqualTo(0)); // 새 층 시작 칸 가로 좌표
             Assert.That(player.Y, Is.EqualTo(0)); // 새 층 시작 칸 세로 좌표
+            var newRoomArguments = new object[] // 새 층 시작 방 조회 인수
+            { // 인수 목록 시작
+                0, 0 // 새 층 시작 방 좌표
+            }; // 인수 목록 끝
+            var newRoot = (GameObject)finder.Invoke(travel, newRoomArguments); // 실제 새 층 시작 방
+            var newFloor = newRoot.transform.Find("Floor").GetComponent<Tilemap>(); // 새 층 실제 바닥
+            Assert.That(Vector3.Distance(newFloor.GetCellCenterWorld(Vector3Int.zero), newFloor.GetCellCenterWorld(Vector3Int.right)), Is.EqualTo(2f).Within(0.001f)); // 새 층 두 배 타일 유지
+            Assert.That(newFloor.GetTile(Vector3Int.zero).name, Is.EqualTo("GeneratedDungeonFloor")); // 새 층의 생성 바닥 이미지
             Assert.That(travel.Layout.Rooms.Count(room => travel.Discovery.GetVisibility(room.X, room.Y) == RoomVisibility.Visited), Is.EqualTo(1)); // 새 층 시작 방만 방문 확인
             var status = GameObject.Find("DungeonCanvas/Status").GetComponent<UnityEngine.UI.Text>(); // 실제 상태 안내 조회
             Assert.That(status.text, Does.Contain("2층")); // 현재 층 표시 확인
@@ -685,11 +810,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var oldMode = canvas.renderMode; // 기존 화면 렌더링 방식
             var oldCamera = canvas.worldCamera; // 기존 화면 카메라
             var oldDistance = canvas.planeDistance; // 기존 화면 거리
+            var oldSorting = canvas.overrideSorting; // 기존 화면 정렬 방식
+            var oldOrder = canvas.sortingOrder; // 기존 화면 정렬 순서
+            var oldPosition = camera.transform.position; // 캡처 전 카메라 위치
             var oldEnabled = dungeon != null && dungeon.enabled; // 기존 탐험 화면 표시 상태
             try // 실제 화면 렌더링
             { // 렌더링 시작
                 target.Create(); // 별도 영역 생성
                 camera.targetTexture = target; // 별도 영역 연결
+                var motion = camera.GetComponent<DungeonCameraMotion>(); // 던전 카메라 보정 구성
+                if (motion != null) // 던전 카메라 존재 검사
+                { // 캡처 비율 보정 시작
+                    motion.SendMessage("LateUpdate"); // 캡처 비율 기준 방 범위 재계산
+                } // 캡처 비율 보정 끝
                 if (dungeon != null && dungeon != canvas) // 다른 화면을 캡처하는지 검사
                 { // 탐험 화면 가림 시작
                     dungeon.enabled = false; // 다른 화면의 탐험 안내 가림
@@ -697,6 +830,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 canvas.renderMode = RenderMode.ScreenSpaceCamera; // 카메라 기준 화면 표시
                 canvas.worldCamera = camera; // 실제 게임 카메라 연결
                 canvas.planeDistance = 1f; // 전투 화면 거리 지정
+                canvas.overrideSorting = true; // 캡처에서 화면 안내 우선 표시
+                canvas.sortingOrder = 100; // 던전 타일보다 앞에 안내 표시
                 Canvas.ForceUpdateCanvases(); // 화면 구성 갱신
                 camera.Render(); // 실제 전투 화면 그리기
                 RenderTexture.active = target; // 읽을 화면 선택
@@ -710,6 +845,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 canvas.renderMode = oldMode; // 기존 화면 방식 복구
                 canvas.worldCamera = oldCamera; // 기존 화면 카메라 복구
                 canvas.planeDistance = oldDistance; // 기존 화면 거리 복구
+                canvas.overrideSorting = oldSorting; // 기존 화면 정렬 방식 복구
+                canvas.sortingOrder = oldOrder; // 기존 화면 정렬 순서 복구
+                camera.transform.position = oldPosition; // 캡처 전 카메라 위치 복구
                 if (dungeon != null) // 탐험 화면 존재 검사
                 { // 탐험 화면 복구 시작
                     dungeon.enabled = oldEnabled; // 탐험 화면 표시 복구
@@ -2665,6 +2803,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         } // 정리 끝
         private IEnumerator UseDoor(RoomTravelController travel, GridMoveController player, RoomDoor door) // 실제 키 입력으로 지정 출구 통과
         { // 출구 이용 시작
+            var transitionDeadline = Time.realtimeSinceStartup + 10f; // 이전 화면 전환 대기 제한
+            while (player.IsRoomTransitionLocked && Time.realtimeSinceStartup < transitionDeadline) // 이전 전환 완료 대기
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(player.IsRoomTransitionLocked, Is.False); // 새 문 사용 전 전환 완료 확인
             Assert.That(door, Is.Not.Null); // 실제 연결된 출구 확인
             var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 현재 방 객체 조회
             var arguments = new object[] // 방 조회 인수
@@ -2697,6 +2841,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 방 표시 갱신 대기
             Assert.That(travel.RoomX, Is.EqualTo(door.TargetRoomX)); // 실제 도착 방 가로 좌표
             Assert.That(travel.RoomY, Is.EqualTo(door.TargetRoomY)); // 실제 도착 방 세로 좌표
+            var completionDeadline = Time.realtimeSinceStartup + 10f; // 현재 화면 전환 대기 제한
+            while (player.IsRoomTransitionLocked && Time.realtimeSinceStartup < completionDeadline) // 실제 전환 완료 대기
+            { // 전환 완료 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 완료 대기 끝
+            Assert.That(player.IsRoomTransitionLocked, Is.False); // 문 이동 화면 전환 완료 확인
         } // 출구 이용 끝
         private static Key DirectionKey(MoveDirection direction) // 출구 방향의 키 선택
         { // 키 선택 시작

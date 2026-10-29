@@ -20,6 +20,33 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public int Y => state.Y; // 확정된 세로 칸
         public MoveDirection Facing => state.Facing; // 현재 표시 방향
         public bool IsMoving => state.IsMoving; // 현재 이동 진행 여부
+        public Bounds RoomWorldBounds // 현재 방 바닥의 월드 범위
+        { // 속성 시작
+            get // 월드 범위 조회
+            { // 조회 시작
+                if (floor == null) // 바닥 연결 검사
+                { // 누락 조건 시작
+                    return new Bounds(transform.position, Vector3.zero); // 현재 위치의 빈 범위
+                } // 누락 조건 끝
+                var cells = floor.cellBounds; // 바닥의 실제 격자 범위
+                var minimum = floor.CellToWorld(new Vector3Int(cells.xMin, cells.yMin, 0)); // 격자 최소 월드 좌표
+                var maximum = floor.CellToWorld(new Vector3Int(cells.xMax, cells.yMax, 0)); // 격자 최대 월드 좌표
+                return new Bounds((minimum + maximum) * 0.5f, new Vector3(Mathf.Abs(maximum.x - minimum.x), Mathf.Abs(maximum.y - minimum.y), 0f)); // 실제 방 중심과 크기
+            } // 조회 끝
+        } // 속성 끝
+        public bool IsRoomTransitionLocked // 부드러운 방 전환 중 이동 잠금
+        { // 속성 시작
+            get; // 현재 방 전환 잠금 조회
+            private set; // 내부 방 전환 잠금 설정
+        } // 속성 끝
+        public void SetRoomTransitionLocked(bool locked) // 방 전환에 따른 이동 잠금 설정
+        { // 설정 시작
+            IsRoomTransitionLocked = locked; // 실제 이동 잠금 변경
+            if (locked) // 새 방 전환 잠금 검사
+            { // 잠금 조건 시작
+                state?.DiscardBufferedMove(); // 전환 전 대기 이동 제거
+            } // 잠금 조건 끝
+        } // 설정 끝
         public void Configure(Tilemap floorMap, Tilemap obstacleMap, Transform indicator) // 씬 제작 시 구성 요소 연결
         { // 연결 시작
             floor = floorMap; // 바닥 타일맵 연결
@@ -98,7 +125,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 갱신 끝
         private void OnMoveRequested(Vector2Int direction) // 입력된 한 칸 이동 요청
         { // 요청 시작
-            if (state == null || input == null || !input.IsExplorationEnabled || roomTransitionFrame == Time.frameCount) // 탐험 입력과 방 전환 검사
+            if (state == null || input == null || !input.IsExplorationEnabled || IsRoomTransitionLocked || roomTransitionFrame == Time.frameCount) // 탐험 입력과 방 전환 검사
             { // 차단 조건 시작
                 return; // 탐험 외 입력 무시
             } // 차단 조건 끝

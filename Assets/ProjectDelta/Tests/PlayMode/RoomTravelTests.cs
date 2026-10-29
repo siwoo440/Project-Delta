@@ -331,6 +331,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         } // 접근 끝
         private IEnumerator Move(GridMoveController player, Key key) // 한 칸 이동과 완료 대기
         { // 이동 시작
+            var transitionDeadline = Time.realtimeSinceStartup + 10f; // 화면 전환 대기 제한
+            while (player.IsRoomTransitionLocked && Time.realtimeSinceStartup < transitionDeadline) // 이전 방 전환 완료 대기
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(player.IsRoomTransitionLocked, Is.False); // 실제 이동 전 전환 완료 확인
             yield return TapKey(key); // 방향 키 입력
             yield return WaitForStopped(player); // 이동 종료 대기
         } // 이동 끝
