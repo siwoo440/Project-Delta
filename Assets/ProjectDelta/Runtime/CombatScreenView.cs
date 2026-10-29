@@ -16,6 +16,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private BattleActor current; // 현재 시험 행동자
         private CombatFighter player; // 플레이어 시험 전투 능력치
         private CombatFighter enemy; // 상대 시험 전투 능력치
+        private CombatFighter[] groupFighters; // 시험 다수 적의 개별 전투 상태
+        private MultiEnemyBattleState groupBattle; // 다수 적 선택과 승패 상태
+        private Button[] groupTargets; // 개별 적 선택 버튼
         private Text roundText; // 라운드와 행동자 표시
         private Text playerHealth; // 플레이어 체력 표시
         private Text enemyHealth; // 상대 체력 표시
@@ -81,12 +84,25 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UiFactory.CreateText(canvas.transform, "Status", "조우 · 공격과 방어, 도주, 회복약", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
                 view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
                 UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
-                UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 실제 상대 이름
+                var opponent = UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 실제 상대 이름
                 view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-260f, -20f), new Vector2(300f, 65f), Color.white); // 플레이어 체력
                 view.playerMana = UiFactory.CreateText(canvas.transform, "PlayerMana", "", 23, new Vector2(-260f, -75f), new Vector2(300f, 50f), new Color(0.58f, 0.76f, 1f)); // 플레이어 마나
                 view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
+                if (travel != null && travel.IsGroupEncounter) // 시험 다수 조우 화면 검사
+                { // 다수 대상 화면 시작
+                    opponent.gameObject.SetActive(false); // 단일 대상 이름 숨김
+                    view.enemyHealth.gameObject.SetActive(false); // 단일 대상 체력 숨김
+                    view.groupTargets = new Button[2]; // 두 대상 선택 버튼 준비
+                    for (var index = 0; index < view.groupTargets.Length; index++) // 실제 대상 버튼 순회
+                    { // 대상 버튼 생성 시작
+                        var slot = index; // 선택할 적 슬롯 보관
+                        var target = UiFactory.CreateButton(canvas.transform, "GroupTarget" + (slot + 1), "슬라임 " + (slot + 1), new Vector2(300f, 90f - slot * 105f)); // 개별 적 선택 버튼
+                        target.onClick.AddListener(() => view.SelectGroupTarget(slot)); // 해당 적 선택 연결
+                        view.groupTargets[slot] = target; // 생성된 대상 버튼 보관
+                    } // 대상 버튼 생성 끝
+                } // 다수 대상 화면 끝
                 UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
-                view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 25, new Vector2(0f, -175f), new Vector2(1200f, 70f), Color.white); // 최근 행동 결과
+                view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 23, new Vector2(0f, -170f), new Vector2(1200f, 110f), Color.white); // 다수 적을 포함한 최근 행동 결과
                 view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-470f, -275f)); // 기본 공격 버튼
                 view.advance.onClick.AddListener(view.Advance); // 실제 공격 진행 연결
                 view.flee = UiFactory.CreateButton(canvas.transform, "FleeBattleButton", "도주", new Vector2(0f, -275f)); // 정식 도주 버튼
@@ -136,14 +152,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var travelObject = GameObject.Find("RoomTravel"); // 현재 방 이동 객체 조회
             var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
             var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
-            participants = new[] // 시험 참가자 목록
-            { // 목록 시작
-                new BattleActor("플레이어", TrialPlayerSpeed, true, 0), // 시험 플레이어 속도
-                new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) // 실제 상대의 시험 속도
-            }; // 목록 끝
+            var grouped = travel != null && travel.IsGroupEncounter; // 현재 시험 다수 조우 여부
+            participants = grouped ? new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor("슬라임 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor("슬라임 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수에 맞는 참가자 목록
             player = new CombatFighter(participants[0], 100, 50, 40, 0, 40, owner.PlayerHealth); // 시험 플레이어와 명중 보정 0
-            var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
-            enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, enemyHealth); // 시험 상대와 명중 보정 0
+            if (grouped) // 실제 시험 다수 조우 검사
+            { // 다수 전투 준비 시작
+                var health = travel.CurrentGroupEnemyHealth(); // 후퇴한 개별 적 체력 조회
+                groupFighters = new[] { new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, health[0]), new CombatFighter(participants[2], TrialEnemyHealth, 11, 7, 0, 8, health[1]) }; // 개별 적의 전투 체력 복원
+                groupBattle = new MultiEnemyBattleState(participants[0], new[] { participants[1], participants[2] }); // 다수 대상 선택과 승패 연결
+                notice.text = "공격할 슬라임을 선택하세요"; // 명시적인 대상 선택 안내
+            } // 다수 전투 준비 끝
+            else // 기존 단일 전투 분기
+            { // 단일 전투 준비 시작
+                var enemyHealth = travel == null ? TrialEnemyHealth : travel.CurrentEncounterHealth(); // 후퇴 전 남은 시험 적 체력
+                enemy = new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, enemyHealth); // 시험 상대와 명중 보정 0
+            } // 단일 전투 준비 끝
             round = new BattleRound(participants); // 참가자별 라운드 생성
             if (!round.TryStartRound() || !round.TryNext(out current)) // 첫 라운드와 행동자 검사
             { // 준비 실패 조건 시작
@@ -157,6 +180,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 행동 거절 조건 시작
                 return; // 중복 또는 잘못된 행동 차단
             } // 행동 거절 조건 끝
+            if (!HasSelectedTarget()) // 다수 전투의 생존 대상 검사
+            { // 대상 누락 시작
+                notice.text = "공격할 대상을 선택하세요"; // 직접 대상 선택 안내
+                return; // 행동과 자원 보존
+            } // 대상 누락 끝
             lastActionFrame = Time.frameCount; // 같은 프레임의 재요청 차단
             notice.text = string.Empty; // 새 라운드의 이전 공격 결과 초기화
             if (!ResolveAttack(player, enemy)) // 유효한 기본 공격 검사
@@ -189,6 +217,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 기술 거절 시작
                 return; // 잘못된 기술 요청 차단
             } // 기술 거절 끝
+            if (!HasSelectedTarget()) // 다수 전투의 생존 대상 검사
+            { // 대상 누락 시작
+                notice.text = "공격할 대상을 선택하세요"; // 직접 대상 선택 안내
+                return; // 마나와 행동 차례 보존
+            } // 대상 누락 끝
             var mana = owner.PlayerMana; // 현재 회차 마나 조회
             if (!skillCooldown.TryUse(ref mana, 10, 1)) // 마나 10과 대기 1턴의 사용 검사
             { // 사용 실패 시작
@@ -270,7 +303,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 skill.interactable = false; // 성공한 후퇴 이후 기술 차단
                 exit.interactable = false; // 성공한 후퇴 이후 시험 종료 차단
             } // 후퇴 판정 끝
-            if (!travel.StoreCurrentEncounterHealth(enemy.Health)) // 현재 조우의 적 체력 보관 검사
+            var stored = groupBattle == null ? travel.StoreCurrentEncounterHealth(enemy.Health) : travel.StoreCurrentGroupHealth(new[] { groupFighters[0].Health, groupFighters[1].Health }); // 단일 또는 다수 적의 개별 체력 보관
+            if (!stored) // 현재 조우의 적 체력 보관 검사
             { // 체력 보관 실패 조건 시작
                 notice.text = "적 체력을 보관할 수 없습니다 · 후퇴를 다시 선택하세요"; // 판정 보존과 재시도 안내
                 return; // 현재 전투와 성공 판정 유지
@@ -304,8 +338,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 처리 시작
             while (current != null && !current.IsPlayer) // 상대의 선행 행동 검사
             { // 상대 행동 시작
-                enemy.EndDefense(); // 상대의 이전 방어 상태 해제
-                if (!ResolveAttack(enemy, player)) // 상대 기본 공격 검사
+                var actingEnemy = FindGroupFighter(current) ?? enemy; // 실제 행동 중인 적 조회
+                actingEnemy.EndDefense(); // 상대의 이전 방어 상태 해제
+                if (!ResolveAttack(actingEnemy, player)) // 상대 기본 공격 검사
                 { // 공격 실패 시작
                     return; // 잘못된 행동 진행 차단
                 } // 공격 실패 끝
@@ -344,7 +379,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 조회 끝
         private bool FinishIfNeeded() // 공격 후 승패 확인과 결과 표시
         { // 확인 시작
-            outcome = CombatRules.Outcome(player, enemy); // 플레이어와 적 생존 상태 검사
+            outcome = groupBattle == null ? CombatRules.Outcome(player, enemy) : groupBattle.Outcome; // 단일 또는 다수 적의 승패 검사
+            if (groupBattle != null && groupBattle.SelectedEnemy == null) // 선택한 적 사망 여부 검사
+            { // 대상 해제 시작
+                enemy = null; // 사망한 대상의 자동 선택 해제
+                RefreshGroupTargets(); // 생존 대상 표시 갱신
+            } // 대상 해제 끝
             if (outcome == CombatOutcome.Ongoing) // 계속 진행할 전투 검사
             { // 진행 조건 시작
                 return false; // 다음 행동 허용
@@ -386,8 +426,58 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private void UpdateHealth() // 현재 참가자의 체력 표시
         { // 표시 시작
             playerHealth.text = "체력 " + player.Health + "/" + player.MaxHealth; // 플레이어 체력 표시
-            enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
+            if (groupBattle == null) // 기존 단일 대상 검사
+            { // 단일 체력 표시 시작
+                enemyHealth.text = "체력 " + enemy.Health + "/" + enemy.MaxHealth; // 상대 체력 표시
+            } // 단일 체력 표시 끝
+            else // 실제 다수 적 분기
+            { // 다수 체력 표시 시작
+                RefreshGroupTargets(); // 개별 적의 체력과 생존 표시 갱신
+            } // 다수 체력 표시 끝
             playerMana.text = "마나 " + owner.PlayerMana + "/50"; // 실제 회차 마나 표시
+        } // 표시 끝
+        private bool HasSelectedTarget() // 현재 공격할 생존 적 확인
+        { // 검사 시작
+            return enemy != null && enemy.Actor.IsAlive && (groupBattle == null || groupBattle.SelectedEnemy == enemy.Actor); // 단일 또는 직접 선택된 적 확인
+        } // 검사 끝
+        private CombatFighter FindGroupFighter(BattleActor actor) // 행동 중인 다수 적 조회
+        { // 조회 시작
+            if (groupFighters == null) // 다수 적 목록 검사
+            { // 단일 전투 시작
+                return null; // 기존 단일 대상 사용
+            } // 단일 전투 끝
+            foreach (var fighter in groupFighters) // 실제 적 목록 순회
+            { // 적 검사 시작
+                if (fighter.Actor == actor) // 실제 행동 참가자 비교
+                { // 일치 시작
+                    return fighter; // 일치한 적 전달
+                } // 일치 끝
+            } // 적 검사 끝
+            return null; // 일치하는 적 없음
+        } // 조회 끝
+        private void SelectGroupTarget(int index) // 실제 생존 적을 명시적으로 선택
+        { // 선택 시작
+            if (groupBattle == null || index < 0 || index >= groupFighters.Length || !groupBattle.TrySelectEnemy(groupFighters[index].Actor)) // 대상 범위와 생존 검사
+            { // 선택 거절 시작
+                return; // 잘못된 선택 차단
+            } // 선택 거절 끝
+            enemy = groupFighters[index]; // 실제 공격 대상 연결
+            notice.text = enemy.Actor.Name + " 선택"; // 직접 선택한 대상 안내
+            RefreshGroupTargets(); // 선택과 체력 표시 갱신
+        } // 선택 끝
+        private void RefreshGroupTargets() // 개별 적의 체력과 선택 상태 표시
+        { // 표시 시작
+            if (groupTargets == null || groupFighters == null) // 화면과 실제 적 준비 검사
+            { // 표시 불가 시작
+                return; // 준비되지 않은 대상 표시 차단
+            } // 표시 불가 끝
+            for (var index = 0; index < groupFighters.Length; index++) // 적별 화면 순회
+            { // 적 표시 시작
+                var fighter = groupFighters[index]; // 현재 표시할 적
+                var button = groupTargets[index]; // 현재 적의 선택 버튼
+                button.interactable = fighter.Actor.IsAlive && outcome == CombatOutcome.Ongoing; // 살아 있는 적만 선택 허용
+                button.transform.Find("Label").GetComponent<Text>().text = fighter.Actor.Name + " · " + fighter.Health + "/" + fighter.MaxHealth + (groupBattle.SelectedEnemy == fighter.Actor ? " ✓" : ""); // 체력과 직접 선택 여부 표시
+            } // 적 표시 끝
         } // 표시 끝
     } // 클래스 끝
     public sealed class CombatActionLayout : MonoBehaviour // 화면 너비에 맞는 행동 버튼 배치

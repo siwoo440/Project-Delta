@@ -106,5 +106,31 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(RunRestoreRules.IsValid(data), Is.False); // 음수 마나 저장 차단
             Assert.That(RunRestoreRules.IsValid(ValidSnapshot()), Is.True); // 마나가 없는 기존 저장 허용
         } // 검증 끝
+        [Test] // 다수 조우의 저장과 이전 저장 검증
+        public void Validate_GroupEncounterRequiresCoherentEnemyHealth() // 적별 체력과 완료 상태 확인
+        { // 검증 시작
+            var data = ValidSnapshot(); // 기존 회차 저장 준비
+            data.version = 6; // 다수 조우 저장 버전
+            data.generationVersion = 3; // 시험 조우가 있는 던전 생성 규칙
+            data.secretPassages = new SavedSecretPassage[0]; // 새 구조의 비밀 기록
+            var layout = DungeonGenerator.GenerateVersioned(data.seed, 3); // 시험 조우 구조 생성
+            data.doorLock = new DoorLockState(layout).Save(); // 실제 시험 문의 저장 상태
+            data.layoutFingerprint = DungeonLayoutFingerprint.Compute(layout); // 실제 구조 지문
+            data.mana = 50; // 현재 마나
+            data.maxMana = 50; // 기본 최대 마나
+            data.groupEncounterEnabled = true; // 시험 다수 조우 활성화
+            data.groupEnemyHealth = new[] { 0, 35 }; // 쓰러진 적과 남은 적 체력
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 일부 생존한 조우 허용
+            data.groupEnemyHealth = new[] { 0, 0 }; // 모두 쓰러진 미완료 조우
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 미완료 조우의 전멸 거절
+            data.groupEnemyHealth = new[] { 70, 71 }; // 잘못된 적 최대 체력
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 범위 밖 체력 거절
+            data.groupEnemyHealth = new[] { 70, 20 }; // 정상 상태 재설정
+            data.groupEncounterCompleted = true; // 완료 상태와 남은 적 동시 설정
+            Assert.That(RunRestoreRules.IsValid(data), Is.False); // 완료와 미완료 상태 충돌 거절
+            data.groupEnemyHealth = null; // 완료 후 적별 체력 기록 제거
+            Assert.That(RunRestoreRules.IsValid(data), Is.True); // 완료 조우 저장 허용
+            Assert.That(RunRestoreRules.IsValid(ValidSnapshot()), Is.True); // 다수 조우 없는 기존 저장 허용
+        } // 검증 끝
     } // 클래스 끝
 } // 이름 공간 끝

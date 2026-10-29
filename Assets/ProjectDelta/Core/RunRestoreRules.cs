@@ -21,11 +21,43 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             { // 마나 범위 오류 시작
                 return false; // 아직 지원하지 않는 최대 마나 거절
             } // 마나 범위 오류 끝
+            if (data.version >= 6) // 다수 조우 저장 형식 검사
+            { // 다수 조우 검사 시작
+                var hasGroupHealth = data.groupEnemyHealth != null && data.groupEnemyHealth.Length > 0; // 실제 적 체력 기록 여부
+                if ((!data.groupEncounterEnabled && (data.groupEncounterCompleted || hasGroupHealth)) || (data.groupEncounterCompleted && hasGroupHealth)) // 활성과 완료 상태 충돌 검사
+                { // 다수 조우 충돌 시작
+                    return false; // 잘못된 조우 상태 차단
+                } // 다수 조우 충돌 끝
+                if (hasGroupHealth) // 후퇴한 다수 적 체력 검사
+                { // 체력 목록 검사 시작
+                    if (data.floor != 1 || data.groupEnemyHealth.Length != 2) // 시험 층과 적 수 검사
+                    { // 체력 목록 오류 시작
+                        return false; // 잘못된 적 수와 층 차단
+                    } // 체력 목록 오류 끝
+                    var alive = false; // 생존한 적 확인 상태
+                    foreach (var health in data.groupEnemyHealth) // 개별 적 체력 순회
+                    { // 체력 검사 시작
+                        if (health < 0 || health > TrialEnemyMaxHealth) // 체력 범위 검사
+                        { // 범위 오류 시작
+                            return false; // 잘못된 체력 차단
+                        } // 범위 오류 끝
+                        alive |= health > 0; // 생존 적 상태 누적
+                    } // 체력 검사 끝
+                    if (!alive) // 미완료 조우의 전멸 검사
+                    { // 전멸 오류 시작
+                        return false; // 완료되지 않은 전멸 상태 차단
+                    } // 전멸 오류 끝
+                } // 체력 목록 검사 끝
+            } // 다수 조우 검사 끝
             var generationVersion = data.version < 3 ? 1 : data.generationVersion; // 기존 저장과 새 생성 버전 구분
             if (generationVersion < 1 || generationVersion > 3 || (data.version < 4 && generationVersion > 2) || (data.version >= 3 && data.secretPassages == null)) // 생성 버전과 비밀 상태 검사
             { // 생성 오류 시작
                 return false; // 알 수 없는 생성 규칙 거절
             } // 생성 오류 끝
+            if (data.version >= 6 && data.groupEncounterEnabled && generationVersion != 3) // 시험 다수 조우의 생성 규칙 검사
+            { // 생성 규칙 충돌 시작
+                return false; // 시험 방이 없는 구조 차단
+            } // 생성 규칙 충돌 끝
             if (data.version >= 4 && (data.tutorialHealth < 0 || data.tutorialHealth > TrialEnemyMaxHealth || (data.tutorialCompleted && data.tutorialHealth != 0) || (generationVersion != 3 && data.tutorialHealth != 0))) // 첫 조우 완료와 시험 체력 검사
             { // 조우 오류 시작
                 return false; // 잘못된 첫 조우 상태 거절

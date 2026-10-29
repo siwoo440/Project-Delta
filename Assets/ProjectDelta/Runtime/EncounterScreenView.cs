@@ -87,6 +87,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.persuade = UiFactory.CreateButton(canvas.transform, "EncounterPersuadeButton", "회유", new Vector2(705f, -300f)); // 실제 회유 선택
                 view.persuade.onClick.AddListener(view.AttemptPersuade); // 매력과 저항 회유 연결
                 view.persuade.interactable = view.travel != null && view.travel.CanCompleteCurrentEncounter(); // 실제 회유 대상 없는 조우 차단
+                if (view.travel != null && view.travel.IsGroupEncounter) // 시험 다수 조우 검사
+                { // 다수 조우 안내 시작
+                    view.persuade.interactable = false; // 미구현 다수 대상 회유 차단
+                    view.description.text = "슬라임 두 개체 · 다수 대상 회유는 준비 중"; // 실제 시험 조우 범위 안내
+                } // 다수 조우 안내 끝
                 if (owner.Observations.Contains(view.monsterId)) // 이미 관찰한 대상 검사
                 { // 관찰 완료 조건 시작
                     view.observe.transform.Find("Label").GetComponent<Text>().text = "정보 확인"; // 기록된 정보 다시 보기 안내

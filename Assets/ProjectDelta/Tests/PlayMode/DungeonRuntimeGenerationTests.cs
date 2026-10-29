@@ -833,6 +833,130 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.TutorialCompleted, Is.True); // 완료 상태의 저장 복원
             Assert.That(app.Observations.Contains("MON_SLIME"), Is.True); // 슬라임 영구 관찰 기록 복원
         } // 검증 끝
+        [UnityTest] // 실제 다수 조우와 개별 대상 선택 검증
+        public IEnumerator GroupEncounter_SelectsLivingEnemiesAndWinsAfterAll() // 첫 조우 이후 두 슬라임 전투 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 조우와 시험 다수 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 재현 가능한 기본 공격 명중
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            yield return UseDoor(travel, player, first); // 첫 슬라임 조우 진입
+            var rolls = 0; // 회유 주사위 호출 수
+            EncounterScreenView.PersuadeRollOverride = (minimum, maximum) => ++rolls == 1 ? 20 : 1; // 첫 슬라임 회유 성공
+            GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 슬라임 회유
+            yield return null; // 첫 조우 완료 대기
+            Assert.That(travel.TutorialCompleted, Is.True); // 첫 조우 완료 확인
+            var groupRoom = travel.GroupEncounterRoom; // 시험 다수 조우 방 조회
+            Assert.That(groupRoom, Is.Not.Null); // 실제 시험 방 존재 확인
+            foreach (var door in FindTestRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), groupRoom)) // 시험 방으로 실제 이동
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 연결 문 통과
+            } // 경로 이동 끝
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 실제 다수 조우 진입
+            Assert.That(travel.IsGroupEncounter, Is.True); // 시험 다수 조우 확인
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 전투 선택
+            yield return null; // 전투 화면 준비 대기
+            var firstTarget = GameObject.Find("GroupTarget1").GetComponent<UnityEngine.UI.Button>(); // 첫 번째 적 선택
+            var secondTarget = GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>(); // 두 번째 적 선택
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            var round = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 전투 상태
+            attack.onClick.Invoke(); // 대상 없는 공격 시도
+            Assert.That(round.text, Does.Contain("1라운드")); // 대상 없는 시도의 행동 보존
+            firstTarget.onClick.Invoke(); // 첫 생존 적 선택
+            attack.onClick.Invoke(); // 첫 적 공격
+            yield return null; // 다음 행동 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 전투 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 화면 캡처 검사
+            { // 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 다수 적 전투 화면
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 전투 화면 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 끝
+            attack.onClick.Invoke(); // 첫 적 처치
+            yield return null; // 다음 행동 대기
+            Assert.That(firstTarget.interactable, Is.False); // 사망한 적의 선택 차단
+            Assert.That(round.text, Does.Not.Contain("승리")); // 다른 생존 적이 있으면 전투 유지
+            attack.onClick.Invoke(); // 선택되지 않은 적에 대한 공격 시도
+            Assert.That(round.text, Does.Not.Contain("승리")); // 다른 대상을 자동 선택하지 않음
+            secondTarget.onClick.Invoke(); // 두 번째 생존 적 선택
+            attack.onClick.Invoke(); // 두 번째 적 공격
+            yield return null; // 다음 행동 대기
+            attack.onClick.Invoke(); // 마지막 적 처치
+            Assert.That(round.text, Does.Contain("승리")); // 모든 적 처치 후 승리
+        } // 검증 끝
+        [UnityTest] // 다수 적의 도망과 저장 재개 검증
+        public IEnumerator GroupEncounter_FleeAndResumePreservesEachEnemy() // 쓰러진 적과 남은 체력의 저장 복원 확인
+        { // 검증 시작
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 조우와 시험 다수 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "GroupRunTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 재현 가능한 기본 공격 명중
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 시험 키보드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 연결 방
+            yield return UseDoor(travel, player, first); // 첫 슬라임 조우 진입
+            var rolls = 0; // 회유 주사위 호출 수
+            EncounterScreenView.PersuadeRollOverride = (minimum, maximum) => ++rolls == 1 ? 20 : 1; // 첫 슬라임 회유 성공
+            GameObject.Find("EncounterPersuadeButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 조우 회유
+            yield return null; // 첫 조우 종료 대기
+            var groupRoom = travel.GroupEncounterRoom; // 시험 다수 조우 방
+            foreach (var door in FindTestRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), groupRoom)) // 시험 방 경로 순회
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 연결 문 통과
+            } // 경로 이동 끝
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 다수 조우 전투 선택
+            yield return null; // 전투 화면 준비 대기
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            GameObject.Find("GroupTarget1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 적 선택
+            attack.onClick.Invoke(); // 첫 적 공격
+            yield return null; // 다음 차례 대기
+            attack.onClick.Invoke(); // 첫 적 처치
+            yield return null; // 다음 차례 대기
+            GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 적 선택
+            attack.onClick.Invoke(); // 두 번째 적 체력 감소
+            yield return null; // 다음 차례 대기
+            var retreatRolls = 0; // 후퇴 주사위 호출 수
+            CombatScreenView.RetreatRollOverride = (minimum, maximum) => ++retreatRolls == 1 ? 20 : 1; // 후퇴 성공 주사위
+            GameObject.Find("FleeBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 전투 후퇴
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 후퇴한 탐험 상태 확인
+            while (player.IsRoomTransitionLocked) // 부드러운 방 전환 종료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 각 적 상태가 포함된 회차 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 복원된 던전 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전 제어
+            player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 복원된 플레이어
+            groupRoom = travel.GroupEncounterRoom; // 복원된 시험 조우 방
+            foreach (var door in FindTestRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), groupRoom)) // 저장된 위치의 시험 방 경로
+            { // 경로 이동 시작
+                yield return UseDoor(travel, player, door); // 같은 시험 방 재진입
+            } // 경로 이동 끝
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 저장 후 같은 다수 조우 확인
+            GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 같은 적과 전투 재개
+            yield return null; // 전투 화면 준비 대기
+            var defeated = GameObject.Find("GroupTarget1").GetComponent<UnityEngine.UI.Button>(); // 쓰러진 첫 적
+            var survivor = GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>(); // 생존한 두 번째 적
+            Assert.That(defeated.interactable, Is.False); // 쓰러진 적의 선택 차단 유지
+            Assert.That(survivor.interactable, Is.True); // 생존 적의 선택 허용
+            Assert.That(survivor.transform.Find("Label").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("27/70")); // 두 번째 적의 남은 체력 복원
+        } // 검증 끝
         [UnityTest] // 시험 기술과 저장된 마나 검증
         public IEnumerator StrongStrike_CriticalSpendsManaAndRestores() // 실제 기술 사용과 저장 재개 확인
         { // 검증 시작
