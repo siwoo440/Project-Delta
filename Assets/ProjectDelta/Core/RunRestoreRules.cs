@@ -27,6 +27,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 마나 범위 오류 끝
             if (data.version >= 6) // 다수 조우 저장 형식 검사
             { // 다수 조우 검사 시작
+                if (data.version >= 9 && data.groupGoblin && !data.groupEncounterEnabled) // 비활성 다수 조우의 종족 검사
+                { // 종족 오류 시작
+                    return false; // 존재하지 않는 고블린 조우 차단
+                } // 종족 오류 끝
                 var hasGroupHealth = data.groupEnemyHealth != null && data.groupEnemyHealth.Length > 0; // 실제 적 체력 기록 여부
                 if ((!data.groupEncounterEnabled && (data.groupEncounterCompleted || hasGroupHealth)) || (data.groupEncounterCompleted && hasGroupHealth)) // 활성과 완료 상태 충돌 검사
                 { // 다수 조우 충돌 시작

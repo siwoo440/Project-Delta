@@ -70,6 +70,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 슬라임 표시 시작
                     CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimePrototype", new Vector2(600f, 45f)); // 첫 슬라임 이미지
                 } // 슬라임 표시 끝
+                else if (view.monsterId == "MON_GOBLIN") // 고블린 조우 검사
+                { // 고블린 표시 시작
+                    CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/GoblinPrototype", new Vector2(600f, 45f)); // 고블린 몬무스 이미지
+                } // 고블린 표시 끝
                 else // 기존 상위 개체 분기
                 { // 상위 표시 시작
                     CombatScreenView.AddPortrait(canvas.transform, "EncounterPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 기존 상위 개체 임시 그림
@@ -90,7 +94,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 if (view.travel != null && view.travel.IsGroupEncounter) // 시험 다수 조우 검사
                 { // 다수 조우 안내 시작
                     view.persuade.interactable = false; // 미구현 다수 대상 회유 차단
-                    view.description.text = "슬라임 두 개체 · 다수 대상 회유는 준비 중"; // 실제 시험 조우 범위 안내
+                    view.description.text = view.monsterName + " · 다수 대상 회유는 준비 중"; // 실제 시험 조우 범위 안내
                 } // 다수 조우 안내 끝
                 if (owner.Observations.Contains(view.monsterId)) // 이미 관찰한 대상 검사
                 { // 관찰 완료 조건 시작

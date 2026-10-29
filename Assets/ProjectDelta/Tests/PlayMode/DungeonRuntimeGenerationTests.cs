@@ -45,6 +45,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public void PrepareInput() // 가상 입력을 실제 게임에 전달
         { // 준비 시작
             RoomTravelController.TutorialEncounterTestOverride = false; // 기존 던전 기능의 독립 검증
+            AppRoot.AutomaticEncounterTestOverride = false; // 기존 조우 선택 규칙의 독립 검증
             ObservationStorage.TestDirectoryOverride = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "ObservationPlayModeTests", System.Guid.NewGuid().ToString("N"))); // 개별 시험의 독립 저장 경로
             originalBackground = InputSystem.settings.backgroundBehavior; // 기존 입력 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 검증 포커스 영향 제외
@@ -53,6 +54,140 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView; // 게임 화면에 검증 입력 전달
 #endif // 편집기 입력 설정 끝
         } // 준비 끝
+        [UnityTest] // 실제 조우 연출과 자동 전투 검증
+        public IEnumerator Encounter_AutomaticallyTransitionsToCombat() // 입력 잠금과 자동 전투 진입 확인
+        { // 검증 시작
+            AppRoot.AutomaticEncounterTestOverride = true; // 실제 자동 전투 진입 활성화
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 현재 회차 관리자
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 실제 전투 선택 입력 준비
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.South)); // 이전 화면에서 누른 버튼 유지
+            InputSystem.Update(); // 게임패드 상태 반영
+            Assert.That(app.StartEncounter(), Is.True); // 조우 연출 시작
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 전투 전 조우 상태 확인
+            Assert.That(GameObject.Find("EncounterTransitionCanvas"), Is.Not.Null); // 실제 출현 연출 화면 확인
+            Assert.That(app.Input.IsExplorationEnabled, Is.False); // 연출 중 이동 입력 잠금
+            Assert.That(app.Input.IsUiEnabled, Is.False); // 연출 중 전투 버튼 입력 잠금
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 조우 화면 저장 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 화면 캡처 요청 검사
+            { // 캡처 시작
+                yield return new WaitForSecondsRealtime(0.26f); // 출현 이미지가 드러나는 시간 대기
+                var image = CaptureScreen("EncounterTransitionCanvas"); // 실제 조우 연출 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 조우 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 끝
+            var deadline = Time.realtimeSinceStartup + 10f; // 전환 대기 제한
+            while ((app.Flow.Phase != GamePhase.Combat || GameObject.Find("EncounterTransitionCanvas") != null) && Time.realtimeSinceStartup < deadline) // 전투 진입과 연출 종료 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 전투 화면 자동 진입 확인
+            Assert.That(GameObject.Find("EncounterTransitionCanvas"), Is.Null); // 전환 연출 화면 정리 확인
+            Assert.That(GameObject.Find("BattleCanvas"), Is.Not.Null); // 실제 전투 화면 표시 확인
+            Assert.That(app.Input.IsUiEnabled, Is.True); // 연출 완료 후 전투 입력 복구
+            yield return null; // 누른 선택 버튼의 입력 갱신 대기
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("1라운드")); // 누른 선택 버튼의 중복 공격 차단
+        } // 검증 끝
+        [UnityTest] // 실제 적 조우의 자동 전투 검증
+        public IEnumerator FirstSlime_EnteringRoomAutomaticallyStartsBattle() // 실제 방 이동과 자동 조우 확인
+        { // 검증 시작
+            AppRoot.AutomaticEncounterTestOverride = true; // 실제 자동 전투 진입 활성화
+            RoomTravelController.TutorialEncounterTestOverride = true; // 첫 슬라임 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 실제 이동 입력 준비
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 일반 방 연결
+            yield return UseDoor(travel, player, first); // 실제 슬라임 방 진입
+            var deadline = Time.realtimeSinceStartup + 10f; // 전투 전환 대기 제한
+            while ((AppRoot.Instance.Flow.Phase != GamePhase.Combat || GameObject.Find("EncounterTransitionCanvas") != null) && Time.realtimeSinceStartup < deadline) // 자동 전투 화면 대기
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 실제 조우의 전투 진입 확인
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_SLIME")); // 실제 슬라임 상대 유지
+            Assert.That(GameObject.Find("BattleCanvas/Opponent").GetComponent<UnityEngine.UI.Text>().text, Is.EqualTo("슬라임")); // 전투 상대 이름 확인
+        } // 검증 끝
+        [UnityTest] // 두 종의 실제 조우와 보상 저장 통합 검증
+        public IEnumerator AutomaticBattles_SlimeAndGoblinsWinAndResume() // 실제 두 전투와 회차 재개
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "AutomaticBattlesTests", System.Guid.NewGuid().ToString("N")); // 독립 회차 저장 경로
+            AppRoot.AutomaticEncounterTestOverride = true; // 실제 자동 조우 활성화
+            RoomTravelController.TutorialEncounterTestOverride = true; // 두 시험 조우 활성화
+            RoomTravelController.GenerationSeedOverride = 0; // 재현 가능한 던전
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 확정 명중 난수
+            CombatScreenView.RewardRollOverride = (minimum, maximum) => maximum - 1; // 소비 아이템이 없는 고정 보상
+            yield return EnterDungeon(); // 실제 던전 진입
+            keyboard = InputSystem.AddDevice<Keyboard>(); // 실제 이동 키보드
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            var app = AppRoot.Instance; // 실제 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 현재 던전 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 슬라임 방 연결
+            yield return UseDoor(travel, player, first); // 실제 슬라임 방 진입
+            var deadline = Time.realtimeSinceStartup + 10f; // 자동 전투 대기 제한
+            while ((app.Flow.Phase != GamePhase.Combat || GameObject.Find("EncounterTransitionCanvas") != null) && Time.realtimeSinceStartup < deadline) // 첫 전투 전환 대기
+            { // 첫 전투 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 첫 전투 대기 끝
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 첫 자동 전투 진입 확인
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_SLIME")); // 실제 첫 슬라임 확인
+            var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
+            attack.onClick.Invoke(); // 슬라임 첫 공격
+            yield return null; // 다음 행동 대기
+            attack.onClick.Invoke(); // 슬라임 처치
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 슬라임 보상 저장
+            GameObject.Find("TakeRewardButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 슬라임 보상 확정
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Experience, Is.EqualTo(60)); // 첫 슬라임 경험치 확인
+            var groupRoom = travel.GroupEncounterRoom; // 실제 고블린 조우 방
+            foreach (var door in FindTestRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), groupRoom)) // 실제 연결된 경로 순회
+            { // 방 이동 시작
+                yield return UseDoor(travel, player, door); // 연결 문 통과
+            } // 방 이동 끝
+            deadline = Time.realtimeSinceStartup + 10f; // 두 번째 전투 대기 제한
+            while ((app.Flow.Phase != GamePhase.Combat || GameObject.Find("EncounterTransitionCanvas") != null) && Time.realtimeSinceStartup < deadline) // 고블린 전투 전환 대기
+            { // 고블린 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 고블린 대기 끝
+            Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Combat)); // 고블린 자동 전투 진입 확인
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_GOBLIN")); // 실제 고블린 종족 확인
+            attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 현재 전투 공격 버튼
+            GameObject.Find("GroupTarget1").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 첫 고블린 선택
+            attack.onClick.Invoke(); // 첫 고블린 공격
+            yield return null; // 다음 행동 대기
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 실제 전투 화면 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 자동 화면 캡처 요청 검사
+            { // 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 자동 조우 후 고블린 전투 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 최신 플레이 화면 저장
+                Object.Destroy(image); // 캡처 이미지 정리
+            } // 캡처 끝
+            attack.onClick.Invoke(); // 첫 고블린 처치
+            yield return null; // 다음 행동 대기
+            GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 두 번째 고블린 선택
+            attack.onClick.Invoke(); // 두 번째 고블린 공격
+            yield return null; // 다음 행동 대기
+            attack.onClick.Invoke(); // 두 번째 고블린 처치
+            GameObject.Find("ExitBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 고블린 보상 저장
+            GameObject.Find("TakeRewardButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 고블린 보상 확정
+            yield return null; // 탐험 복귀 대기
+            Assert.That(app.Level, Is.EqualTo(2)); // 두 전투의 경험치로 레벨 상승
+            Assert.That(app.Experience, Is.EqualTo(80)); // 기획 요구량 차감 후 경험치
+            var saved = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 독립 저장소에서 회차 확인
+            Assert.That(saved.groupGoblin && saved.groupEncounterCompleted, Is.True); // 고블린 종족과 완료 상태 동시 저장
+            Assert.That(saved.rewardReceipts.Length, Is.EqualTo(2)); // 두 전투의 보상 거래 기록
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장한 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 실제 던전 복원
+            Assert.That(app.Level, Is.EqualTo(2)); // 재개한 레벨 유지
+            Assert.That(app.Experience, Is.EqualTo(80)); // 재개한 경험치 유지
+        } // 검증 끝
         [UnityTest] // 탐험 메뉴와 저장 불러오기 검증
         public IEnumerator PauseMenu_SavesLoadsAndShowsRunHistory() // 실제 입력과 회차 복원 확인
         { // 검증 시작
@@ -981,10 +1116,22 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 경로 이동 끝
             Assert.That(app.Flow.Phase, Is.EqualTo(GamePhase.Encounter)); // 실제 다수 조우 진입
             Assert.That(travel.IsGroupEncounter, Is.True); // 시험 다수 조우 확인
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_GOBLIN")); // 새 회차의 실제 고블린 종족 확인
+            Assert.That(GameObject.Find("EncounterPortrait").GetComponent<UnityEngine.UI.RawImage>().texture.name, Is.EqualTo("GoblinPrototype")); // 고블린 조우 이미지 확인
+            var observeRolls = 0; // 고블린 관찰 주사위 호출 수
+            EncounterScreenView.ObserveRollOverride = (minimum, maximum) => ++observeRolls == 1 ? 20 : 1; // 확정 관찰 성공 주사위
+            GameObject.Find("EncounterObserveButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 고블린 관찰
+            yield return null; // 관찰 기록 대기
+            Assert.That(app.Observations.Contains("MON_GOBLIN"), Is.True); // 종족별 영구 관찰 기록 확인
             GameObject.Find("EncounterFightButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 실제 전투 선택
             yield return null; // 전투 화면 준비 대기
             var firstTarget = GameObject.Find("GroupTarget1").GetComponent<UnityEngine.UI.Button>(); // 첫 번째 적 선택
             var secondTarget = GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>(); // 두 번째 적 선택
+            var enemyLayout = GameObject.Find("BattleCanvas").GetComponent<CombatEnemySlotsLayout>(); // 화면 너비별 적 슬롯 배치
+            enemyLayout.Refresh(800f); // 좁은 화면의 시험 너비
+            var secondRect = secondTarget.GetComponent<RectTransform>(); // 두 번째 대상 위치
+            Assert.That(secondRect.anchoredPosition.x + secondRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(368f)); // 좁은 화면의 적 선택 버튼 보존
+            enemyLayout.Refresh(1920f); // 실제 화면 크기 복구
             var attack = GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>(); // 실제 공격 버튼
             var round = GameObject.Find("RoundStatus").GetComponent<UnityEngine.UI.Text>(); // 현재 전투 상태
             attack.onClick.Invoke(); // 대상 없는 공격 시도
@@ -1075,6 +1222,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var survivor = GameObject.Find("GroupTarget2").GetComponent<UnityEngine.UI.Button>(); // 생존한 두 번째 적
             Assert.That(defeated.interactable, Is.False); // 쓰러진 적의 선택 차단 유지
             Assert.That(survivor.interactable, Is.True); // 생존 적의 선택 허용
+            Assert.That(travel.CurrentMonsterId, Is.EqualTo("MON_GOBLIN")); // 저장 재개 후 고블린 종족 유지
+            Assert.That(survivor.transform.Find("Label").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("고블린")); // 복원된 실제 상대 이름
             Assert.That(survivor.transform.Find("Label").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("27/70")); // 두 번째 적의 남은 체력 복원
             survivor.onClick.Invoke(); // 이번 전투의 생존 상대 선택
             GameObject.Find("AdvanceBattleButton").GetComponent<UnityEngine.UI.Button>().onClick.Invoke(); // 생존 상대 처치
@@ -3549,8 +3698,16 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(enemyImage.texture, Is.Not.Null); // 상대 리소스 연결 확인
             Assert.That(playerImage.raycastTarget, Is.False); // 초상화의 입력 가로채기 차단
             Assert.That(enemyImage.raycastTarget, Is.False); // 상대 이미지의 입력 가로채기 차단
-            var playerLayout = playerPortrait.GetComponent<CombatPortraitLayout>(); // 주인공의 화면 배치
-            var enemyLayout = enemyPortrait.GetComponent<CombatPortraitLayout>(); // 상대의 화면 배치
+            Assert.That(enemyPortrait.GetComponent<RectTransform>().anchoredPosition.y, Is.GreaterThan(0f)); // 상대의 화면 위쪽 배치
+            Assert.That(playerPortrait.GetComponent<RectTransform>().anchoredPosition.y, Is.LessThan(0f)); // 주인공의 화면 아래쪽 배치
+            Assert.That(GameObject.Find("PlayerHealth").GetComponent<RectTransform>().anchoredPosition.y, Is.LessThan(0f)); // 플레이어 체력의 하단 배치
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<RectTransform>().anchoredPosition.y, Is.GreaterThan(0f)); // 라운드의 상단 배치
+            Assert.That(GameObject.Find("RelicStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("유물")); // 상단 유물 상태 확인
+            Assert.That(GameObject.Find("TemptBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 유혹 행동 차단
+            Assert.That(GameObject.Find("PersuadeBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 회유 차단
+            Assert.That(GameObject.Find("ObserveBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 관찰 차단
+            var playerLayout = playerPortrait.GetComponent<BattlePortraitLayout>(); // 주인공의 하단 화면 배치
+            var enemyLayout = enemyPortrait.GetComponent<BattlePortraitLayout>(); // 상대의 상단 화면 배치
             Assert.That(playerLayout, Is.Not.Null); // 주인공 크기 조절 제공 확인
             Assert.That(enemyLayout, Is.Not.Null); // 상대 크기 조절 제공 확인
             playerLayout.Refresh(1440f); // 좁은 정사각형 창의 가상 화면 적용
@@ -3559,8 +3716,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var enemyRect = enemyPortrait.GetComponent<RectTransform>(); // 상대 표시 위치
             Assert.That(-playerRect.anchoredPosition.x + playerRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(704f)); // 왼쪽 화면 안쪽 여백 확인
             Assert.That(enemyRect.anchoredPosition.x + enemyRect.sizeDelta.x * 0.5f, Is.LessThanOrEqualTo(704f)); // 오른쪽 화면 안쪽 여백 확인
-            Assert.That(-playerRect.anchoredPosition.x - playerRect.sizeDelta.x * 0.5f, Is.GreaterThanOrEqualTo(420f)); // 주인공 글자 영역 분리
-            Assert.That(enemyRect.anchoredPosition.x - enemyRect.sizeDelta.x * 0.5f, Is.GreaterThanOrEqualTo(420f)); // 상대 글자 영역 분리
+            Assert.That(playerRect.anchoredPosition.y, Is.LessThan(0f)); // 주인공의 하단 위치 유지
+            Assert.That(enemyRect.anchoredPosition.y, Is.GreaterThan(0f)); // 상대의 상단 위치 유지
             playerLayout.Refresh(800f); // 초상화 공간이 없는 좁은 화면 적용
             Assert.That(playerImage.enabled, Is.False); // 공간 부족 시 초상화 숨김
             playerLayout.Refresh(1920f); // 일반 화면의 초상화 복구
@@ -3905,6 +4062,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator Cleanup() // 검증 시드와 공통 객체 정리
         { // 정리 시작
             RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 시험 설정 해제
+            AppRoot.AutomaticEncounterTestOverride = null; // 자동 조우 시험 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증 시드 해제
             CombatScreenView.TrialEnemySpeedOverride = null; // 시험 상대 속도 설정 해제
             typeof(CombatScreenView).GetProperty("RandomOverride")?.SetValue(null, null); // 검증용 전투 난수 해제

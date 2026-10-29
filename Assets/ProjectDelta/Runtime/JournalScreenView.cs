@@ -26,20 +26,29 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UiFactory.CreateText(panel.transform, "JournalHeader", "관찰 기록", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 도감 화면 제목
                 var observed = owner.Observations.Contains("trial-elite"); // 저장된 시험 대상 기록 검사
                 var slimeObserved = owner.Observations.Contains("MON_SLIME"); // 저장된 첫 슬라임 기록 검사
+                var goblinObserved = owner.Observations.Contains("MON_GOBLIN"); // 저장된 고블린 기록 검사
                 var content = observed ? "시험 상위 개체 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)" : string.Empty; // 상위 개체의 공개 정보
                 if (slimeObserved) // 슬라임 관찰 기록 검사
                 { // 슬라임 정보 시작
                     content += (content.Length > 0 ? "\n\n" : string.Empty) + "슬라임 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)"; // 관찰한 슬라임 정보 추가
                 } // 슬라임 정보 끝
+                if (goblinObserved) // 고블린 관찰 기록 검사
+                { // 고블린 정보 시작
+                    content += (content.Length > 0 ? "\n\n" : string.Empty) + "고블린 · 1단계\n체력 " + CombatScreenView.TrialEnemyHealth + " · 기본 공격 위주 (시험값)"; // 실제 고블린 시험 정보 추가
+                } // 고블린 정보 끝
                 if (content.Length == 0) // 공개할 기록 존재 검사
                 { // 기록 없음 시작
                     content = "관찰 기록이 없습니다"; // 빈 도감 안내
                 } // 기록 없음 끝
-                UiFactory.CreateText(panel.transform, "JournalContents", content, 32, new Vector2(-160f, 45f), new Vector2(800f, 160f), Color.white); // 읽기 전용 관찰 정보
+                UiFactory.CreateText(panel.transform, "JournalContents", content, 28, new Vector2(-160f, 45f), new Vector2(800f, 240f), Color.white); // 세 대상의 읽기 전용 관찰 정보
                 if (observed) // 관찰한 시험 대상 검사
                 { // 관찰 정보 조건 시작
                     CombatScreenView.AddPortrait(panel.transform, "JournalPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 시험 대상의 개발용 그림
                 } // 관찰 정보 조건 끝
+                else if (goblinObserved) // 고블린 관찰 기록 검사
+                { // 고블린 초상화 시작
+                    CombatScreenView.AddPortrait(panel.transform, "JournalPortrait", "BattlePortraits/GoblinPrototype", new Vector2(600f, 45f)); // 실제 고블린 관찰 그림
+                } // 고블린 초상화 끝
                 if (!string.IsNullOrEmpty(owner.ObservationSaveMessage)) // 저장 오류 또는 복구 상태 검사
                 { // 저장 안내 조건 시작
                     UiFactory.CreateText(panel.transform, "JournalSaveWarning", owner.ObservationSaveMessage, 22, new Vector2(0f, -165f), new Vector2(1400f, 110f), new Color(1f, 0.72f, 0.55f)); // 원본 보존과 저장 상태 안내

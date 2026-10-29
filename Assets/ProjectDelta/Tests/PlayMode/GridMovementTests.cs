@@ -22,6 +22,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public void RouteTestInputToGame() // 자동 검증 입력 준비
         { // 준비 시작
             RoomTravelController.TutorialEncounterTestOverride = false; // 기존 격자 이동의 독립 검증
+            AppRoot.AutomaticEncounterTestOverride = false; // 기존 조우 선택의 독립 검증
             RoomTravelController.GenerationSeedOverride = 0; // 기존 이동 시험의 재현 가능한 방 구조
             originalBackgroundBehavior = InputSystem.settings.backgroundBehavior; // 기존 백그라운드 설정 보관
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus; // 자동 실행 포커스 영향 제외
@@ -30,8 +31,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView; // 검증 입력을 게임에 전달
 #endif // 편집기 입력 설정 끝
         } // 준비 끝
-        [UnityTest] // 누른 방향의 연속 이동 검증
-        public IEnumerator HeldW_ContinuesUntilObstacleAndStopsOnRelease() // 길게 누르기와 장애물 차단 확인
+        [UnityTest] // 누른 방향의 한 칸 이동 검증
+        public IEnumerator HeldW_MovesOnceUntilReleasedAndPressedAgain() // 길게 누름의 반복 이동 차단 확인
         { // 검증 시작
             yield return EnterDungeon(); // 실제 던전 진입
             var player = FindPlayer(); // 현재 플레이어 조회
@@ -40,12 +41,16 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 입력 준비 대기
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 위쪽 이동 키 유지
             InputSystem.Update(); // 누른 키 반영
-            yield return new WaitForSeconds(0.8f); // 연속 이동 대기
-            Assert.That(player.Y, Is.EqualTo(2)); // 여러 칸 이동 후 장애물 앞 정지
+            yield return new WaitForSeconds(0.8f); // 누른 키의 이동 대기
+            Assert.That(player.Y, Is.EqualTo(1)); // 길게 눌러도 한 칸만 이동
             InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 이동 키 해제
             InputSystem.Update(); // 해제 입력 반영
             yield return new WaitForSeconds(0.3f); // 추가 이동 여부 대기
-            Assert.That(player.Y, Is.EqualTo(2)); // 해제 후 위치 유지
+            Assert.That(player.Y, Is.EqualTo(1)); // 해제 후 위치 유지
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); // 위쪽 키 다시 누름
+            InputSystem.Update(); // 새 입력 반영
+            yield return new WaitForSeconds(0.3f); // 두 번째 이동 대기
+            Assert.That(player.Y, Is.EqualTo(2)); // 새 누름의 한 칸 이동 확인
         } // 검증 끝
         [UnityTest] // 실제 실행 검증 표시
         public IEnumerator SavedDungeon_ContainsWalkableTilesObstaclesAndPlayer() // 저장된 바닥과 플레이어 검증
@@ -352,6 +357,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator Cleanup() // 검증 장치와 공통 객체 정리
         { // 정리 시작
             RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 시험 설정 해제
+            AppRoot.AutomaticEncounterTestOverride = null; // 자동 조우 시험 설정 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증용 생성 시드 해제
             if (keyboard != null && keyboard.added) // 검증 키보드 존재 확인
             { // 키보드 정리 시작

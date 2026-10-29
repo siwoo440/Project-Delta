@@ -58,7 +58,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 8; // 성장과 보상 후보를 포함한 저장 버전
+        public const int CurrentVersion = 9; // 다수 조우 종족을 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -73,6 +73,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool tutorialCompleted; // 첫 슬라임 조우 완료 여부
         public int tutorialHealth; // 도망 후 남은 첫 슬라임 체력
         public bool groupEncounterEnabled; // 시험 다수 조우 활성 여부
+        public bool groupGoblin; // 시험 다수 조우의 고블린 종족 여부
         public bool groupEncounterCompleted; // 시험 다수 조우 완료 여부
         public int[] groupEnemyHealth; // 도망한 다수 적의 개별 체력
         public SavedSecretPassage[] secretPassages; // 발견한 비밀 통로 목록

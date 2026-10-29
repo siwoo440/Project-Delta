@@ -26,14 +26,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private EncounterPlacement tutorialEncounter; // 첫 일반 방의 고정 조우 데이터
         private DungeonRoom groupEncounterRoom; // 시험 다수 조우가 배치된 일반 방
         private bool groupEncounterEnabled; // 현재 회차의 시험 다수 조우 활성화
+        private bool groupGoblin; // 현재 회차 다수 조우의 고블린 종족 여부
         private bool groupEncounterCompleted; // 시험 다수 조우 완료 상태
         private int[] groupEnemyHealth; // 후퇴한 시험 적의 개별 체력
         public static bool? TutorialEncounterTestOverride { get; set; } // 독립 테스트의 첫 조우 활성화 설정
         public bool TutorialCompleted => tutorialCompleted; // 첫 조우 완료 상태
         private bool TutorialEnabled => TutorialEncounterTestOverride ?? true; // 실제 게임의 첫 조우 활성 상태
         public EncounterPlacement TutorialEncounter => tutorialEncounter; // 첫 일반 방의 실제 조우 데이터
-        public string CurrentMonsterId => IsGroupRoom() || (IsTutorialRoom() && !tutorialCompleted) ? "MON_SLIME" : "trial-elite"; // 현재 시험 조우 대상 식별자
-        public string CurrentMonsterName => IsGroupRoom() ? "슬라임 2개체" : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 현재 시험 대상 이름
+        public string CurrentMonsterId => IsGroupRoom() ? (groupGoblin ? "MON_GOBLIN" : "MON_SLIME") : IsTutorialRoom() && !tutorialCompleted ? "MON_SLIME" : "trial-elite"; // 현재 시험 조우 대상 식별자
+        public string CurrentMonsterName => IsGroupRoom() ? (groupGoblin ? "고블린 2개체" : "슬라임 2개체") : IsTutorialRoom() && !tutorialCompleted ? tutorialEncounter.Monsters[0].Name : "상위 개체"; // 현재 시험 대상 이름
         public bool IsGroupEncounter => IsGroupRoom() && !groupEncounterCompleted; // 현재 미완료 다수 조우 여부
         public DungeonRoom GroupEncounterRoom => groupEncounterRoom; // 시험 다수 조우 방 조회
         private readonly FloorProgress floorProgress = new FloorProgress(); // 현재 층과 전환 잠금
@@ -121,6 +122,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 tutorialCompleted = tutorialCompleted, // 첫 슬라임 조우 완료 상태
                 tutorialHealth = tutorialHealth, // 도망 후 남은 첫 슬라임 체력
                 groupEncounterEnabled = groupEncounterEnabled, // 시험 다수 조우 활성 상태
+                groupGoblin = groupGoblin, // 현재 다수 조우의 고블린 종족 여부
                 groupEncounterCompleted = groupEncounterCompleted, // 시험 다수 조우 완료 상태
                 groupEnemyHealth = Floor == 1 && groupEnemyHealth != null ? (int[])groupEnemyHealth.Clone() : new int[0], // 현재 층의 후퇴한 다수 적 체력
                 secretPassages = Discovery.SaveSecrets(), // 발견한 비밀 연결과 개방 상태
@@ -325,6 +327,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 tutorialCompleted = saved != null && (saved.version < 4 || saved.tutorialCompleted); // 이전 회차와 저장된 첫 조우 완료
                 tutorialHealth = saved == null || saved.version < 4 ? 0 : saved.tutorialHealth; // 저장된 첫 조우 상대 체력
                 groupEncounterEnabled = saved == null ? TutorialEnabled : saved.version >= 6 && saved.groupEncounterEnabled; // 새 회차 또는 저장된 다수 조우 활성 상태
+                groupGoblin = groupEncounterEnabled && (saved == null ? GroupEncounterSpeciesRules.ForNewRun() : GroupEncounterSpeciesRules.FromSave(saved.version, saved.groupGoblin)); // 새 회차 고블린과 기존 슬라임 조우 구분
                 groupEncounterCompleted = saved != null && saved.version >= 6 && saved.groupEncounterCompleted; // 저장된 다수 조우 완료 상태
                 groupEnemyHealth = saved != null && saved.version >= 6 && saved.groupEnemyHealth != null && saved.groupEnemyHealth.Length > 0 ? (int[])saved.groupEnemyHealth.Clone() : null; // 저장된 개별 적 체력 복원
                 var floorSeed = saved != null && saved.floor == 2 ? unchecked(Seed + 7919) : Seed; // 저장 층의 생성 시드

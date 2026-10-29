@@ -1,6 +1,5 @@
 using ProjectDelta.Core; // 격자 이동 규칙
 using UnityEngine; // 실제 씬 구성 요소
-using UnityEngine.InputSystem; // 연속 이동 키 확인
 using UnityEngine.Tilemaps; // 바닥과 장애물 타일
 namespace ProjectDelta.Runtime // 실행 이름 공간
 { // 이름 공간 시작
@@ -133,19 +132,6 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 대기 이동 조건 시작
                 BeginAnimation(); // 첫 대기 입력의 화면 이동 시작
             } // 대기 이동 조건 끝
-            else if (input.IsExplorationEnabled && !IsRoomTransitionLocked) // 탐험과 방 전환 상태 검사
-            { // 누른 키 연속 이동 시작
-                var keyboard = Keyboard.current; // 현재 키보드 조회
-                if (keyboard != null) // 키보드 존재 검사
-                { // 키보드 방향 계산 시작
-                    var x = (keyboard.dKey.isPressed ? 1 : 0) - (keyboard.aKey.isPressed ? 1 : 0); // 좌우 키 합계
-                    var y = (keyboard.wKey.isPressed ? 1 : 0) - (keyboard.sKey.isPressed ? 1 : 0); // 상하 키 합계
-                    if (Mathf.Abs(x) + Mathf.Abs(y) == 1) // 한 방향 누름 검사
-                    { // 연속 요청 시작
-                        OnMoveRequested(new Vector2Int(x, y)); // 같은 방향의 다음 칸 요청
-                    } // 연속 요청 끝
-                } // 키보드 방향 계산 끝
-            } // 누른 키 연속 이동 끝
         } // 갱신 끝
         private void OnMoveRequested(Vector2Int direction) // 입력된 한 칸 이동 요청
         { // 요청 시작

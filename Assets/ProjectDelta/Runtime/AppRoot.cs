@@ -21,6 +21,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private CombatScreenView combatScreen; // 시험 전투 화면
         private BattleRewardScreenView rewardScreen; // 저장된 승리 보상 화면
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
+        private EncounterTransitionView encounterTransition; // 자동 전투 진입 전환 화면
+        public static bool? AutomaticEncounterTestOverride { get; set; } // 조우 방식의 독립 검증 설정
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private FullMapScreenView fullMapScreen; // 현재 전체 지도 화면
         private HistoryScreenView historyScreen; // 현재 회차 기록 화면
@@ -724,9 +726,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 진입 거절 조건 시작
                 return false; // 중복 조우 차단
             } // 진입 거절 조건 끝
-            Input.SetPhase(GamePhase.Encounter); // 탐험 입력 잠금과 조우 입력 활성화
             try // 실제 조우 화면 준비
             { // 화면 준비 시작
+                if (AutomaticEncounterTestOverride ?? true) // 실제 자동 전투 진입 검사
+                { // 자동 전환 시작
+                    Input.SetPhase(GamePhase.Loading); // 연출 중 이동과 화면 입력 잠금
+                    var room = GameObject.Find("RoomTravel"); // 현재 조우 방 조회
+                    var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 조우 대상
+                    var monsterId = travel == null ? string.Empty : travel.CurrentMonsterId; // 실제 상대 식별자
+                    var name = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 상대 이름
+                    var portrait = monsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : monsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 출현 초상화
+                    encounterTransition = EncounterTransitionView.Create(name, portrait); // 출현과 화면 전환 생성
+                    StartCoroutine(TransitionIntoCombat(encounterTransition)); // 조우 연출 후 자동 전투 시작
+                    return true; // 자동 전환 요청 성공
+                } // 자동 전환 끝
+                Input.SetPhase(GamePhase.Encounter); // 시험용 기존 조우 선택 입력 활성화
                 encounterScreen = EncounterScreenView.Create(this); // 시험 조우 선택 화면 생성
                 return true; // 실제 화면 진입 성공
             } // 화면 준비 끝
@@ -738,6 +752,40 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 return false; // 잘못된 조우 진입 거절
             } // 실패 복구 끝
         } // 진입 끝
+        private IEnumerator TransitionIntoCombat(EncounterTransitionView transition) // 조우 연출과 자동 전투 진입
+        { // 전환 시작
+            try // 전환 화면과 입력 정리 보장
+            { // 연출 시작
+                yield return transition.Cover(); // 상대 출현과 화면 가림 대기
+                if (transition == null || !transition.IsCovered || Flow.Phase != GamePhase.Encounter) // 실제 조우와 전환 상태 검사
+                { // 중단 시작
+                    yield break; // 중단된 조우의 전투 생성 차단
+                } // 중단 끝
+                if (!StartCombat()) // 완전히 가려진 상태의 전투 생성 검사
+                { // 생성 실패 시작
+                    Flow.TryCancelEncounter(); // 실패한 조우의 탐험 복구
+                    Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                    yield break; // 미완성 전투 표시 차단
+                } // 생성 실패 끝
+                Input.SetPhase(GamePhase.Loading); // 전투 화면이 드러날 때까지 입력 잠금
+                yield return transition.Reveal(); // 전투 화면의 부드러운 노출
+                if (Flow.Phase == GamePhase.Combat) // 실제 전투 상태 검사
+                { // 입력 복구 시작
+                    Input.SetPhase(GamePhase.Combat); // 연출 완료 후 전투 입력 활성화
+                } // 입력 복구 끝
+            } // 연출 끝
+            finally // 중단과 실패를 포함한 화면 정리
+            { // 정리 시작
+                if (transition != null) // 전환 화면 존재 검사
+                { // 화면 정리 시작
+                    transition.Close(); // 입력 차단 즉시 해제와 화면 제거
+                } // 화면 정리 끝
+                if (encounterTransition == transition) // 현재 연출 참조 검사
+                { // 참조 정리 시작
+                    encounterTransition = null; // 완료된 연출 참조 해제
+                } // 참조 정리 끝
+            } // 정리 끝
+        } // 전환 끝
         public bool EndEncounterAfterEscape() // 성공한 조우 도망 후 탐험 복귀
         { // 복귀 시작
             if (!Flow.TryCancelEncounter()) // 현재 조우 상태 검사
@@ -864,6 +912,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 무시 조건 시작
                 return; // 실제 공통 객체 보존
             } // 무시 조건 끝
+            if (encounterTransition != null) // 미완료 조우 연출 검사
+            { // 연출 정리 시작
+                encounterTransition.Close(); // 전환 화면과 입력 차단 해제
+                encounterTransition = null; // 연출 참조 해제
+            } // 연출 정리 끝
             if (Input != null) // 입력 객체 존재 검사
             { // 해제 조건 시작
                 Input.BackRequested -= OpenPause; // 일시정지 입력 연결 해제

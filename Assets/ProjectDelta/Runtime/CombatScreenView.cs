@@ -80,26 +80,34 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 배경색
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 전투 안내 강조 색상
+                AddBattlePanel(canvas.transform, "BattleTopPanel", new Vector2(0f, 480f), new Vector2(1920f, 120f)); // 상단 라운드와 유물 영역
+                AddBattlePanel(canvas.transform, "BattlePlayerPanel", new Vector2(0f, -350f), new Vector2(1920f, 380f)); // 하단 플레이어와 행동 영역
                 var travelObject = GameObject.Find("RoomTravel"); // 실제 던전 객체 조회
                 var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 조우 대상 조회
                 var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
-                AddPortrait(canvas.transform, "PlayerPortrait", "BattlePortraits/PlayerPrototype", new Vector2(-600f, 45f)); // 주인공 임시 초상화
-                if (travel != null && travel.CurrentMonsterId == "MON_SLIME") // 첫 슬라임 전투 검사
-                { // 슬라임 표시 시작
-                    AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimePrototype", new Vector2(600f, 45f)); // 첫 슬라임 이미지
-                } // 슬라임 표시 끝
-                else // 기존 시험 전투 분기
-                { // 상위 표시 시작
-                    AddPortrait(canvas.transform, "EnemyPortrait", "BattlePortraits/SlimeQueenPrototype", new Vector2(600f, 45f)); // 상위 개체 임시 초상화
-                } // 상위 표시 끝
-                UiFactory.CreateText(canvas.transform, "Header", "전투", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 전투 화면 제목
-                UiFactory.CreateText(canvas.transform, "Status", "조우 · 공격과 방어, 도주, 회복약", 26, new Vector2(0f, 330f), new Vector2(1100f, 60f), accent); // 현재 전투 상태
-                view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 245f), new Vector2(1100f, 60f), Color.white); // 라운드와 행동자 표시
-                UiFactory.CreateText(canvas.transform, "Player", "플레이어", 38, new Vector2(-260f, 70f), new Vector2(300f, 100f), accent); // 플레이어 영역
-                var opponent = UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 38, new Vector2(260f, 70f), new Vector2(300f, 100f), new Color(1f, 0.62f, 0.58f)); // 실제 상대 이름
-                view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(-260f, -20f), new Vector2(300f, 65f), Color.white); // 플레이어 체력
-                view.playerMana = UiFactory.CreateText(canvas.transform, "PlayerMana", "", 23, new Vector2(-260f, -75f), new Vector2(300f, 50f), new Color(0.58f, 0.76f, 1f)); // 플레이어 마나
-                view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(260f, -20f), new Vector2(300f, 65f), Color.white); // 상대 체력
+                var grouped = travel != null && travel.IsGroupEncounter; // 실제 다수 조우 여부
+                var enemyImage = travel != null && travel.CurrentMonsterId == "MON_SLIME" ? "BattlePortraits/SlimePrototype" : travel != null && travel.CurrentMonsterId == "MON_GOBLIN" ? "BattlePortraits/GoblinPrototype" : "BattlePortraits/SlimeQueenPrototype"; // 실제 상대의 초상화
+                var firstEnemyPanel = AddBattlePanel(canvas.transform, "EnemySlotPanel1", new Vector2(grouped ? -250f : 0f, 180f), new Vector2(420f, 410f)); // 첫 상대의 상단 슬롯 배경
+                RectTransform secondEnemyPanel = null; // 선택적인 두 번째 적 슬롯
+                if (grouped) // 두 번째 상대 슬롯 검사
+                { // 추가 슬롯 시작
+                    secondEnemyPanel = AddBattlePanel(canvas.transform, "EnemySlotPanel2", new Vector2(250f, 180f), new Vector2(420f, 410f)); // 두 번째 상대의 상단 슬롯 배경
+                } // 추가 슬롯 끝
+                AddBattlePortrait(canvas.transform, "PlayerPortrait", "BattlePortraits/PlayerPrototype", true, 0); // 아래쪽 주인공 초상화
+                AddBattlePortrait(canvas.transform, "EnemyPortrait", enemyImage, false, grouped ? -1 : 0); // 위쪽 첫 상대 초상화
+                if (grouped) // 두 번째 적 표시 검사
+                { // 다수 초상화 시작
+                    AddBattlePortrait(canvas.transform, "EnemyPortrait2", enemyImage, false, 1); // 위쪽 두 번째 상대 초상화
+                } // 다수 초상화 끝
+                UiFactory.CreateText(canvas.transform, "Header", "전투", 42, new Vector2(-730f, 480f), new Vector2(300f, 75f), Color.white); // 상단 전투 제목
+                UiFactory.CreateText(canvas.transform, "RelicStatus", "유물 · 준비 중", 24, new Vector2(700f, 480f), new Vector2(380f, 60f), accent); // 미구현 유물 보유 영역
+                view.roundText = UiFactory.CreateText(canvas.transform, "RoundStatus", "", 27, new Vector2(0f, 480f), new Vector2(900f, 60f), Color.white); // 상단 라운드와 행동자 표시
+                UiFactory.CreateText(canvas.transform, "Status", "적 행동 예고 · 준비 중", 21, new Vector2(0f, 405f), new Vector2(800f, 45f), accent); // 미구현 적 행동 예고 안내
+                UiFactory.CreateText(canvas.transform, "Player", "플레이어", 30, new Vector2(-320f, -245f), new Vector2(300f, 70f), accent); // 하단 플레이어 이름
+                var opponent = UiFactory.CreateText(canvas.transform, "Opponent", enemyName, 30, new Vector2(0f, -5f), new Vector2(400f, 55f), new Color(1f, 0.62f, 0.58f)); // 위쪽 단일 상대 이름
+                view.playerHealth = UiFactory.CreateText(canvas.transform, "PlayerHealth", "", 24, new Vector2(0f, -245f), new Vector2(300f, 55f), Color.white); // 하단 플레이어 체력
+                view.playerMana = UiFactory.CreateText(canvas.transform, "PlayerMana", "", 23, new Vector2(0f, -300f), new Vector2(300f, 50f), new Color(0.58f, 0.76f, 1f)); // 하단 플레이어 마나
+                view.enemyHealth = UiFactory.CreateText(canvas.transform, "EnemyHealth", "", 24, new Vector2(0f, -55f), new Vector2(300f, 50f), Color.white); // 위쪽 단일 상대 체력
                 if (travel != null && travel.IsGroupEncounter) // 시험 다수 조우 화면 검사
                 { // 다수 대상 화면 시작
                     opponent.gameObject.SetActive(false); // 단일 대상 이름 숨김
@@ -108,13 +116,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     for (var index = 0; index < view.groupTargets.Length; index++) // 실제 대상 버튼 순회
                     { // 대상 버튼 생성 시작
                         var slot = index; // 선택할 적 슬롯 보관
-                        var target = UiFactory.CreateButton(canvas.transform, "GroupTarget" + (slot + 1), "슬라임 " + (slot + 1), new Vector2(300f, 90f - slot * 105f)); // 개별 적 선택 버튼
+                        var target = UiFactory.CreateButton(canvas.transform, "GroupTarget" + (slot + 1), (travel.CurrentMonsterId == "MON_GOBLIN" ? "고블린 " : "슬라임 ") + (slot + 1), new Vector2(slot == 0 ? -250f : 250f, -20f)); // 위쪽 개별 적 선택 버튼
                         target.onClick.AddListener(() => view.SelectGroupTarget(slot)); // 해당 적 선택 연결
                         view.groupTargets[slot] = target; // 생성된 대상 버튼 보관
                     } // 대상 버튼 생성 끝
                 } // 다수 대상 화면 끝
-                UiFactory.CreateText(canvas.transform, "Center", "VS", 44, Vector2.zero, new Vector2(200f, 100f), Color.white); // 대결 구분 표시
-                view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 23, new Vector2(0f, -170f), new Vector2(1200f, 110f), Color.white); // 다수 적을 포함한 최근 행동 결과
+                canvas.gameObject.AddComponent<CombatEnemySlotsLayout>().Initialize(canvas.GetComponent<RectTransform>(), firstEnemyPanel, secondEnemyPanel, view.groupTargets); // 화면 너비별 적 슬롯과 선택 버튼
+                view.notice = UiFactory.CreateText(canvas.transform, "Notice", "기본 공격을 선택하세요", 19, new Vector2(0f, -110f), new Vector2(1200f, 100f), Color.white); // 적과 플레이어 사이 행동 결과
                 view.advance = UiFactory.CreateButton(canvas.transform, "AdvanceBattleButton", "공격", new Vector2(-470f, -275f)); // 기본 공격 버튼
                 view.advance.onClick.AddListener(view.Advance); // 실제 공격 진행 연결
                 view.flee = UiFactory.CreateButton(canvas.transform, "FleeBattleButton", "도주", new Vector2(0f, -275f)); // 정식 도주 버튼
@@ -125,7 +133,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.potion.onClick.AddListener(view.UsePotion); // 전투 회복약 행동 연결
                 view.skill = UiFactory.CreateButton(canvas.transform, "StrongStrikeButton", "강한 일격", new Vector2(0f, -275f)); // 시험 전투 기술 버튼
                 view.skill.onClick.AddListener(view.StrongStrike); // 실제 기술 사용 연결
-                view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "항복", new Vector2(0f, -390f)); // 항복과 결과 복귀 버튼
+                var tempt = UiFactory.CreateButton(canvas.transform, "TemptBattleButton", "유혹 · 준비 중", Vector2.zero); // 미구현 유혹 행동
+                var persuade = UiFactory.CreateButton(canvas.transform, "PersuadeBattleButton", "회유 · 준비 중", Vector2.zero); // 미구현 전투 회유 행동
+                var observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰 · 준비 중", Vector2.zero); // 미구현 전투 관찰 행동
+                tempt.interactable = false; // 미구현 유혹 차단
+                persuade.interactable = false; // 미구현 전투 회유 차단
+                observe.interactable = false; // 미구현 전투 관찰 차단
+                view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "항복", Vector2.zero); // 하단 항복과 결과 복귀 버튼
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
                 view.surrenderDialog = new GameObject("SurrenderDialog", typeof(RectTransform), typeof(Image)); // 항복 확인 배경
                 view.surrenderDialog.transform.SetParent(canvas.transform, false); // 전투 화면 위 배치
@@ -137,7 +151,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 yes.onClick.AddListener(view.ConfirmSurrender); // 실제 항복 확정 연결
                 no.onClick.AddListener(view.CancelSurrender); // 항복 취소 연결
                 view.surrenderDialog.SetActive(false); // 확인 화면 초기 숨김
-                canvas.gameObject.AddComponent<CombatActionLayout>().Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill); // 화면 너비별 행동 버튼 배치
+                var actionLayout = canvas.gameObject.AddComponent<CombatActionLayout>(); // 화면 너비별 행동 배치
+                actionLayout.Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill, -380f); // 하단 첫 행동 줄 배치
+                actionLayout.SetSecondaryRow(new[] { tempt, persuade, observe, view.exit }, -475f); // 미구현 행동과 항복의 하단 두 번째 줄
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
                 { // 기본 선택 시작
@@ -152,6 +168,32 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 throw; // 원래 오류 전달
             } // 실패 정리 끝
         } // 생성 끝
+        private static RectTransform AddBattlePanel(Transform parent, string name, Vector2 position, Vector2 size) // 전투 영역의 비입력 배경 생성
+        { // 배경 시작
+            var panel = new GameObject(name, typeof(RectTransform), typeof(Image)); // 화면 패널 객체
+            panel.transform.SetParent(parent, false); // 전투 화면에 배치
+            var rect = panel.GetComponent<RectTransform>(); // 패널 위치 조회
+            rect.anchoredPosition = position; // 패널 중앙 위치
+            rect.sizeDelta = size; // 패널 기준 크기
+            var image = panel.GetComponent<Image>(); // 패널 배경 조회
+            image.color = new Color(0.09f, 0.10f, 0.14f, 0.92f); // 기존 전투 화면의 진한 배경
+            image.raycastTarget = false; // 버튼 입력 가로채기 방지
+            return rect; // 생성한 패널 위치 전달
+        } // 배경 끝
+        private static void AddBattlePortrait(Transform parent, string name, string resourcePath, bool player, int slot) // 전투 전용 상하 초상화 생성
+        { // 초상화 생성 시작
+            var texture = Resources.Load<Texture2D>(resourcePath); // 실제 초상화 리소스
+            if (texture == null) // 누락된 이미지 검사
+            { // 누락 시작
+                return; // 기존 전투 입력 유지
+            } // 누락 끝
+            var portrait = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage)); // 전투 초상화 객체
+            portrait.transform.SetParent(parent, false); // 전투 화면에 배치
+            var image = portrait.GetComponent<RawImage>(); // 실제 이미지 표시
+            image.texture = texture; // 현재 참가자의 이미지
+            image.raycastTarget = false; // 대상 선택 입력 가로채기 방지
+            portrait.AddComponent<BattlePortraitLayout>().Initialize(parent.GetComponent<RectTransform>(), player, slot); // 상하 영역과 화면 너비 반영
+        } // 초상화 생성 끝
         internal static void AddPortrait(Transform parent, string name, string resourcePath, Vector2 position) // 선택적인 화면 초상화 생성
         { // 생성 시작
             var texture = Resources.Load<Texture2D>(resourcePath); // 전투 이미지 리소스 조회
@@ -175,14 +217,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 현재 방 이동 제어
             var enemyName = travel == null ? "상위 개체" : travel.CurrentMonsterName; // 실제 전투 상대 이름
             var grouped = travel != null && travel.IsGroupEncounter; // 현재 시험 다수 조우 여부
-            participants = grouped ? new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor("슬라임 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor("슬라임 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수에 맞는 참가자 목록
+            var groupName = grouped && travel.CurrentMonsterId == "MON_GOBLIN" ? "고블린" : "슬라임"; // 현재 저장의 실제 다수 적 이름
+            participants = grouped ? new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(groupName + " 1", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1), new BattleActor(groupName + " 2", TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 2) } : new[] { new BattleActor("플레이어", TrialPlayerSpeed, true, 0), new BattleActor(enemyName, TrialEnemySpeedOverride ?? TrialEnemySpeed, false, 1) }; // 실제 적 수에 맞는 참가자 목록
             player = new CombatFighter(participants[0], 100, 50, 40, 0, 40, owner.PlayerHealth); // 시험 플레이어와 명중 보정 0
             if (grouped) // 실제 시험 다수 조우 검사
             { // 다수 전투 준비 시작
                 var health = travel.CurrentGroupEnemyHealth(); // 후퇴한 개별 적 체력 조회
                 groupFighters = new[] { new CombatFighter(participants[1], TrialEnemyHealth, 11, 7, 0, 8, health[0]), new CombatFighter(participants[2], TrialEnemyHealth, 11, 7, 0, 8, health[1]) }; // 개별 적의 전투 체력 복원
                 groupBattle = new MultiEnemyBattleState(participants[0], new[] { participants[1], participants[2] }); // 다수 대상 선택과 승패 연결
-                notice.text = "공격할 슬라임을 선택하세요"; // 명시적인 대상 선택 안내
+                notice.text = "공격할 " + groupName + "을 선택하세요"; // 명시적인 대상 선택 안내
             } // 다수 전투 준비 끝
             else // 기존 단일 전투 분기
             { // 단일 전투 준비 시작
@@ -635,7 +678,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button fourth; // 선택적인 네 번째 행동 버튼
         private Button fifth; // 선택적인 다섯 번째 행동 버튼
         private float lastWidth = -1f; // 이전에 적용한 화면 너비
-        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton, Button fourthButton = null, Button fifthButton = null) // 화면과 행동 버튼 연결
+        private float vertical = -275f; // 화면별 행동 버튼 세로 위치
+        private Button[] secondary; // 선택적인 하단 추가 행동 줄
+        private float secondaryVertical; // 추가 행동 줄 세로 위치
+        public void Initialize(RectTransform canvas, Button attackButton, Button fleeButton, Button defendButton, Button fourthButton = null, Button fifthButton = null, float y = -275f) // 화면과 행동 버튼 연결
         { // 연결 시작
             canvasRect = canvas; // 화면 크기 연결
             attack = attackButton; // 공격 버튼 연결
@@ -643,7 +689,14 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             defend = defendButton; // 방어 버튼 연결
             fourth = fourthButton; // 선택적인 네 번째 버튼 연결
             fifth = fifthButton; // 선택적인 다섯 번째 버튼 연결
+            vertical = y; // 현재 화면의 행동 세로 위치
             Refresh(canvasRect.rect.width); // 최초 화면 크기 반영
+        } // 연결 끝
+        public void SetSecondaryRow(Button[] buttons, float y) // 전투 화면의 추가 행동 줄 연결
+        { // 연결 시작
+            secondary = buttons; // 실제 추가 행동 목록
+            secondaryVertical = y; // 추가 행동의 세로 위치
+            Refresh(canvasRect.rect.width); // 현재 화면에 두 줄 적용
         } // 연결 끝
         private void LateUpdate() // 화면 너비 변경 감지
         { // 검사 시작
@@ -670,14 +723,110 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 추가 기술 조건 시작
                 Place(fifth, left + 4f * offset, width); // 다섯 번째 행동 버튼 배치
             } // 추가 기술 조건 끝
+            if (secondary != null && secondary.Length > 0) // 추가 행동 줄 존재 검사
+            { // 추가 줄 배치 시작
+                var secondWidth = Mathf.Min(320f, Mathf.Max(0f, (canvasWidth - 64f - 24f * (secondary.Length - 1)) / secondary.Length)); // 양쪽 여백과 간격을 확보한 추가 버튼 너비
+                var secondLeft = -(secondary.Length - 1) * (secondWidth + 24f) / 2f; // 추가 행동 줄의 왼쪽 위치
+                for (var index = 0; index < secondary.Length; index++) // 실제 추가 행동 순회
+                { // 추가 행동 배치 시작
+                    PlaceAt(secondary[index], secondLeft + index * (secondWidth + 24f), secondWidth, secondaryVertical, 64f); // 두 번째 줄의 화면별 위치
+                } // 추가 행동 배치 끝
+            } // 추가 줄 배치 끝
         } // 배치 끝
-        private static void Place(Button button, float x, float width) // 한 행동 버튼의 위치와 글자 영역
+        private void Place(Button button, float x, float width) // 한 행동 버튼의 위치와 글자 영역
+        { // 배치 시작
+            PlaceAt(button, x, width, vertical, secondary == null ? 84f : 64f); // 화면 유형에 맞는 행동 높이
+        } // 배치 끝
+        private static void PlaceAt(Button button, float x, float width, float y, float height) // 한 행동의 실제 위치와 크기
         { // 배치 시작
             var rect = button.GetComponent<RectTransform>(); // 실제 버튼 위치 조회
-            rect.anchoredPosition = new Vector2(x, -275f); // 행동 버튼의 가로 위치
-            rect.sizeDelta = new Vector2(width, 84f); // 화면 너비에 맞는 버튼 크기
+            rect.anchoredPosition = new Vector2(x, y); // 행동 버튼의 가로와 세로 위치
+            rect.sizeDelta = new Vector2(width, height); // 화면 너비에 맞는 버튼 크기
             var label = button.transform.Find("Label").GetComponent<RectTransform>(); // 버튼 글자 영역 조회
             label.sizeDelta = rect.sizeDelta; // 버튼 안의 글자 영역 유지
+        } // 배치 끝
+    } // 클래스 끝
+    public sealed class BattlePortraitLayout : MonoBehaviour // 전투 화면의 상하 초상화 배치
+    { // 클래스 시작
+        private RectTransform canvasRect; // 전투 화면 크기
+        private RectTransform portraitRect; // 실제 초상화 위치
+        private RawImage portraitImage; // 실제 초상화 이미지
+        private bool player; // 플레이어 표시 여부
+        private int slot; // 상대의 왼쪽 또는 오른쪽 슬롯
+        private float lastWidth = -1f; // 이전 화면 너비
+        public void Initialize(RectTransform canvas, bool isPlayer, int enemySlot) // 참가자와 화면 연결
+        { // 연결 시작
+            canvasRect = canvas; // 실제 화면 연결
+            portraitRect = GetComponent<RectTransform>(); // 초상화 위치 연결
+            portraitImage = GetComponent<RawImage>(); // 이미지 표시 연결
+            player = isPlayer; // 플레이어 여부 보관
+            slot = enemySlot; // 상대 슬롯 보관
+            Refresh(canvasRect.rect.width); // 현재 화면에 최초 배치
+        } // 연결 끝
+        private void LateUpdate() // 화면 너비 변경 확인
+        { // 확인 시작
+            if (canvasRect != null && !Mathf.Approximately(lastWidth, canvasRect.rect.width)) // 실제 화면 변경 검사
+            { // 화면 변경 시작
+                Refresh(canvasRect.rect.width); // 현재 너비에 맞게 재배치
+            } // 화면 변경 끝
+        } // 확인 끝
+        public void Refresh(float width) // 화면 너비에 맞는 초상화 크기와 위치
+        { // 배치 시작
+            lastWidth = width; // 적용한 화면 너비 기록
+            var limit = player ? (width < 900f ? 0f : Mathf.Min(175f, Mathf.Max(0f, width * 0.18f))) : Mathf.Min(320f, Mathf.Max(0f, width * (slot == 0 ? 0.35f : 0.27f))); // 참가자별 최대 표시 크기
+            var x = player ? -Mathf.Max(0f, width * 0.5f - 150f) : slot * Mathf.Min(250f, Mathf.Max(0f, (width - 64f) / 4f)); // 하단 주인공과 상단 적 위치
+            portraitRect.anchoredPosition = new Vector2(x, player ? -260f : 210f); // 행동 버튼과 겹치지 않는 참가자별 상하 위치
+            portraitImage.enabled = limit > 0f; // 표시 공간 여부 반영
+            if (limit <= 0f) // 표시할 공간 검사
+            { // 공간 없음 시작
+                return; // 잘못된 이미지 크기 차단
+            } // 공간 없음 끝
+            var ratio = (float)portraitImage.texture.width / portraitImage.texture.height; // 원본 이미지 비율
+            portraitRect.sizeDelta = ratio >= 1f ? new Vector2(limit, limit / ratio) : new Vector2(limit * ratio, limit); // 원본 비율 유지
+        } // 배치 끝
+    } // 클래스 끝
+    public sealed class CombatEnemySlotsLayout : MonoBehaviour // 화면 너비에 맞는 적 슬롯 배치
+    { // 클래스 시작
+        private RectTransform canvasRect; // 실제 전투 화면 크기
+        private RectTransform first; // 첫 번째 적 배경
+        private RectTransform second; // 선택적인 두 번째 적 배경
+        private Button[] targets; // 선택적인 적별 버튼
+        private float lastWidth = -1f; // 이전 화면 너비
+        public void Initialize(RectTransform canvas, RectTransform firstPanel, RectTransform secondPanel, Button[] groupTargets) // 실제 적 슬롯 연결
+        { // 연결 시작
+            canvasRect = canvas; // 전투 화면 연결
+            first = firstPanel; // 첫 슬롯 연결
+            second = secondPanel; // 두 번째 슬롯 연결
+            targets = groupTargets; // 실제 적 선택 버튼 연결
+            Refresh(canvas.rect.width); // 현재 화면에 최초 배치
+        } // 연결 끝
+        private void LateUpdate() // 화면 너비 변경 감지
+        { // 검사 시작
+            if (canvasRect != null && !Mathf.Approximately(lastWidth, canvasRect.rect.width)) // 실제 너비 변경 검사
+            { // 변경 시작
+                Refresh(canvasRect.rect.width); // 현재 화면에 맞게 재배치
+            } // 변경 끝
+        } // 검사 끝
+        public void Refresh(float width) // 상대 슬롯과 대상 버튼의 화면별 크기
+        { // 배치 시작
+            lastWidth = width; // 현재 화면 너비 기록
+            var grouped = second != null; // 다수 적 슬롯 여부
+            var slotWidth = Mathf.Min(420f, Mathf.Max(0f, grouped ? (width - 96f) / 2f : width - 64f)); // 화면 안쪽의 슬롯 너비
+            var offset = grouped ? Mathf.Min(250f, Mathf.Max(0f, (width - 64f) / 4f)) : 0f; // 좌우 슬롯 간격
+            first.anchoredPosition = new Vector2(-offset, 180f); // 첫 슬롯 위치
+            first.sizeDelta = new Vector2(slotWidth, 410f); // 첫 슬롯 크기
+            if (grouped) // 두 번째 슬롯 검사
+            { // 두 번째 슬롯 배치 시작
+                second.anchoredPosition = new Vector2(offset, 180f); // 두 번째 슬롯 위치
+                second.sizeDelta = new Vector2(slotWidth, 410f); // 두 번째 슬롯 크기
+                for (var index = 0; index < targets.Length; index++) // 실제 적별 선택 버튼 순회
+                { // 선택 버튼 배치 시작
+                    var rect = targets[index].GetComponent<RectTransform>(); // 현재 버튼 위치
+                    rect.anchoredPosition = new Vector2(index == 0 ? -offset : offset, -20f); // 대응하는 적 아래 배치
+                    rect.sizeDelta = new Vector2(Mathf.Min(380f, slotWidth), 84f); // 슬롯 안의 버튼 크기
+                    rect.Find("Label").GetComponent<RectTransform>().sizeDelta = rect.sizeDelta; // 버튼 안의 글자 영역
+                } // 선택 버튼 배치 끝
+            } // 두 번째 슬롯 배치 끝
         } // 배치 끝
     } // 클래스 끝
     public sealed class CombatPortraitLayout : MonoBehaviour // 화면 너비에 맞는 초상화 배치
