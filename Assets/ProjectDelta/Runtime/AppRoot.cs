@@ -11,6 +11,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public const int TrialPotionStackLimit = 5; // 미확정 시험 최대 중첩
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
+        private GameSettingsStorage settingsStorage; // 회차와 분리된 설정 저장소
+        public GameSettings Settings { get; private set; } = new GameSettings(100, 0); // 현재 적용된 안전한 기본 설정
+        public string SettingsSaveMessage { get; private set; } = string.Empty; // 설정 저장 상태 안내
         private NpcRelationshipStorage relationshipStorage; // 영구 NPC 관계 저장소
         public const string TrialMerchantId = "trial-merchant"; // 시험 상인의 고유 식별자
         public NpcRelationshipState NpcRelationships { get; private set; } = NpcRelationshipState.Empty; // 회차 간 유지하는 관계
@@ -153,6 +156,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 중복 조건 끝
             Instance = this; // 단일 공통 객체 등록
             DontDestroyOnLoad(gameObject); // 씬 전환 중 객체 유지
+            try // 회차와 분리된 설정 조회
+            { // 설정 준비 시작
+                settingsStorage = new GameSettingsStorage(GameSettingsStorage.ResolveDirectory()); // 독립 설정 저장소 연결
+                Settings = settingsStorage.Load(out var settingsWarning); // 확인된 설정 또는 안전한 기본 설정
+                SettingsSaveMessage = settingsWarning; // 손상 또는 복구 안내
+                AudioListener.volume = Settings.MasterVolume / 100f; // 검증된 전체 음량 적용
+            } // 설정 준비 끝
+            catch (System.Exception) // 설정 경로 오류
+            { // 경로 오류 시작
+                settingsStorage = null; // 잘못된 저장 경로 차단
+                SettingsSaveMessage = "설정 저장 경로를 사용할 수 없습니다."; // 사용자 오류 안내
+            } // 경로 오류 끝
             try // 2D 전용 관찰 기록 읽기
             { // 저장 읽기 시작
                 observationStorage = new ObservationStorage(ObservationStorage.ResolveDirectory()); // 독립 저장 폴더 연결
@@ -233,6 +248,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
         } // 메서드 끝
+        public bool TryApplySettings(GameSettings candidate) // 독립 설정의 저장과 실제 적용
+        { // 설정 변경 시작
+            if (candidate == null || settingsStorage == null || !settingsStorage.TrySave(candidate, out var error)) // 유효한 설정과 안전 저장 검사
+            { // 실패 시작
+                SettingsSaveMessage = "설정을 저장하지 못했습니다. 기존 파일을 확인해 주세요."; // 기존 설정 보존 안내
+                return false; // 저장 전 음량과 연출 변경 차단
+            } // 실패 끝
+            Settings = candidate; // 저장 성공한 설정 적용
+            AudioListener.volume = candidate.MasterVolume / 100f; // 실제 전체 음량 적용
+            SettingsSaveMessage = string.Empty; // 이전 오류 안내 제거
+            return true; // 저장과 적용 성공
+        } // 설정 변경 끝
         public bool TrySaveRun(out string error) // 안정된 회차 저장
         { // 저장 시작
             error = string.Empty; // 기본 오류 없음
@@ -983,6 +1010,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 열기 끝
         public void ClosePause() // 메뉴를 닫고 탐험 복귀
         { // 닫기 시작
+            if (pauseScreen != null && pauseScreen.HasSettingsOpen) // 설정 화면이 열린 메뉴 검사
+            { // 메뉴 보호 시작
+                return; // 설정 중 탐험 복귀 차단
+            } // 메뉴 보호 끝
             if (!Flow.TryClosePause()) // 실제 메뉴 상태 검사
             { // 닫기 거절 시작
                 return; // 잘못된 닫기 차단

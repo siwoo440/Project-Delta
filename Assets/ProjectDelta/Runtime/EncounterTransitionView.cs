@@ -63,14 +63,22 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 yield break; // 기존 전환 상태 보존
             } // 중복 거절 끝
             covering = true; // 화면 가림 진행 표시
-            yield return Fade(overlay, Color.white, 0f, 1f, 0.09f); // 짧은 흰색 섬광
+            var mode = AppRoot.Instance == null || AppRoot.Instance.Settings == null ? 0 : AppRoot.Instance.Settings.EncounterFlash; // 저장된 조우 섬광 선택
+            var flash = mode == 2 ? 0f : mode == 1 ? 0.35f : 1f; // 끔과 감소 및 기본 섬광 강도
+            if (flash > 0f) // 섬광 표시 허용 검사
+            { // 섬광 시작
+                yield return Fade(overlay, Color.white, 0f, flash, 0.09f); // 선택한 강도의 짧은 섬광
+            } // 섬광 끝
             if (this == null || !isActiveAndEnabled || backdrop == null || content == null) // 중단된 전환과 화면 검사
             { // 중단 시작
                 yield break; // 파괴된 화면의 후속 변경 차단
             } // 중단 끝
             backdrop.color = new Color(0.025f, 0.035f, 0.06f, 0.96f); // 조우 배경 표시
             content.alpha = 1f; // 상대 이름과 초상화 표시
-            yield return Fade(overlay, Color.white, 1f, 0f, 0.12f); // 섬광 뒤 조우 정보 노출
+            if (flash > 0f) // 표시한 섬광 검사
+            { // 섬광 종료 시작
+                yield return Fade(overlay, Color.white, flash, 0f, 0.12f); // 섬광 뒤 조우 정보 노출
+            } // 섬광 종료 끝
             yield return new WaitForSecondsRealtime(0.32f); // 상대 확인 시간
             yield return Fade(overlay, Color.black, 0f, 1f, 0.20f); // 전투 화면 생성 전 검은 가림
             if (this == null || !isActiveAndEnabled || overlay == null) // 중단된 전환과 전환막 검사

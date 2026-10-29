@@ -14,6 +14,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Text pageLabel; // 현재 기록 페이지 표시
         private Text notice; // 저장과 불러오기 결과 표시
         private Button load; // 저장 회차 불러오기 버튼
+        private Button settingsButton; // 일시정지 설정 버튼
+        private Button[] menuButtons; // 모달에서 잠글 일시정지 버튼
+        private Canvas pauseCanvas; // 설정을 표시할 일시정지 화면
+        private GameObject settingsPanel; // 현재 설정 모달
+        public bool HasSettingsOpen => settingsPanel != null; // 일시정지 설정 화면 열림 여부
         private int page; // 현재 기록 페이지 번호
         public static PauseScreenView Create(AppRoot owner, Transform parent) // 현재 회차 메뉴 생성
         { // 생성 시작
@@ -24,6 +29,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var view = screen.GetComponent<PauseScreenView>(); // 메뉴 제어 조회
                 view.owner = owner; // 회차 관리자 연결
                 var canvas = UiFactory.CreateCanvas("PauseCanvas"); // 메뉴 화면 생성
+                view.pauseCanvas = canvas; // 설정 화면의 부모 보관
                 canvas.transform.SetParent(screen.transform, false); // 메뉴 상위 객체 연결
                 canvas.sortingOrder = 200; // 탐험 화면 앞에 표시
                 Panel(canvas.transform, "PauseShade", Vector2.zero, new Vector2(1920f, 1080f), new Color(0.015f, 0.025f, 0.035f, 0.8f)); // 탐험 위 반투명 배경
@@ -40,6 +46,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.load.onClick.AddListener(view.Load); // 실제 불러오기 연결
                 var title = UiFactory.CreateButton(canvas.transform, "PauseTitleButton", "타이틀로", new Vector2(-690f, -130f)); // 타이틀 복귀 버튼
                 title.onClick.AddListener(view.SaveAndReturnToTitle); // 자동 저장 후 타이틀 복귀 연결
+                view.settingsButton = UiFactory.CreateButton(canvas.transform, "PauseSettingsButton", "설정", new Vector2(-690f, -240f)); // 일시정지 설정 버튼
+                view.settingsButton.onClick.AddListener(view.OpenSettings); // 실제 설정 화면 열기
                 view.entries = UiFactory.CreateText(canvas.transform, "PauseHistoryEntries", "", 27, new Vector2(250f, -10f), new Vector2(1120f, 470f), Color.white); // 회차 기록 본문
                 view.entries.alignment = TextAnchor.UpperLeft; // 기록 왼쪽 위 정렬
                 view.pageLabel = UiFactory.CreateText(canvas.transform, "PauseHistoryPage", "", 24, new Vector2(250f, -285f), new Vector2(250f, 50f), Color.white); // 기록 페이지 번호
@@ -49,11 +57,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var next = UiFactory.CreateButton(canvas.transform, "PauseHistoryNext", "다음", new Vector2(500f, -345f)); // 다음 기록 버튼
                 next.GetComponent<RectTransform>().sizeDelta = new Vector2(190f, 60f); // 다음 버튼 크기
                 next.onClick.AddListener(() => view.MovePage(1)); // 다음 페이지 연결
-                foreach (var button in new[] { resume, save, view.load, title, previous, next }) // 모든 메뉴 버튼 순회
+                view.menuButtons = new[] { resume, save, view.load, title, view.settingsButton, previous, next }; // 모달 중 잠글 실제 메뉴 버튼
+                foreach (var button in view.menuButtons) // 모든 메뉴 버튼 순회
                 { // 취소 연결 시작
                     button.gameObject.AddComponent<PauseCancelRelay>().Initialize(view); // 선택된 버튼의 취소 입력 연결
                 } // 취소 연결 끝
-                view.notice = UiFactory.CreateText(canvas.transform, "PauseNotice", "", 22, new Vector2(-690f, -310f), new Vector2(380f, 120f), Color.white); // 저장 결과 안내
+                view.notice = UiFactory.CreateText(canvas.transform, "PauseNotice", "", 22, new Vector2(-690f, -365f), new Vector2(380f, 100f), Color.white); // 저장 결과 안내
                 view.Refresh(); // 현재 회차 기록 표시
                 EventSystem.current.SetSelectedGameObject(resume.gameObject); // 첫 메뉴 버튼 선택
                 return view; // 생성된 메뉴 전달
@@ -66,8 +75,49 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         public void OnCancel(BaseEventData eventData) // Esc 또는 게임패드 취소 처리
         { // 취소 시작
+            if (settingsPanel != null) // 설정 모달 존재 검사
+            { // 설정 닫기 시작
+                CloseSettings(); // 이전 일시정지 화면 복원
+                return; // 전체 일시정지 닫기 차단
+            } // 설정 닫기 끝
             owner.ClosePause(); // 현재 메뉴 닫기
         } // 취소 끝
+        private void OpenSettings() // 일시정지에서 설정 화면 열기
+        { // 열기 시작
+            if (settingsPanel != null || owner == null || owner.Flow.Phase != ProjectDelta.Core.GamePhase.Pause) // 실제 메뉴와 중복 화면 검사
+            { // 거절 시작
+                return; // 잘못된 설정 요청 차단
+            } // 거절 끝
+            try // 설정 화면 생성
+            { // 생성 시작
+                settingsPanel = SettingsScreenView.Create(pauseCanvas.transform, () => owner.Settings, value => owner.TryApplySettings(value), CloseSettings); // 기존 설정과 저장 연결
+                foreach (var button in menuButtons) // 기존 일시정지 버튼 순회
+                { // 잠금 시작
+                    button.interactable = false; // 모달 뒤 메뉴 입력 차단
+                } // 잠금 끝
+            } // 생성 끝
+            catch (Exception exception) // 설정 화면 오류
+            { // 오류 시작
+                Debug.LogError("Pause settings failed: " + exception.Message); // 실제 오류 기록
+                EventSystem.current.SetSelectedGameObject(settingsButton.gameObject); // 기존 설정 버튼 선택 복원
+            } // 오류 끝
+        } // 열기 끝
+        private void CloseSettings() // 설정 닫기와 일시정지 복원
+        { // 닫기 시작
+            if (settingsPanel == null) // 실제 설정 화면 검사
+            { // 거절 시작
+                return; // 중복 닫기 차단
+            } // 거절 끝
+            settingsPanel.SetActive(false); // 이전 설정 화면 즉시 숨김
+            Destroy(settingsPanel); // 설정 객체 제거
+            settingsPanel = null; // 설정 화면 참조 해제
+            foreach (var button in menuButtons) // 원래 메뉴 버튼 순회
+            { // 복원 시작
+                button.interactable = true; // 메뉴 선택 복구
+            } // 복원 끝
+            load.interactable = owner.CanContinueRun; // 실제 저장 상태의 불러오기 복원
+            EventSystem.current.SetSelectedGameObject(settingsButton.gameObject); // 설정 버튼 선택 복원
+        } // 닫기 끝
         private static void Panel(Transform parent, string name, Vector2 position, Vector2 size, Color color) // 메뉴 배경 상자 생성
         { // 생성 시작
             var panel = new GameObject(name, typeof(RectTransform), typeof(Image)); // 배경 상자 객체
@@ -81,12 +131,20 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         private void Save() // 현재 회차 저장
         { // 저장 시작
+            if (settingsPanel != null) // 설정 모달 검사
+            { // 차단 시작
+                return; // 뒤쪽 저장 요청 차단
+            } // 차단 끝
             var saved = owner.TrySaveRun(out var error); // 기존 안전 저장 실행
             notice.text = saved ? "회차를 저장했습니다." : error; // 실제 저장 결과 표시
             load.interactable = owner.CanContinueRun; // 저장 회차의 불러오기 상태 갱신
         } // 저장 끝
         private void Load() // 저장 회차 불러오기
         { // 불러오기 시작
+            if (settingsPanel != null) // 설정 모달 검사
+            { // 차단 시작
+                return; // 뒤쪽 불러오기 요청 차단
+            } // 차단 끝
             if (!owner.ReloadRunFromPause(out var error)) // 검증된 회차 불러오기 검사
             { // 오류 안내 시작
                 notice.text = error; // 실제 불러오기 실패 표시
@@ -94,6 +152,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 불러오기 끝
         private void SaveAndReturnToTitle() // 자동 저장 성공 후 타이틀 복귀
         { // 복귀 시작
+            if (settingsPanel != null) // 설정 모달 검사
+            { // 차단 시작
+                return; // 뒤쪽 화면 전환 요청 차단
+            } // 차단 끝
             if (!owner.TrySaveRun(out var error)) // 현재 회차 자동 저장 검사
             { // 저장 실패 시작
                 notice.text = error; // 실제 저장 오류 표시

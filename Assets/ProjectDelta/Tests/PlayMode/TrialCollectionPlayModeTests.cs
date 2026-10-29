@@ -238,6 +238,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(GameObject.Find("NewGameButton").GetComponent<Button>().interactable, Is.False); // 새 게임 입력 차단
             Assert.That(GameObject.Find("ContinueButton").GetComponent<Button>().interactable, Is.False); // 이어하기 입력 차단
             Assert.That(GameObject.Find("JournalButton").GetComponent<Button>().interactable, Is.False); // 관찰 기록 입력 차단
+            Assert.That(GameObject.Find("TitleSettingsButton").GetComponent<Button>().interactable, Is.False); // 뒤쪽 설정 입력 차단
             Assert.That(GameObject.Find("TrialCollectionButton").GetComponent<Button>().interactable, Is.False); // 중복 열기 차단
             Assert.That(EventSystem.current.currentSelectedGameObject.name, Is.EqualTo("CloseTrialCollectionButton")); // 닫기 기본 선택
         } // 검사 끝
