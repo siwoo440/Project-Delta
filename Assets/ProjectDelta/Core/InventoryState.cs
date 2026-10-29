@@ -8,6 +8,37 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         private readonly List<InventorySlot> slots = new List<InventorySlot>(); // 실제 슬롯 목록
         private readonly IReadOnlyList<InventorySlot> view; // 외부 수정이 불가능한 슬롯 목록
         public IReadOnlyList<InventorySlot> Slots => view; // 슬롯 조회
+        public SaveItemSlot[] SaveSlots() // 위치를 보존하는 슬롯 저장본
+        { // 저장 시작
+            var result = new SaveItemSlot[slots.Count]; // 독립 저장 슬롯 배열
+            for (var index = 0; index < slots.Count; index++) // 슬롯 순서 순회
+            { // 슬롯 복사 시작
+                var slot = slots[index]; // 현재 아이템 묶음
+                result[index] = new SaveItemSlot { itemId = slot.ItemId, name = slot.Name, quantity = slot.Quantity, stackLimit = slot.StackLimit }; // 위치와 내용을 독립 복사
+            } // 슬롯 복사 끝
+            return result; // 저장 슬롯 전달
+        } // 저장 끝
+        public static InventoryState FromSavedSlots(SaveItemSlot[] saved) // 검증된 저장 슬롯 복원
+        { // 복원 시작
+            if (saved == null || saved.Length != BaseSlots) // 기본 슬롯 수 검사
+            { // 수량 오류 시작
+                return null; // 잘못된 목록 거절
+            } // 수량 오류 끝
+            var result = new InventoryState(); // 독립 인벤토리 생성
+            for (var index = 0; index < saved.Length; index++) // 저장된 순서 순회
+            { // 복원 순회 시작
+                var slot = saved[index]; // 저장된 슬롯 조회
+                if (slot == null || !slot.IsValid()) // 누락과 잘못된 아이템 검사
+                { // 슬롯 오류 시작
+                    return null; // 불완전한 복원 거절
+                } // 슬롯 오류 끝
+                result.slots[index].ItemId = slot.itemId ?? string.Empty; // 아이템 식별자 복원
+                result.slots[index].Name = slot.name ?? string.Empty; // 아이템 표시 이름 복원
+                result.slots[index].Quantity = slot.quantity; // 수량 복원
+                result.slots[index].StackLimit = slot.stackLimit; // 중첩 제한 복원
+            } // 복원 순회 끝
+            return result; // 검증된 인벤토리 전달
+        } // 복원 끝
         public InventoryState() // 기본 10칸 초기화
         { // 생성 시작
             for (var index = 0; index < BaseSlots; index++) // 기본 슬롯 수 반복

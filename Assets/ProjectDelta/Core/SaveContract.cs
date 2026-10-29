@@ -2,6 +2,18 @@ using System; // 직렬화 표시
 using System.Collections.Generic; // 관찰 식별자 중복 검사
 namespace ProjectDelta.Core // 게임 규칙 이름 공간
 { // 이름 공간 시작
+    [Serializable] // 방 좌표 직렬화
+    public sealed class SavedRoom // 저장한 방문 방 좌표
+    { // 클래스 시작
+        public int x; // 방 가로 좌표
+        public int y; // 방 세로 좌표
+    } // 클래스 끝
+    [Serializable] // 문 상태 직렬화
+    public sealed class SavedDoorLock // 저장한 시험 문 상태
+    { // 클래스 시작
+        public bool locked; // 현재 잠금 여부
+        public bool forceAttempted; // 강제 개방 시도 여부
+    } // 클래스 끝
     [Serializable] // 저장 형식 직렬화
     public sealed class SaveItemSlot // 저장할 아이템 한 칸
     { // 클래스 시작
@@ -23,6 +35,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     { // 클래스 시작
         public const int CurrentVersion = 1; // 지원하는 저장 버전
         public int version; // 회차 저장 버전
+        public int seed; // 회차 최초 던전 시드
         public int floor; // 현재 층 번호
         public int roomX; // 현재 방 가로 좌표
         public int roomY; // 현재 방 세로 좌표
@@ -30,6 +43,16 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public int playerY; // 플레이어 세로 칸
         public int health; // 현재 체력
         public int maxHealth; // 최대 체력
+        public int facing; // 플레이어 방향
+        public int keys; // 시험 열쇠 수량
+        public bool hasPreviousRoom; // 이전 방 연결 여부
+        public int previousRoomX; // 이전 방 가로 좌표
+        public int previousRoomY; // 이전 방 세로 좌표
+        public bool encounterCompleted; // 현재 층 조우 완료 여부
+        public int encounterHealth; // 후퇴한 시험 적의 체력
+        public SavedRoom[] visitedRooms; // 현재 층 방문 방 목록
+        public SavedDoorLock doorLock; // 현재 층 시험 문 상태
+        public string[] history; // 현재 회차 탐험 기록
         public SaveItemSlot[] slots; // 인벤토리 슬롯 목록
         public bool IsValid() // 복원 전 기본 형식 검사
         { // 검사 시작

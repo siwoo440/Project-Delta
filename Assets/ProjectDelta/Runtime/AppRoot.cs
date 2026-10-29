@@ -11,6 +11,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public const int TrialPotionStackLimit = 5; // 기획 기준 시험 최대 중첩
         private SceneLoader sceneLoader; // 실제 씬 로더
         private ObservationStorage observationStorage; // 2D 전용 관찰 기록 저장
+        private RunStorage runStorage; // 현재 회차 저장 기능
+        private RunSaveData savedRun; // 마지막으로 확인한 저장 회차
+        private bool savedRunValid; // 마지막 회차의 복원 가능 여부
+        public RunSaveData PendingRun { get; private set; } // 씬에 전달할 복원 대기 회차
+        public string RunSaveMessage { get; private set; } = string.Empty; // 회차 저장 안내
+        public bool CanContinueRun => savedRunValid; // 마지막 검증의 복원 가능 여부
         private CombatScreenView combatScreen; // 시험 전투 화면
         private EncounterScreenView encounterScreen; // 현재 조우 선택 화면
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
@@ -90,6 +96,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 ObservationSaveMessage = "관찰 저장 경로를 사용할 수 없습니다. 기존 파일을 확인해 주세요."; // 저장 경로 오류 안내
             } // 경로 실패 끝
             sceneLoader = GetComponent<SceneLoader>(); // 씬 로더 연결
+            try // 회차 저장 읽기
+            { // 저장 읽기 시작
+                runStorage = new RunStorage(RunStorage.ResolveDirectory()); // 독립 회차 저장 경로
+                savedRun = runStorage.Load(out var runWarning); // 현재 회차 데이터 읽기
+                savedRunValid = savedRun != null && savedRun.encounterHealth <= CombatScreenView.TrialEnemyHealth; // 실제 적 체력 범위 검사
+                RunSaveMessage = runWarning; // 저장 오류 안내 보관
+            } // 저장 읽기 끝
+            catch (System.Exception) // 저장 경로 오류
+            { // 경로 오류 시작
+                RunSaveMessage = "회차 저장 경로를 사용할 수 없습니다."; // 저장 경로 오류 안내
+            } // 경로 오류 끝
             Input = GetComponent<GameInputRouter>(); // 입력 제어 연결
             Input.Initialize(); // 전용 입력 준비
             Input.BackRequested += ReturnToTitle; // 탐험 복귀 입력 연결
@@ -112,6 +129,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         { // 메서드 시작
             if (Flow.Phase == GamePhase.Title) // 실제 새 게임 요청 검사
             { // 새 게임 조건 시작
+                PendingRun = null; // 이전 복원 요청 해제
                 PlayerHealth = 100; // 원본 기본 최대 체력 초기화
                 ExplorationHistory = new ExplorationHistory(); // 새 회차의 탐험 기록 초기화
                 Inventory = new InventoryState(); // 새 게임의 빈 인벤토리 초기화
@@ -119,6 +137,76 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 새 게임 조건 끝
             RequestTransition(GamePhase.Exploration, "DungeonScene"); // 던전 진입 요청
         } // 메서드 끝
+        public bool TrySaveRun(out string error) // 안정된 회차 저장
+        { // 저장 시작
+            error = string.Empty; // 기본 오류 없음
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 이동 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 던전 상태
+            var data = travel == null ? null : travel.CaptureRun(); // 안정된 탐험 상태 저장본
+            if (runStorage == null || data == null || !RunRestoreRules.IsValid(data)) // 저장 기능과 복원 가능 상태 검사
+            { // 저장 거절 조건 시작
+                error = "현재 상태를 저장할 수 없습니다. 이동이 끝난 뒤 다시 시도해 주세요."; // 저장 불가 안내
+                return false; // 미완료 상태 저장 차단
+            } // 저장 거절 조건 끝
+            if (!runStorage.TrySave(data, out error)) // 안전한 파일 저장 검사
+            { // 저장 오류 시작
+                RunSaveMessage = error; // 저장 오류 보관
+                return false; // 저장 실패 전달
+            } // 저장 오류 끝
+            savedRun = data; // 마지막 정상 저장 보관
+            savedRunValid = true; // 저장한 회차의 복원 가능 상태
+            RunSaveMessage = "회차를 저장했습니다."; // 저장 성공 안내
+            return true; // 저장 성공 전달
+        } // 저장 끝
+        public bool ContinueRun() // 타이틀에서 검증된 회차 재개
+        { // 재개 시작
+            if (Flow.Phase != GamePhase.Title || !CanContinueRun) // 타이틀과 회차 검사
+            { // 재개 거절 조건 시작
+                return false; // 잘못된 재개 차단
+            } // 재개 거절 조건 끝
+            var restoredInventory = InventoryState.FromSavedSlots(savedRun.slots); // 독립 인벤토리 복원
+            var restoredKeys = new DoorKeyRing(); // 독립 열쇠 보관소
+            if (savedRun.keys > 0 && !restoredKeys.Add(savedRun.keys)) // 열쇠 수량 복원 검사
+            { // 복원 오류 시작
+                return false; // 잘못된 수량 차단
+            } // 복원 오류 끝
+            var restoredHistory = new ExplorationHistory(); // 독립 회차 기록
+            foreach (var entry in savedRun.history) // 저장된 사건 순회
+            { // 기록 복원 시작
+                restoredHistory.Add(entry); // 검증된 사건 복원
+            } // 기록 복원 끝
+            Inventory = restoredInventory; // 복원한 인벤토리 적용
+            Keys = restoredKeys; // 복원한 열쇠 적용
+            ExplorationHistory = restoredHistory; // 복원한 회차 기록 적용
+            PlayerHealth = savedRun.health; // 저장된 체력 적용
+            PendingRun = savedRun; // 던전 씬에 복원 상태 전달
+            RequestTransition(GamePhase.Exploration, "DungeonScene"); // 탐험 재개 요청
+            return true; // 재개 요청 승인
+        } // 재개 끝
+        public void FinishRunRestore() // 던전 복원 요청 소모
+        { // 소모 시작
+            PendingRun = null; // 재복원 방지
+        } // 소모 끝
+        public void RejectRunRestore() // 잘못된 재개 상태 보호
+        { // 복원 거절 시작
+            PendingRun = null; // 잘못된 복원 요청 해제
+            runStorage?.BlockWrites(); // 복원 실패 파일의 덮어쓰기 차단
+            savedRun = null; // 같은 오류의 재시도 차단
+            savedRunValid = false; // 잘못된 회차 재개 비활성화
+            RunSaveMessage = "저장된 위치를 복원할 수 없습니다. 기존 저장 파일을 확인해 주세요."; // 원본 보존 안내
+            StartCoroutine(ReturnAfterFailedRestore()); // 씬 전환 종료 후 타이틀 복귀
+        } // 복원 거절 끝
+        private IEnumerator ReturnAfterFailedRestore() // 복원 실패의 안전한 화면 복귀
+        { // 대기 시작
+            while (Flow.Phase == GamePhase.Loading) // 기존 씬 전환 완료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            if (Flow.Phase == GamePhase.Exploration) // 탐험 전환 완료 검사
+            { // 복귀 조건 시작
+                ReturnToTitle(); // 잘못된 던전에서 타이틀 복귀
+            } // 복귀 조건 끝
+        } // 대기 끝
         public void ReturnToTitle() // 타이틀 복귀 요청
         { // 메서드 시작
             RequestTransition(GamePhase.Title, "TitleScene"); // 타이틀 진입 요청

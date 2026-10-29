@@ -24,6 +24,75 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         private Keyboard keyboard; // 검증용 키보드
         private Gamepad gamepad; // 검증용 게임패드
         private InputSettings.BackgroundBehavior originalBackground; // 기존 백그라운드 입력 설정
+        [UnityTest] // 실제 회차 저장과 이어하기 검증
+        public IEnumerator SaveAndContinue_RestoresDungeonState() // 방과 체력과 인벤토리 재개
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "RunPlayTests", System.Guid.NewGuid().ToString("N")); // 독립 검증 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 실제 실행 객체
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 상태
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 플레이어
+            yield return ApproachEastDoor(player); // 시작 방 문 접근
+            yield return TapKey(Key.E); // 다음 방 이동
+            while (player.IsRoomTransitionLocked) // 전환 연출 종료 검사
+            { // 전환 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 전환 대기 끝
+            var roomX = travel.RoomX; // 저장할 방 가로 좌표
+            var roomY = travel.RoomY; // 저장할 방 세로 좌표
+            var x = player.X; // 저장할 플레이어 가로 칸
+            var y = player.Y; // 저장할 플레이어 세로 칸
+            app.UpdatePlayerHealth(73); // 시험 체력 변경
+            app.Inventory.Add("potion", "회복약", 2, 5); // 시험 아이템 획득
+            yield return TapKey(Key.K); // 키보드 저장 요청
+            Assert.That(app.CanContinueRun, Is.True); // 저장된 회차의 재개 가능 상태 확인
+            app.UpdatePlayerHealth(74); // 두 번째 저장의 체력 변경
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.RightStick)); // 게임패드 저장 입력
+            InputSystem.Update(); // 저장 입력 반영
+            yield return null; // 저장 처리 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 게임패드 입력 해제
+            InputSystem.Update(); // 해제 입력 반영
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 자동 캡처 경로 조회
+            if (!string.IsNullOrEmpty(capturePath) && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null) // 그래픽 장치와 캡처 요청 검사
+            { // 캡처 조건 시작
+                var screenshot = CaptureOffscreen(); // 실제 탐험 화면의 독립 렌더링
+                System.IO.File.WriteAllBytes(capturePath, screenshot.EncodeToPNG()); // 요청 경로의 실제 화면 저장
+                Object.Destroy(screenshot); // 캡처 이미지 정리
+            } // 캡처 조건 끝
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개 요청
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전 상태
+            player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 복원된 플레이어
+            Assert.That(travel.RoomX, Is.EqualTo(roomX)); // 방 가로 좌표 복원
+            Assert.That(travel.RoomY, Is.EqualTo(roomY)); // 방 세로 좌표 복원
+            Assert.That(player.X, Is.EqualTo(x)); // 플레이어 가로 칸 복원
+            Assert.That(player.Y, Is.EqualTo(y)); // 플레이어 세로 칸 복원
+            Assert.That(app.PlayerHealth, Is.EqualTo(74)); // 게임패드 저장의 체력 복원
+            Assert.That(app.Inventory.Slots[0].Quantity, Is.EqualTo(2)); // 아이템 수량 복원
+            Assert.That(travel.Discovery.GetVisibility(0, 0), Is.EqualTo(RoomVisibility.Visited)); // 시작 방 방문 기록 복원
+        } // 검증 끝
+        [UnityTest] // 두 번째 층 저장과 재개 검증
+        public IEnumerator SaveAndContinue_RestoresSecondFloor() // 층과 던전 시드 재개
+        { // 검증 시작
+            RunStorage.TestDirectoryOverride = System.IO.Path.Combine(Application.dataPath, "..", "Artifacts", "RunPlayTests", System.Guid.NewGuid().ToString("N")); // 독립 검증 저장 경로
+            yield return EnterDungeon(); // 실제 던전 진입
+            var app = AppRoot.Instance; // 실행 객체
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 상태
+            typeof(RoomTravelController).GetMethod("TryNextFloor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(travel, null); // 현재 시험의 다음 층 전환
+            yield return null; // 층 전환 반영 대기
+            Assert.That(travel.Floor, Is.EqualTo(2)); // 두 번째 층 확인
+            Assert.That(app.TrySaveRun(out var error), Is.True, error); // 두 번째 층 저장
+            app.ReturnToTitle(); // 타이틀 복귀
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 도착 대기
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 재개 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전 상태
+            Assert.That(travel.Floor, Is.EqualTo(2)); // 저장된 층 복원
+            Assert.That(travel.RoomX, Is.EqualTo(0)); // 저장된 시작 방 확인
+            Assert.That(travel.Layout.GetRoom(0, 0).Kind, Is.EqualTo(RoomKind.Start)); // 저장 시드의 시작 방 확인
+        } // 검증 끝
 #if UNITY_EDITOR // 편집기 설정 보관
         private InputSettings.EditorInputBehaviorInPlayMode originalEditor; // 기존 편집기 입력 설정
 #endif // 편집기 설정 끝
@@ -302,6 +371,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         [UnityTearDown] // 검증 정리 표시
         public IEnumerator Cleanup() // 가상 장치와 설정 복구
         { // 정리 시작
+            RunStorage.TestDirectoryOverride = null; // 시험 저장 경로 해제
             RoomTravelController.GenerationSeedOverride = null; // 검증용 생성 시드 해제
             if (keyboard != null && keyboard.added) // 가상 키보드 검사
             { // 키보드 정리 시작

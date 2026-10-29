@@ -7,6 +7,15 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             get; // 현재 층 조회
             private set; // 내부 층 변경
         } = 1; // 첫 번째 층 초기화
+        public bool TryRestore(int floor) // 검증된 현재 층 복원
+        { // 복원 시작
+            if (IsTransitioning || floor < 1 || floor > 2) // 전환 중과 구현된 층 범위 검사
+            { // 복원 거절 시작
+                return false; // 잘못된 층 거절
+            } // 복원 거절 끝
+            Floor = floor; // 검증된 층 번호 복원
+            return true; // 층 번호 복원 성공
+        } // 복원 끝
         public bool IsTransitioning // 전환 진행 여부
         { // 속성 시작
             get; // 전환 상태 조회

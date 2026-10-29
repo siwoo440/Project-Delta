@@ -31,6 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public event Action InteractionRequested; // 정면 상호작용 요청 알림
         public event Action ForceDoorRequested; // 잠긴 문 강제 개방 요청 알림
         public event Action InventoryRequested; // 인벤토리 열기 요청 알림
+        public event Action SaveRequested; // 회차 저장 요청 알림
         public event Action FullMapRequested; // 전체 지도 열기 요청 알림
         public event Action FullMapCloseRequested; // 전체 지도 닫기 요청 알림
         public event Action HistoryRequested; // 회차 기록 열기 요청 알림
@@ -83,6 +84,9 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             var inventory = explorationMap.AddAction("Inventory", InputActionType.Button, "<Keyboard>/i"); // 인벤토리 열기 입력
             inventory.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 열기 연결
             inventory.performed += OnInventory; // 인벤토리 열기 감지
+            var save = explorationMap.AddAction("SaveRun", InputActionType.Button, "<Keyboard>/k"); // 회차 저장 단축키
+            save.AddBinding("<Gamepad>/rightStickPress"); // 게임패드 오른쪽 스틱 버튼
+            save.performed += OnSave; // 회차 저장 감지
             var openMap = explorationMap.AddAction("OpenFullMap", InputActionType.Button, "<Keyboard>/m"); // 전체 지도 열기 단축키
             openMap.AddBinding("<Gamepad>/select"); // 게임패드 보기 버튼으로 지도 열기
             openMap.performed += OnOpenFullMap; // 전체 지도 열기 감지
@@ -277,6 +281,13 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 InventoryRequested?.Invoke(); // 인벤토리 열기 요청
             } // 탐험 조건 끝
         } // 전달 끝
+        private void OnSave(InputAction.CallbackContext context) // 현재 회차 저장 요청 전달
+        { // 전달 시작
+            if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
+            { // 탐험 조건 시작
+                SaveRequested?.Invoke(); // 탐험 화면에 저장 요청
+            } // 탐험 조건 끝
+        } // 전달 끝
         private void OnInteract(InputAction.CallbackContext context) // 탐험 상호작용 전달
         { // 전달 시작
             if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
@@ -395,6 +406,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             explorationMap.FindAction("Interact").performed -= OnInteract; // 상호작용 감지 연결 해제
             explorationMap.FindAction("ForceDoor").performed -= OnForceDoor; // 강제 개방 감지 연결 해제
             explorationMap.FindAction("Inventory").performed -= OnInventory; // 인벤토리 열기 연결 해제
+            explorationMap.FindAction("SaveRun").performed -= OnSave; // 저장 요청 연결 해제
             foreach (var reference in references) // 생성한 참조 순회
             { // 참조 정리 시작
                 Destroy(reference); // 실행 전용 참조 삭제

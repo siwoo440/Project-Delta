@@ -7,6 +7,65 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         private readonly DungeonLayout layout; // 실제 방과 연결 정보
         private readonly HashSet<long> visited = new HashSet<long>(); // 직접 방문한 방 좌표
         private readonly HashSet<RoomDoor> discoveredSecretDoors = new HashSet<RoomDoor>(); // 실제로 통과한 비밀 연결
+        public SavedRoom[] SaveVisited() // 방문한 방 좌표의 독립 복사
+        { // 저장 시작
+            var result = new List<SavedRoom>(); // 방문한 방 목록
+            foreach (var room in layout.Rooms) // 실제 방 순서 순회
+            { // 방 순회 시작
+                if (visited.Contains(DungeonLayout.Key(room.X, room.Y))) // 직접 방문 여부 검사
+                { // 방문 조건 시작
+                    result.Add(new SavedRoom { x = room.X, y = room.Y }); // 독립 좌표 저장
+                } // 방문 조건 끝
+            } // 방 순회 끝
+            return result.ToArray(); // 방문 좌표 배열 전달
+        } // 저장 끝
+        public static DungeonDiscovery FromSaved(DungeonLayout layout, SavedRoom[] saved, int currentX, int currentY) // 방문 기록의 안전한 복원
+        { // 복원 시작
+            if (layout == null || saved == null || saved.Length == 0 || saved.Length > layout.Rooms.Count || layout.GetRoom(0, 0) == null) // 던전과 방문 목록 검사
+            { // 오류 조건 시작
+                return null; // 잘못된 기록 거절
+            } // 오류 조건 끝
+            var result = new DungeonDiscovery(layout, 0, 0); // 시작 방의 독립 기록
+            var keys = new HashSet<long>(); // 저장 좌표의 중복 검사
+            foreach (var room in saved) // 저장 방 순회
+            { // 순회 시작
+                if (room == null || layout.GetRoom(room.x, room.y) == null || layout.GetRoom(room.x, room.y).IsSecret || !keys.Add(DungeonLayout.Key(room.x, room.y))) // 존재와 중복 및 비밀 방 검사
+                { // 오류 조건 시작
+                    return null; // 잘못된 방문 목록 거절
+                } // 오류 조건 끝
+            } // 순회 끝
+            if (!keys.Contains(DungeonLayout.Key(0, 0)) || !keys.Contains(DungeonLayout.Key(currentX, currentY))) // 시작 방과 현재 방의 방문 여부
+            { // 누락 조건 시작
+                return null; // 불완전한 방문 기록 거절
+            } // 누락 조건 끝
+            var connected = new HashSet<long> { DungeonLayout.Key(0, 0) }; // 방문 방 연결 검사 집합
+            var pending = new Queue<DungeonRoom>(); // 검사할 방문 방 대기열
+            pending.Enqueue(layout.GetRoom(0, 0)); // 시작 방부터 검사
+            while (pending.Count > 0) // 연결된 방문 방 순회
+            { // 연결 검사 시작
+                var room = pending.Dequeue(); // 다음 방문 방 조회
+                foreach (var door in layout.Doors) // 현재 방의 연결 순회
+                { // 연결 순회 시작
+                    var target = DungeonLayout.Key(door.TargetRoomX, door.TargetRoomY); // 도착 방 식별자
+                    if (door.RoomX == room.X && door.RoomY == room.Y && !door.IsSecret && keys.Contains(target) && connected.Add(target)) // 실제 방문한 일반 연결 검사
+                    { // 연결 조건 시작
+                        pending.Enqueue(layout.GetRoom(door.TargetRoomX, door.TargetRoomY)); // 다음 방문 방 예약
+                    } // 연결 조건 끝
+                } // 연결 순회 끝
+            } // 연결 검사 끝
+            if (connected.Count != keys.Count) // 방문 방의 연결 누락 검사
+            { // 연결 오류 시작
+                return null; // 도달할 수 없는 방문 기록 거절
+            } // 연결 오류 끝
+            result.visited.Clear(); // 초기 방문 기록 교체
+            foreach (var key in keys) // 검증된 좌표 순회
+            { // 복사 시작
+                result.visited.Add(key); // 방문 좌표 복원
+            } // 복사 끝
+            result.CurrentX = currentX; // 현재 방 가로 좌표 복원
+            result.CurrentY = currentY; // 현재 방 세로 좌표 복원
+            return result; // 독립 방문 기록 전달
+        } // 복원 끝
         public int CurrentX // 현재 방 가로 좌표
         { // 속성 시작
             get; // 좌표 조회

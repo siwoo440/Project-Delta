@@ -37,6 +37,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 인벤토리 연결 시작
                 MapPointerButton.Create(canvas.transform, "MapOpenButton", "전체 지도", new Vector2(750f, 190f), AppRoot.Instance.OpenFullMap); // 마우스 지도 열기 버튼
                 MapPointerButton.Create(canvas.transform, "HistoryOpenButton", "회차 기록 (H)", new Vector2(750f, -215f), AppRoot.Instance.OpenHistory); // 마우스 기록 열기 버튼
+                MapPointerButton.Create(canvas.transform, "SaveRunButton", "회차 저장 (K)", new Vector2(750f, -300f), SaveRun); // 현재 회차 저장 버튼
+                AppRoot.Instance.Input.SaveRequested += SaveRun; // 키보드와 게임패드 저장 요청 연결
                 AppRoot.Instance.InventoryClosed += ClearDoorNotice; // 인벤토리 복귀 시 안내 초기화
                 AppRoot.Instance.ExplorationEvent += AppendLog; // 성공한 탐험 행동 기록 연결
                 foreach (var entry in AppRoot.Instance.ExplorationHistory.Entries) // 현재 회차의 기존 기록 순회
@@ -51,6 +53,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 UpdateRoom(); // 시작 방의 이름 표시
             } // 방 정보 연결 끝
         } // 구성 끝
+        private void SaveRun() // 실제 회차 저장과 안내 표시
+        { // 저장 시작
+            if (AppRoot.Instance == null) // 실행 객체 존재 검사
+            { // 누락 조건 시작
+                return; // 저장 요청 중단
+            } // 누락 조건 끝
+            var saved = AppRoot.Instance.TrySaveRun(out var error); // 현재 탐험 저장
+            doorNotice.text = saved ? "회차를 저장했습니다" : error; // 저장 결과 안내
+        } // 저장 끝
         private void Update() // 탐험 중 실제 체력 표시 갱신
         { // 갱신 시작
             if (playerHealth == null || AppRoot.Instance == null) // 체력 안내와 게임 상태 검사
@@ -77,6 +88,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             if (AppRoot.Instance != null) // 공통 게임 객체 존재 검사
             { // 인벤토리 연결 해제 시작
                 AppRoot.Instance.InventoryClosed -= ClearDoorNotice; // 인벤토리 복귀 연결 해제
+                AppRoot.Instance.Input.SaveRequested -= SaveRun; // 저장 요청 연결 해제
                 AppRoot.Instance.ExplorationEvent -= AppendLog; // 탐험 행동 기록 연결 해제
             } // 인벤토리 연결 해제 끝
             if (travel != null) // 방 이동 객체 존재 검사

@@ -6,6 +6,29 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         private bool locked; // 선택된 문의 현재 잠금 여부
         private bool forceAttempted; // 강제 개방 시도 여부
         private DoorKeyRing reservedKeys; // 해제 시 열쇠를 예약한 보관소
+        public SavedDoorLock Save() // 확정된 시험 문 상태 저장
+        { // 저장 시작
+            if (reservedKeys != null) // 이동 중 예약된 열쇠 검사
+            { // 예약 조건 시작
+                return null; // 미확정 상태 저장 차단
+            } // 예약 조건 끝
+            return new SavedDoorLock { locked = locked, forceAttempted = forceAttempted }; // 독립 문 상태 전달
+        } // 저장 끝
+        public static DoorLockState FromSaved(DungeonLayout layout, SavedDoorLock saved) // 시험 문 상태 복원
+        { // 복원 시작
+            if (layout == null || saved == null) // 던전과 저장 상태 검사
+            { // 누락 조건 시작
+                return null; // 잘못된 문 상태 거절
+            } // 누락 조건 끝
+            var result = new DoorLockState(layout); // 생성 규칙에 따른 시험 문
+            if (result.TrialDoor == null && (saved.locked || saved.forceAttempted)) // 없는 문에 대한 상태 검사
+            { // 불일치 조건 시작
+                return null; // 유효하지 않은 문 기록 거절
+            } // 불일치 조건 끝
+            result.locked = saved.locked; // 잠금 상태 복원
+            result.forceAttempted = saved.forceAttempted; // 강제 개방 시도 복원
+            return result; // 복원된 문 상태 전달
+        } // 복원 끝
         public RoomDoor TrialDoor // 필수 경로를 막지 않는 시험 문
         { // 속성 시작
             get; // 시험 문 조회

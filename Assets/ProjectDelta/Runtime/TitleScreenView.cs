@@ -7,6 +7,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     public sealed class TitleScreenView : MonoBehaviour // 타이틀 표시 담당
     { // 클래스 시작
         private Button newGameButton; // 새 게임 버튼
+        private Button continueButton; // 회차 이어하기 버튼
         private Button journalButton; // 관찰 기록 버튼
         private GameObject journalPanel; // 현재 관찰 기록 화면
         private Canvas titleCanvas; // 관찰 화면이 표시될 타이틀
@@ -23,14 +24,27 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 저장 안내 조건 시작
                 UiFactory.CreateText(canvas.transform, "ObservationSaveWarning", AppRoot.Instance.ObservationSaveMessage, 21, new Vector2(0f, -330f), new Vector2(1500f, 100f), new Color(1f, 0.72f, 0.55f)); // 기존 저장 보호 상태 안내
             } // 저장 안내 조건 끝
-            newGameButton = UiFactory.CreateButton(canvas.transform, "NewGameButton", "새 게임", new Vector2(0f, -115f)); // 새 게임 버튼 생성
+            if (AppRoot.Instance != null && !string.IsNullOrEmpty(AppRoot.Instance.RunSaveMessage)) // 회차 저장 안내 검사
+            { // 안내 조건 시작
+                UiFactory.CreateText(canvas.transform, "RunSaveWarning", AppRoot.Instance.RunSaveMessage, 20, new Vector2(0f, -340f), new Vector2(1500f, 70f), new Color(1f, 0.72f, 0.55f)); // 회차 저장 오류 또는 성공 안내
+            } // 안내 조건 끝
+            newGameButton = UiFactory.CreateButton(canvas.transform, "NewGameButton", "새 게임", new Vector2(0f, -95f)); // 새 게임 버튼 생성
             newGameButton.onClick.AddListener(OnNewGame); // 화면 요청 연결
-            journalButton = UiFactory.CreateButton(canvas.transform, "JournalButton", "관찰 기록", new Vector2(0f, -225f)); // 관찰 기록 버튼 생성
+            continueButton = UiFactory.CreateButton(canvas.transform, "ContinueButton", "이어하기", new Vector2(0f, -185f)); // 저장 회차 재개 버튼
+            continueButton.onClick.AddListener(OnContinue); // 회차 재개 연결
+            journalButton = UiFactory.CreateButton(canvas.transform, "JournalButton", "관찰 기록", new Vector2(0f, -275f)); // 관찰 기록 버튼 생성
             journalButton.onClick.AddListener(OpenJournal); // 기록 화면 열기 연결
             UiFactory.CreateText(canvas.transform, "BuildLabel", "2D 탐험  ·  조우  ·  관찰 기록", 21, new Vector2(0f, -390f), new Vector2(1000f, 70f), mint); // 개발 범위 표시
             UiFactory.CreateText(canvas.transform, "Controls", "마우스 클릭  /  Enter  /  게임패드 선택", 20, new Vector2(0f, -450f), new Vector2(1100f, 60f), new Color(0.54f, 0.61f, 0.65f)); // 조작 안내 표시
             EventSystem.current.SetSelectedGameObject(newGameButton.gameObject); // 키보드와 게임패드 기본 포커스
         } // 구성 끝
+        private void OnContinue() // 저장 회차 재개 요청
+        { // 요청 시작
+            if (journalPanel == null && AppRoot.Instance != null) // 기록 화면과 실행 객체 검사
+            { // 재개 조건 시작
+                AppRoot.Instance.ContinueRun(); // 저장된 회차 재개
+            } // 재개 조건 끝
+        } // 요청 끝
         private void OnNewGame() // 새 게임 요청 전달
         { // 요청 시작
             if (journalPanel == null && AppRoot.Instance != null) // 기록 화면과 실행 객체 검사
@@ -48,6 +62,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 화면 준비 시작
                 journalPanel = JournalScreenView.Create(titleCanvas.transform, AppRoot.Instance, CloseJournal); // 저장 기록의 읽기 전용 화면
                 newGameButton.interactable = false; // 도감 표시 중 새 게임 잠금
+                continueButton.interactable = false; // 도감 표시 중 이어하기 잠금
                 journalButton.interactable = false; // 중복 도감 열기 잠금
             } // 화면 준비 끝
             catch (System.Exception exception) // 화면 생성 실패 복구
@@ -82,10 +97,15 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 var canSelect = AppRoot.Instance.Flow.Phase == GamePhase.Title && journalPanel == null; // 타이틀과 도감 닫힘 상태
                 newGameButton.interactable = canSelect; // 전환 또는 도감 표시 중 잠금
                 journalButton.interactable = canSelect; // 전환 또는 도감 표시 중 중복 열기 차단
+                continueButton.interactable = canSelect && AppRoot.Instance.CanContinueRun; // 유효한 회차만 재개 허용
             } // 동기화 조건 끝
         } // 동기화 끝
         private void OnDestroy() // 화면 입력 연결 정리
         { // 정리 시작
+            if (continueButton != null) // 재개 버튼 존재 검사
+            { // 연결 정리 시작
+                continueButton.onClick.RemoveListener(OnContinue); // 재개 연결 해제
+            } // 연결 정리 끝
             if (journalButton != null) // 관찰 기록 버튼 존재 검사
             { // 기록 연결 정리 시작
                 journalButton.onClick.RemoveListener(OpenJournal); // 화면 열기 연결 해제

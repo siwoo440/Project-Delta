@@ -64,6 +64,48 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         public int RoomY => state.RoomY; // 현재 방 세로 좌표
         public MoveDirection Facing => player.Facing; // 현재 플레이어의 이동 방향
         public bool IsReady => state != null && Layout != null && Discovery != null && player != null; // 생성과 화면 연결 준비 상태
+        public RunSaveData CaptureRun() // 확정된 탐험 상태의 저장본
+        { // 저장본 생성 시작
+            if (!IsReady || player.IsMoving || player.IsRoomTransitionLocked || floorProgress.IsTransitioning || AppRoot.Instance == null || AppRoot.Instance.Flow.Phase != GamePhase.Exploration) // 안정된 탐험 상태 검사
+            { // 저장 불가 조건 시작
+                return null; // 이동이나 다른 화면의 저장 차단
+            } // 저장 불가 조건 끝
+            var lockData = doorLocks.Save(); // 확정된 시험 문 상태
+            if (lockData == null) // 예약 중인 문 검사
+            { // 예약 조건 시작
+                return null; // 미확정 문 저장 차단
+            } // 예약 조건 끝
+            var elite = new List<DungeonRoom>(Layout.Rooms).Find(room => room.Kind == RoomKind.Elite); // 현재 층 시험 조우 방
+            var eliteKey = elite == null ? string.Empty : Floor + ":" + elite.X + ":" + elite.Y; // 현재 층 조우 식별자
+            encounterHealth.TryGetValue(eliteKey, out var enemyHealth); // 후퇴한 시험 적 체력
+            if (completedEncounters.Contains(eliteKey)) // 완료한 조우의 이전 체력 검사
+            { // 완료 조건 시작
+                enemyHealth = 0; // 완료한 대상의 이전 체력 제외
+            } // 완료 조건 끝
+            return new RunSaveData // 현재 회차의 독립 데이터
+            { // 저장 데이터 시작
+                version = RunSaveData.CurrentVersion, // 회차 형식 버전
+                seed = Seed, // 최초 던전 생성 시드
+                floor = Floor, // 현재 층 번호
+                roomX = state.RoomX, // 현재 방 가로 좌표
+                roomY = state.RoomY, // 현재 방 세로 좌표
+                playerX = player.X, // 플레이어 가로 칸
+                playerY = player.Y, // 플레이어 세로 칸
+                facing = (int)player.Facing, // 현재 바라보는 방향
+                health = AppRoot.Instance.PlayerHealth, // 플레이어 현재 체력
+                maxHealth = 100, // 시험 최대 체력
+                keys = AppRoot.Instance.Keys.Count, // 시험 열쇠 수량
+                slots = AppRoot.Instance.Inventory.SaveSlots(), // 아이템 칸과 수량
+                visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
+                doorLock = lockData, // 현재 층의 잠금 기록
+                hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부
+                previousRoomX = HasPreviousRoom ? entryDoor.RoomX : 0, // 이전 방 가로 좌표
+                previousRoomY = HasPreviousRoom ? entryDoor.RoomY : 0, // 이전 방 세로 좌표
+                encounterCompleted = completedEncounters.Contains(eliteKey), // 현재 층 조우 완료 여부
+                encounterHealth = enemyHealth, // 후퇴한 상대 체력
+                history = new List<string>(AppRoot.Instance.ExplorationHistory.Entries).ToArray() // 회차 탐험 기록 복사
+            }; // 저장 데이터 끝
+        } // 저장본 생성 끝
         public void Configure(GameObject first, GameObject second, GridMoveController controller) // 씬 제작 시 방과 플레이어 연결
         { // 연결 시작
             var roomList = new[] // 기존 두 방의 씬 연결
@@ -236,20 +278,30 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 검사 시작
                 _ = new DungeonLayout(definitions, exits); // 기존 시험 방 연결 검증
                 SaveTemplates(); // 변경 전 방 원형 보관
-                Seed = GenerationSeedOverride ?? Guid.NewGuid().GetHashCode(); // 검증 시드 또는 새 게임의 난수 시드
-                Layout = DungeonGenerator.Generate(Seed); // 시드 기반 1층 구조 생성
-                doorLocks = new DoorLockState(Layout); // 현재 층의 시험 문 선택
+                var saved = AppRoot.Instance.PendingRun; // 복원 대기 중인 회차
+                Seed = saved == null ? GenerationSeedOverride ?? Guid.NewGuid().GetHashCode() : saved.seed; // 새 게임 또는 저장된 시드
+                var floorSeed = saved != null && saved.floor == 2 ? unchecked(Seed + 7919) : Seed; // 저장 층의 생성 시드
+                Layout = DungeonGenerator.Generate(floorSeed); // 시드 기반 현재 층 구조 생성
+                doorLocks = saved == null ? new DoorLockState(Layout) : DoorLockState.FromSaved(Layout, saved.doorLock); // 새 문 또는 저장된 문 상태
                 ValidateStairRoom(Layout, rooms); // 방을 변경하기 전 계단 칸 검사
                 ValidateEncounterRoom(Layout, rooms); // 방을 변경하기 전 조우 칸 검사
                 rooms = GeneratedRoomFactory.Create(Layout, rooms, doors, player); // 생성된 방 구조를 실제 2D 방에 연결
                 DungeonPresentation.Apply(rooms); // 생성 이미지와 두 배 타일 표시 적용
-                Discovery = new DungeonDiscovery(Layout, 0, 0); // 새 게임의 시작 방 방문 기록
+                Discovery = saved == null ? new DungeonDiscovery(Layout, 0, 0) : DungeonDiscovery.FromSaved(Layout, saved.visitedRooms, saved.roomX, saved.roomY); // 새 기록 또는 저장한 방문 기록
+                if (saved != null && (doorLocks == null || Discovery == null || !floorProgress.TryRestore(saved.floor))) // 저장된 던전 상태 검사
+                { // 복원 오류 조건 시작
+                    throw new InvalidOperationException("Invalid saved dungeon state."); // 잘못된 저장 복원 거절
+                } // 복원 오류 조건 끝
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
                 AddEncounterMarker(Layout, rooms); // 상위 개체 방의 시험 대상 표시
                 UpdateLockMarkers(Layout, rooms, doorLocks); // 잠긴 문의 양방향 표시
             } // 검사 끝
             catch (Exception exception) // 잘못된 방 구조와 생성 오류 처리
             { // 오류 조건 시작
+                if (AppRoot.Instance.PendingRun != null) // 복원 중 실패 여부 검사
+                { // 복원 실패 시작
+                    AppRoot.Instance.RejectRunRestore(); // 저장 원본을 보존하고 타이틀 복귀
+                } // 복원 실패 끝
                 if (templateHolder != null) // 보관한 원형 존재 검사
                 { // 원형 정리 시작
                     Destroy(templateHolder); // 실패한 방 원형 제거
@@ -260,7 +312,28 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 enabled = false; // 잘못된 이동 중단
                 return; // 추가 초기화 종료
             } // 오류 조건 끝
-            state = new RoomTransitionState(0, 0); // 시작 방 좌표 초기화
+            var pending = AppRoot.Instance.PendingRun; // 저장된 회차 복원 요청
+            state = pending == null ? new RoomTransitionState(0, 0) : new RoomTransitionState(pending.roomX, pending.roomY); // 새 시작 방 또는 저장된 현재 방
+            if (pending != null) // 복원할 회차 검사
+            { // 복원 시작
+                entryDoor = pending.hasPreviousRoom ? Layout.GetConnection(pending.previousRoomX, pending.previousRoomY, pending.roomX, pending.roomY) : null; // 저장된 이전 방 연결
+                var elite = new List<DungeonRoom>(Layout.Rooms).Find(room => room.Kind == RoomKind.Elite); // 현재 층 조우 방
+                var eliteKey = elite == null ? string.Empty : Floor + ":" + elite.X + ":" + elite.Y; // 현재 층 조우 식별자
+                if (pending.encounterCompleted) // 완료한 조우 검사
+                { // 완료 조건 시작
+                    completedEncounters.Add(eliteKey); // 완료 상태 복원
+                    var eliteRoot = FindRoom(elite.X, elite.Y); // 조우 방의 실제 객체
+                    var marker = eliteRoot == null ? null : eliteRoot.transform.Find("EncounterMarker"); // 조우 대상 표시
+                    if (marker != null) // 표시 존재 검사
+                    { // 표시 정리 시작
+                        marker.gameObject.SetActive(false); // 완료한 대상 숨김
+                    } // 표시 정리 끝
+                } // 완료 조건 끝
+                if (pending.encounterHealth > 0) // 후퇴한 적의 체력 검사
+                { // 체력 복원 시작
+                    encounterHealth[eliteKey] = pending.encounterHealth; // 저장된 상대 체력 복원
+                } // 체력 복원 끝
+            } // 복원 끝
             input = AppRoot.Instance.Input; // 공통 탐험 입력 조회
         } // 초기화 끝
         private void Start() // 확대된 시작 방과 추적 카메라 연결
@@ -269,14 +342,40 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 준비 안 됨 조건 시작
                 return; // 잘못된 던전 화면 변경 차단
             } // 준비 안 됨 조건 끝
+            var saved = AppRoot.Instance.PendingRun; // 복원 대기 중인 회차
             var root = FindRoom(state.RoomX, state.RoomY); // 현재 시작 방 객체
             var floor = root == null ? null : root.transform.Find("Floor").GetComponent<Tilemap>(); // 현재 방 바닥
             var obstacles = root == null ? null : root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 현재 방 장애물
-            if (!player.ChangeRoom(floor, obstacles, player.X, player.Y)) // 확대된 현재 칸에 플레이어 배치
+            var x = saved == null ? player.X : saved.playerX; // 새 게임 또는 저장된 가로 칸
+            var y = saved == null ? player.Y : saved.playerY; // 새 게임 또는 저장된 세로 칸
+            if (saved != null && !player.CanArrive(floor, obstacles, x, y)) // 저장된 도착 칸 사전 검사
+            { // 도착 오류 시작
+                Debug.LogError("Saved player position is invalid."); // 잘못된 저장 위치 기록
+                AppRoot.Instance.RejectRunRestore(); // 저장 원본을 보존하고 타이틀 복귀
+                enabled = false; // 유효하지 않은 복원 중단
+                return; // 저장된 위치로 잘못된 이동 방지
+            } // 도착 오류 끝
+            if (saved != null) // 저장된 방 활성화 검사
+            { // 방 활성화 시작
+                foreach (var room in rooms) // 생성된 방 순회
+                { // 활성 상태 갱신 시작
+                    room.Root.SetActive(room.X == state.RoomX && room.Y == state.RoomY); // 저장된 현재 방만 표시
+                } // 활성 상태 갱신 끝
+            } // 방 활성화 끝
+            if (!player.ChangeRoom(floor, obstacles, x, y)) // 확대된 현재 칸에 플레이어 배치
             { // 배치 실패 조건 시작
+                if (saved != null) // 복원 중 배치 실패 검사
+                { // 복원 실패 시작
+                    AppRoot.Instance.RejectRunRestore(); // 저장 원본을 보존하고 타이틀 복귀
+                } // 복원 실패 끝
                 Debug.LogWarning("Dungeon player could not be aligned to the expanded grid."); // 배치 실패 안내
                 return; // 잘못된 추적 카메라 연결 차단
             } // 배치 실패 조건 끝
+            if (saved != null) // 저장된 방향 복원 검사
+            { // 방향 복원 시작
+                player.RestoreFacing((MoveDirection)saved.facing); // 저장된 플레이어 방향 적용
+                AppRoot.Instance.FinishRunRestore(); // 성공한 복원 요청 해제
+            } // 방향 복원 끝
             player.transform.localScale = Vector3.Scale(player.transform.localScale, new Vector3(2f, 2f, 1f)); // 확대된 타일에 맞춘 플레이어 크기
             DungeonPresentation.ApplyPlayer(player.gameObject); // 시험 주인공을 SD 이미지로 교체
             var camera = Camera.main; // 실제 던전 카메라 조회

@@ -73,6 +73,16 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             UpdateDirection(); // 기존 방향 표시 유지
             return true; // 방 전환 성공
         } // 전환 끝
+        public bool RestoreFacing(MoveDirection direction) // 저장된 방향 복원
+        { // 복원 시작
+            if (state == null || state.IsMoving || direction < MoveDirection.None || direction > MoveDirection.Right) // 이동과 방향 범위 검사
+            { // 거절 조건 시작
+                return false; // 잘못된 방향 거절
+            } // 거절 조건 끝
+            state = new GridMoveState(state.X, state.Y, CanEnter, direction); // 현재 위치와 저장 방향 적용
+            UpdateDirection(); // 방향 이미지 갱신
+            return true; // 방향 복원 성공
+        } // 복원 끝
         private void Awake() // 실제 던전 상태 초기화
         { // 초기화 시작
             if (floor == null || obstacles == null || directionIndicator == null || AppRoot.Instance == null) // 필수 씬 연결 검사

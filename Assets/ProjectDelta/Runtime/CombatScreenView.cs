@@ -8,7 +8,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
     { // 클래스 시작
         internal const int TrialPlayerSpeed = 10; // 시험 플레이어 속도
         internal const int TrialEnemySpeed = 5; // 시험 상대 속도
-        internal const int TrialEnemyHealth = 70; // 시험 상대 최대 체력
+        internal const int TrialEnemyHealth = RunRestoreRules.TrialEnemyMaxHealth; // 시험 상대 최대 체력
         private readonly System.Random random = new System.Random(); // 전투 판정 난수
         private AppRoot owner; // 탐험 상태와 체력 관리자
         private BattleRound round; // 시험 전투 라운드 상태
