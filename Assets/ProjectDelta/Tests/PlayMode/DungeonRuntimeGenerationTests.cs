@@ -695,6 +695,19 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var source = (GameObject)finder.Invoke(travel, new object[] { door.RoomX, door.RoomY }); // 비밀벽 출발 방
             var marker = source.GetComponentsInChildren<SecretDoorMarker>(true).First(); // 비밀벽 표시 객체
             Assert.That(marker.gameObject.activeSelf, Is.False); // 발견 전 문 이미지 숨김
+            app.OpenFullMap(); // 비밀벽 발견 전 전체 지도 열기
+            yield return null; // 지도 화면 준비 대기
+            var secretPath = "FullMapCanvas/MapViewport/MapContent/Room_" + door.TargetRoomX + "_" + door.TargetRoomY; // 비밀방 지도 객체 경로
+            Assert.That(GameObject.Find(secretPath), Is.Null); // 미발견 비밀방 지도 표시 차단
+            Assert.That(app.TrySaveRun(out _), Is.False); // 지도 화면 중 저장 차단
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 지도 화면 중 탐험 상호작용 입력
+            InputSystem.Update(); // 입력 처리
+            yield return null; // 입력 반영 대기
+            Assert.That(travel.Discovery.IsSecretDiscovered(door), Is.False); // 지도 중 비밀벽 발견 차단
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); // 상호작용 키 해제
+            InputSystem.Update(); // 해제 입력 반영
+            app.CloseFullMap(); // 지도 닫기
+            yield return null; // 탐험 입력 복원 대기
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.E)); // 비밀벽 조사 입력
             InputSystem.Update(); // 조사 입력 반영
             yield return null; // 조사 처리 대기
@@ -705,6 +718,12 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(travel.Discovery.IsSecretOpen(door), Is.False); // 아직 닫힌 통로 확인
             Assert.That(marker.gameObject.activeSelf, Is.True); // 발견 후 비밀벽 표시
             Assert.That(travel.Discovery.GetVisibility(door.TargetRoomX, door.TargetRoomY), Is.EqualTo(RoomVisibility.Connected)); // 발견한 미방문 비밀방 공개
+            app.OpenFullMap(); // 발견 후 전체 지도 열기
+            yield return null; // 지도 화면 준비 대기
+            Assert.That(GameObject.Find(secretPath), Is.Not.Null); // 발견한 비밀방 지도 표시
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.False); // 지도 중 탐험 입력 차단
+            app.CloseFullMap(); // 지도 닫기
+            yield return null; // 탐험 입력 복원 대기
             var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 최신 화면 저장 경로
             if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode) // 독립 플레이 화면 캡처 요청
             { // 캡처 시작
@@ -744,6 +763,11 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(app.TrySaveRun(out error), Is.True, error); // 열린 통로와 비밀방 방문 저장
             app.ReturnToTitle(); // 타이틀 복귀
             yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            Object.Destroy(app.gameObject); // 기존 실행 객체 종료
+            yield return null; // 객체 정리 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 저장 파일을 읽는 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 새 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 객체 조회
             Assert.That(app.ContinueRun(), Is.True); // 열린 통로의 회차 재개
             yield return WaitForPhase(GamePhase.Exploration); // 던전 재개 대기
             travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 다시 복원된 던전
