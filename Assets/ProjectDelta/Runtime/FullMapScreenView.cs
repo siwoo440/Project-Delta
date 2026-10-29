@@ -25,7 +25,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 backImage.color = new Color(0.025f, 0.045f, 0.06f, 0.97f); // 어두운 지도 바탕
                 backImage.raycastTarget = false; // 다른 입력 방해 방지
                 UiFactory.CreateText(canvas.transform, "Title", "발견한 전체 지도", 42, new Vector2(0f, 450f), new Vector2(1000f, 80f), Color.white); // 지도 제목
-                UiFactory.CreateText(canvas.transform, "CloseHint", "M / Esc / 패드 B: 지도 닫기", 24, new Vector2(0f, -450f), new Vector2(1100f, 60f), Color.white); // 지도 닫기 안내
+                UiFactory.CreateText(canvas.transform, "CloseHint", "M / 패드 보기 / Esc / 패드 B: 지도 닫기", 24, new Vector2(0f, -450f), new Vector2(1100f, 60f), Color.white); // 지도 닫기 안내
                 DrawMap(canvas.transform, travel); // 발견된 방과 연결 표시
                 return screen.GetComponent<FullMapScreenView>(); // 완성한 지도 화면 전달
             } // 구성 끝

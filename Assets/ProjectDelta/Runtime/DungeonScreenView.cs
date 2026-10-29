@@ -22,7 +22,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             status = UiFactory.CreateText(canvas.transform, "Status", "던전 준비 중", 23, new Vector2(0f, 375f), new Vector2(1000f, 60f), mint); // 현재 방 안내 표시
             doorNotice = UiFactory.CreateText(canvas.transform, "DoorNotice", "", 23, new Vector2(0f, -340f), new Vector2(1200f, 60f), mint); // 문 상호작용 안내
             UiFactory.CreateText(canvas.transform, "Scope", "갈색: 문  ·  보라: 잠긴 문  ·  파랑: 계단  ·  분홍: 상위 개체", 23, new Vector2(0f, -380f), new Vector2(1500f, 70f), new Color(0.9f, 0.94f, 0.95f)); // 방향과 문과 장애물 표시 안내
-            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문·계단  ·  M: 지도  ·  F / 패드 X: 강제 개방", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
+            UiFactory.CreateText(canvas.transform, "Controls", "WASD / 방향키 / 패드: 이동  ·  E / 패드 A: 문·계단  ·  M / 패드 보기: 지도  ·  F / 패드 X: 강제 개방", 23, new Vector2(0f, -455f), new Vector2(1700f, 60f), mint); // 이동과 문과 복귀 조작 안내
             var roomObject = GameObject.Find("RoomTravel"); // 실제 방 이동 객체 조회
             travel = roomObject == null ? null : roomObject.GetComponent<RoomTravelController>(); // 방 이동 제어기 연결
             DungeonMiniMap.Create(canvas.transform, travel); // 발견한 방의 미니맵 생성

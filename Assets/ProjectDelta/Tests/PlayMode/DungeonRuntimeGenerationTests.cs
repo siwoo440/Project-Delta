@@ -229,6 +229,28 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             yield return null; // 다음 입력 처리 대기
             Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 취소가 타이틀 복귀로 전달되지 않음
         } // 검증 끝
+        [UnityTest] // 게임패드의 전체 지도 열기와 닫기 검증
+        public IEnumerator FullMap_TogglesWithGamepadSelect() // 보기 버튼의 지도 왕복 확인
+        { // 검증 시작
+            yield return EnterDungeon(); // 실제 던전 진입
+            gamepad = InputSystem.AddDevice<Gamepad>(); // 시험 게임패드 연결
+            InputSystem.Update(); // 입력 장치 반영
+            yield return null; // 입력 준비 대기
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.Select)); // 보기 버튼으로 지도 열기
+            InputSystem.Update(); // 지도 열기 처리
+            yield return null; // 지도 화면 준비 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 버튼을 누른 상태의 지도 유지
+            yield return null; // 같은 버튼을 계속 누른 상태 확인
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.FullMap)); // 열린 지도의 즉시 닫기 방지
+            InputSystem.QueueStateEvent(gamepad, new GamepadState()); // 보기 버튼 해제
+            InputSystem.Update(); // 버튼 해제 처리
+            yield return null; // 해제 상태 반영
+            InputSystem.QueueStateEvent(gamepad, new GamepadState().WithButton(GamepadButton.Select)); // 보기 버튼으로 지도 닫기
+            InputSystem.Update(); // 지도 닫기 처리
+            yield return null; // 탐험 복귀 대기
+            Assert.That(AppRoot.Instance.Flow.Phase, Is.EqualTo(GamePhase.Exploration)); // 탐험 상태 복구
+            Assert.That(AppRoot.Instance.Input.IsExplorationEnabled, Is.True); // 탐험 입력 복구
+        } // 검증 끝
         [UnityTest] // 게임패드의 전체 지도 취소 검증
         public IEnumerator FullMap_ClosesWithGamepadCancel() // 게임패드 B로 탐험 복귀
         { // 검증 시작

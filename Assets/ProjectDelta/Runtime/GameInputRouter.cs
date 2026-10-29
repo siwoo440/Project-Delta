@@ -77,8 +77,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             inventory.AddBinding("<Gamepad>/buttonNorth"); // 게임패드 인벤토리 열기 연결
             inventory.performed += OnInventory; // 인벤토리 열기 감지
             var openMap = explorationMap.AddAction("OpenFullMap", InputActionType.Button, "<Keyboard>/m"); // 전체 지도 열기 단축키
+            openMap.AddBinding("<Gamepad>/select"); // 게임패드 보기 버튼으로 지도 열기
             openMap.performed += OnOpenFullMap; // 전체 지도 열기 감지
             var closeMapToggle = fullMapInput.AddAction("ToggleFullMap", InputActionType.Button, "<Keyboard>/m"); // 같은 단축키로 지도 닫기
+            closeMapToggle.AddBinding("<Gamepad>/select"); // 게임패드 보기 버튼으로 지도 닫기
             closeMapToggle.performed += OnToggleFullMap; // 단축키 닫기 감지
             var closeMap = fullMapInput.AddAction("CloseFullMap", InputActionType.Button, "<Keyboard>/escape"); // 지도 취소 입력
             closeMap.AddBinding("<Gamepad>/buttonEast"); // 게임패드 지도 닫기
@@ -154,11 +156,26 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         } // 생성 끝
         private void Update() // 지도 단축키 해제 확인
         { // 갱신 시작
-            if (fullMapInput != null && fullMapInput.enabled && (Keyboard.current == null || !Keyboard.current.mKey.isPressed)) // 지도 화면과 키 해제 검사
+            if (fullMapInput != null && fullMapInput.enabled && MapToggleReleased()) // 지도 화면과 모든 단축키 해제 검사
             { // 단축키 준비 시작
                 mapToggleArmed = true; // 다음 누름의 지도 닫기 허용
             } // 단축키 준비 끝
         } // 갱신 끝
+        private static bool MapToggleReleased() // 지도 단축키와 게임패드 버튼 해제 검사
+        { // 검사 시작
+            if (Keyboard.current != null && Keyboard.current.mKey.isPressed) // 키보드 지도 키 누름 검사
+            { // 키보드 조건 시작
+                return false; // 키보드 단축키 해제 대기
+            } // 키보드 조건 끝
+            foreach (var pad in Gamepad.all) // 연결된 모든 게임패드 순회
+            { // 게임패드 검사 시작
+                if (pad.selectButton.isPressed) // 보기 버튼 누름 검사
+                { // 버튼 조건 시작
+                    return false; // 해당 버튼 해제 대기
+                } // 버튼 조건 끝
+            } // 게임패드 검사 끝
+            return true; // 모든 지도 단축키 해제 확인
+        } // 검사 끝
         private void OnOpenFullMap(InputAction.CallbackContext context) // 전체 지도 열기 전달
         { // 전달 시작
             if (IsExplorationEnabled) // 탐험 입력 활성 상태 검사
