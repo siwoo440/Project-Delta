@@ -70,7 +70,12 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     rooms.Add(new DungeonRoom(x, y, true)); // 시험 비밀방 추가
                     doors.Add(new RoomDoor(room.X, room.Y, from.Item1, from.Item2, direction, x, y, to.Item1, to.Item2, true)); // 비밀방으로 가는 벽
                     doors.Add(new RoomDoor(x, y, to.Item1, to.Item2, opposite, room.X, room.Y, from.Item1, from.Item2, true)); // 비밀방에서 돌아가는 벽
-                    return new DungeonLayout(rooms.ToArray(), doors.ToArray()); // 검증된 양방향 구조
+                    var result = new DungeonLayout(rooms.ToArray(), doors.ToArray()); // 양방향 비밀 연결 구조
+                    if (!IsValidVersioned(result, 2)) // 전체 생성 규칙 검사
+                    { // 생성 오류 시작
+                        throw new InvalidOperationException("Generated secret dungeon is invalid."); // 잘못된 구조 차단
+                    } // 생성 오류 끝
+                    return result; // 검증된 양방향 구조
                 } // 방향 검사 끝
             } // 후보 방 검사 끝
             throw new InvalidOperationException("No normal room can host the secret room."); // 비밀방 배치 불가 안내
@@ -87,6 +92,78 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 새 버전 끝
             throw new ArgumentOutOfRangeException(nameof(version)); // 알 수 없는 생성 규칙 거절
         } // 생성 끝
+        public static bool IsValidVersioned(DungeonLayout layout, int version) // 생성 규칙별 전체 연결 검사
+        { // 검사 시작
+            if (layout == null || (version != 1 && version != 2)) // 던전과 생성 버전 검사
+            { // 입력 오류 시작
+                return false; // 잘못된 구조 거절
+            } // 입력 오류 끝
+            if (version == 1) // 기존 생성 규칙 검사
+            { // 기존 검사 시작
+                return IsValid(layout); // 기존 필수 방과 경로 검사
+            } // 기존 검사 끝
+            DungeonRoom secret = null; // 유일한 비밀방
+            var normalRooms = new List<DungeonRoom>(); // 기존 일반 구조의 방
+            foreach (var room in layout.Rooms) // 모든 방 순회
+            { // 방 검사 시작
+                if (room.IsSecret) // 비밀방 여부 검사
+                { // 비밀방 조건 시작
+                    if (secret != null || room.Kind != RoomKind.Normal) // 중복과 방 역할 검사
+                    { // 비밀방 오류 시작
+                        return false; // 중복 또는 잘못된 비밀방 거절
+                    } // 비밀방 오류 끝
+                    secret = room; // 유일한 비밀방 보관
+                } // 비밀방 조건 끝
+                else // 일반 구조 분기
+                { // 일반 방 시작
+                    normalRooms.Add(room); // 기존 구조의 방 목록
+                } // 일반 방 끝
+            } // 방 검사 끝
+            if (secret == null) // 비밀방 누락 검사
+            { // 누락 조건 시작
+                return false; // 비밀방 없는 새 구조 거절
+            } // 누락 조건 끝
+            var normalDoors = new List<RoomDoor>(); // 기존 일반 연결 목록
+            var secretDoors = new List<RoomDoor>(); // 비밀 연결 목록
+            foreach (var door in layout.Doors) // 모든 출구 순회
+            { // 출구 검사 시작
+                var touchesSecret = (door.RoomX == secret.X && door.RoomY == secret.Y) || (door.TargetRoomX == secret.X && door.TargetRoomY == secret.Y); // 비밀방 연결 여부
+                if (door.IsSecret) // 비밀 출구 검사
+                { // 비밀 출구 시작
+                    if (!touchesSecret) // 비밀방과 무관한 연결 검사
+                    { // 잘못된 연결 시작
+                        return false; // 비밀방 외 연결 거절
+                    } // 잘못된 연결 끝
+                    secretDoors.Add(door); // 비밀 출구 보관
+                } // 비밀 출구 끝
+                else // 일반 출구 분기
+                { // 일반 출구 시작
+                    if (touchesSecret) // 공개된 비밀방 연결 검사
+                    { // 잘못된 연결 시작
+                        return false; // 비밀방 공개 연결 거절
+                    } // 잘못된 연결 끝
+                    normalDoors.Add(door); // 기존 일반 연결 보관
+                } // 일반 출구 끝
+            } // 출구 검사 끝
+            if (secretDoors.Count != 2) // 양방향 비밀 연결 수 검사
+            { // 연결 수 오류 시작
+                return false; // 누락 또는 중복 연결 거절
+            } // 연결 수 오류 끝
+            var entrance = secretDoors[0].RoomX == secret.X && secretDoors[0].RoomY == secret.Y ? secretDoors[1] : secretDoors[0]; // 일반 방에서 출발하는 연결
+            var source = layout.GetRoom(entrance.RoomX, entrance.RoomY); // 비밀벽의 출발 방
+            if (source == null || source.IsSecret || source.Kind != RoomKind.Normal || entrance.TargetRoomX != secret.X || entrance.TargetRoomY != secret.Y) // 일반 방의 비밀벽 검사
+            { // 출발 방 오류 시작
+                return false; // 필수 방과 잘못된 출발점 거절
+            } // 출발 방 오류 끝
+            try // 비밀방을 제외한 기존 구조 재검사
+            { // 기존 구조 검사 시작
+                return IsValid(new DungeonLayout(normalRooms.ToArray(), normalDoors.ToArray())); // 기존 필수 방과 경로 보존 확인
+            } // 기존 구조 검사 끝
+            catch (ArgumentException) // 잘못된 기존 방 연결
+            { // 연결 오류 시작
+                return false; // 잘못된 기본 구조 거절
+            } // 연결 오류 끝
+        } // 검사 끝
         private static DungeonLayout TryGenerate(int seed, int attempt) // 주 경로와 갈림길 생성
         { // 생성 시작
             var random = new Random(unchecked(seed ^ (attempt * 7919))); // 시드와 시도별 난수 생성

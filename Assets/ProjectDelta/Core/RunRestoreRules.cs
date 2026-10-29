@@ -24,6 +24,10 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
             } // 생성 오류 끝
             var floorSeed = data.floor == 1 ? data.seed : unchecked(data.seed + 7919); // 현재 층의 재현 시드
             var layout = DungeonGenerator.GenerateVersioned(floorSeed, generationVersion); // 저장된 생성 규칙의 층 구조
+            if (!DungeonGenerator.IsValidVersioned(layout, generationVersion)) // 재생성한 구조의 필수 경로 검사
+            { // 구조 오류 시작
+                return false; // 잘못된 던전 복원 차단
+            } // 구조 오류 끝
             if (data.version >= 2 && data.layoutFingerprint != DungeonLayoutFingerprint.Compute(layout)) // 저장된 구조와 실제 지문 비교
             { // 지문 오류 시작
                 return false; // 변경되거나 누락된 구조 거절
