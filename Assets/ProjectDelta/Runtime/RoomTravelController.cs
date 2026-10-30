@@ -379,7 +379,22 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 _ = new DungeonLayout(definitions, exits); // 기존 시험 방 연결 검증
                 SaveTemplates(); // 변경 전 방 원형 보관
                 var saved = AppRoot.Instance.PendingRun; // 복원 대기 중인 회차
-                Seed = saved == null ? GenerationSeedOverride ?? Guid.NewGuid().GetHashCode() : saved.seed; // 새 게임 또는 저장된 시드
+                if (saved != null) // 저장된 회차 검사
+                { // 기존 씨드 복원 시작
+                    Seed = saved.seed; // 기존 던전 구조의 씨드 보존
+                } // 기존 씨드 복원 끝
+                else if (GenerationSeedOverride.HasValue) // 자동 검증의 고정 씨드 검사
+                { // 고정 씨드 시작
+                    Seed = GenerationSeedOverride.Value; // 지정된 시험 씨드 보존
+                } // 고정 씨드 끝
+                else if (TrialStartSeedRules.TrySelect(Guid.NewGuid().GetHashCode(), out var startSeed)) // 접근 가능한 첫 휴식 방 검사
+                { // 새 씨드 선택 시작
+                    Seed = startSeed; // 검증된 새 회차 씨드 확정
+                } // 새 씨드 선택 끝
+                else // 유효한 시작 구조 없음 분기
+                { // 생성 오류 시작
+                    throw new InvalidOperationException("No valid starting dungeon seed."); // 휴식 없는 새 회차 차단
+                } // 생성 오류 끝
                 generationVersion = saved == null ? 3 : saved.version < 3 ? 1 : saved.generationVersion; // 새 회차 또는 저장된 생성 규칙
                 tutorialCompleted = saved != null && (saved.version < 4 || saved.tutorialCompleted); // 이전 회차와 저장된 첫 조우 완료
                 tutorialHealth = saved == null || saved.version < 4 ? 0 : saved.tutorialHealth; // 저장된 첫 조우 상대 체력

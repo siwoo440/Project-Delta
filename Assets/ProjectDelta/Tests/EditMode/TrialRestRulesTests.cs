@@ -32,6 +32,23 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             rest.x = eventRoom.X; // 저장 좌표 변조
             Assert.That(TrialRestRules.TryRestore(rest, layout, 42, floor, encounters, eventRoom, npcRoom), Is.False); // 다른 방으로 변조된 저장 차단
         } // 검증 끝
+        [Test] // 새 회차 시작 씨드 재선택 검증
+        public void StartSeed_ReplacesUnsuitableSeedAndIsDeterministic() // 접근 가능한 휴식 방과 재현성 확인
+        { // 검증 시작
+            var rules = typeof(DungeonLayout).Assembly.GetType("ProjectDelta.Core.TrialStartSeedRules"); // 실제 시작 씨드 규칙 조회
+            Assert.That(rules, Is.Not.Null); // 시작 씨드 규칙 제공 확인
+            var suitable = rules.GetMethod("IsSuitable"); // 첫 층의 휴식 배치 검사
+            var select = rules.GetMethod("TrySelect"); // 안전한 시작 씨드 선택
+            Assert.That(suitable.Invoke(null, new object[] { 55 }), Is.False); // 휴식이 부족한 씨드 거절
+            var arguments = new object[] { 55, 0 }; // 실패 씨드와 결과 자리
+            Assert.That(select.Invoke(null, arguments), Is.True); // 접근 가능한 새 씨드 선택
+            var chosen = (int)arguments[1]; // 실제 선택된 씨드
+            Assert.That(chosen, Is.Not.EqualTo(55)); // 부족한 씨드 교체 확인
+            Assert.That(suitable.Invoke(null, new object[] { chosen }), Is.True); // 선택한 씨드의 휴식 보장
+            var again = new object[] { 55, 0 }; // 같은 시작 씨드의 재검사
+            Assert.That(select.Invoke(null, again), Is.True); // 동일한 재선택 성공
+            Assert.That(again[1], Is.EqualTo(chosen)); // 동일 입력의 결정적 결과
+        } // 검증 끝
         [Test] // 회복량과 단일 사용 검증
         public void Use_HealsThirtyPercentOnceAndPreservesInput() // 최대치 기준 회복과 사용 기록 확인
         { // 검증 시작

@@ -162,6 +162,42 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(upgraded.restBeforeNpc, Is.False); // 이전 상인 우선 배치 보존
             Assert.That(RunRestoreRules.IsValid(upgraded), Is.True); // 새 저장 형식의 검증 통과
         } // 검증 끝
+        [UnityTest] // 새 회차의 휴식 보장과 재개 검증
+        public IEnumerator StartSeed_NewRunHasRestAndReloadsSameSeed() // 실제 임의 회차와 저장 재개 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = null; // 실제 새 게임의 임의 씨드 사용
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 열기
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            AppRoot.Instance.StartNewGame(); // 실제 새 회차 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 던전 생성 대기
+            var app = AppRoot.Instance; // 실제 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 관리자
+            var seed = travel.Seed; // 확정된 최초 씨드
+            Assert.That(TrialStartSeedRules.IsSuitable(seed), Is.True); // 실제 시작 씨드의 휴식 조건 확인
+            Assert.That(travel.TrialRestRoom, Is.Not.Null); // 실제 접근 가능한 휴식 방 생성
+            Assert.That(app.TrySaveRun(out var message), Is.True, message); // 현재 회차 저장
+            Object.Destroy(app.gameObject); // 기존 실행 종료 모사
+            yield return null; // 실제 객체 정리 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 재준비 대기
+            app = AppRoot.Instance; // 새 실행 관리자
+            Assert.That(app.ContinueRun(), Is.True); // 저장된 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 실제 던전 복원 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 던전 관리자
+            Assert.That(travel.Seed, Is.EqualTo(seed)); // 재선택 없는 기존 씨드 보존
+            Assert.That(travel.TrialRestRoom, Is.Not.Null); // 저장된 휴식 방 복원
+        } // 검증 끝
+        [UnityTest] // 검증용 고정 씨드 보존 검사
+        public IEnumerator StartSeed_TestOverrideIsNotReplaced() // 지정된 시험 구조의 기존 재현성 확인
+        { // 검증 시작
+            RoomTravelController.GenerationSeedOverride = 55; // 휴식 조건을 충족하지 않는 고정 시험 씨드
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 열기
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            AppRoot.Instance.StartNewGame(); // 고정 씨드의 시험 회차 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 실제 던전 생성 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 던전 관리자
+            Assert.That(travel.Seed, Is.EqualTo(55)); // 검증용 지정 씨드 보존
+        } // 검증 끝
         [UnityTest] // 실제 방 이동과 저장 재개 검증
         public IEnumerator EventRoom_SavesLeaveResultAndNeverRepeats() // 조건 비활성화와 결과 복원 확인
         { // 검증 시작
