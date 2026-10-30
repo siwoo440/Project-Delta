@@ -4310,7 +4310,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(GameObject.Find("RelicStatus").GetComponent<UnityEngine.UI.Text>().text, Does.Contain("유물")); // 상단 유물 상태 확인
             Assert.That(GameObject.Find("TemptBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 시험 이벤트 전투 선택 표시
             Assert.That(GameObject.Find("PersuadeBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 회유 차단
-            Assert.That(GameObject.Find("ObserveBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.False); // 미구현 전투 관찰 차단
+            Assert.That(GameObject.Find("ObserveBattleButton").GetComponent<UnityEngine.UI.Button>().interactable, Is.True); // 실제 전투 관찰 선택 확인
             var playerLayout = playerPortrait.GetComponent<BattlePortraitLayout>(); // 주인공의 하단 화면 배치
             var enemyLayout = enemyPortrait.GetComponent<BattlePortraitLayout>(); // 상대의 상단 화면 배치
             Assert.That(playerLayout, Is.Not.Null); // 주인공 크기 조절 제공 확인

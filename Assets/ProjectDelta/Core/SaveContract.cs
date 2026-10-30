@@ -66,7 +66,7 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
     [Serializable] // 저장 형식 직렬화
     public sealed class RunSaveData // 현재 회차 저장 범위
     { // 클래스 시작
-        public const int CurrentVersion = 20; // 최종 결말 후보를 포함한 저장 버전
+        public const int CurrentVersion = 21; // 휴식 방 상태를 포함한 저장 버전
         public int version; // 회차 저장 버전
         public string runId; // 중복 종료를 막는 회차 식별자
         public int level; // 현재 회차 레벨
@@ -121,6 +121,8 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
         public bool trialEventsEnabled; // 시험 이벤트 배치 활성 여부
         public SavedFloorTrialEvent[] trialEvents; // 층별 시험 이벤트 기록
         public bool trialNpcEnabled; // 시험 상인 배치 활성 여부
+        public SavedFloorRest[] restRooms; // 방문한 층의 휴식 방과 사용 기록
+        public bool restBeforeNpc; // 휴식 방을 상인보다 먼저 배치하는 회차
         public bool hasTrialEventBattle; // 진행 중인 이벤트 전투 존재 여부
         public TrialEventBattleSaveData trialEventBattle; // 마지막 완료 행동의 이벤트 전투
         public int bossOutcome; // 미결 영과 승리 일 및 패배 이와 항복 삼

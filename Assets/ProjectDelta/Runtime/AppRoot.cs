@@ -56,6 +56,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private InventoryScreenView inventoryScreen; // 현재 인벤토리 화면
         private ChestScreenView chestScreen; // 현재 상자 확인 화면
         private TrialNpcScreenView trialNpcScreen; // 현재 시험 상인 대화 화면
+        private TrialRestScreenView trialRestScreen; // 현재 시험 휴식 화면
         private EconomyScreenView npcShopScreen; // 상인과 연결된 시험 상점 화면
         private TrialEventScreenView trialEventScreen; // 현재 시험 이벤트 화면
         public static System.Func<int, int, int> TrialEventRollOverride { get; set; } // 독립 이벤트 난수 검증
@@ -1436,6 +1437,86 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             message = "시험 우호 선택 · 호감도 +" + gained + " · 이번 회차 완료"; // 실제 변경량과 제한 안내
             return true; // 안전한 관계 변경 완료
         } // 적용 끝
+        public bool OpenTrialRest() // 현재 방의 휴식 선택 화면 열기
+        { // 진입 시작
+            var room = GameObject.Find("RoomTravel"); // 현재 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 실제 방 제어
+            if (trialRestScreen != null || travel == null || !travel.CanUseTrialRest || !Flow.TryOpenInventory()) // 실제 미사용 방과 탐험 단계 검사
+            { // 오류 시작
+                return false; // 중복 화면과 다른 방 차단
+            } // 오류 끝
+            Input.SetPhase(GamePhase.Inventory); // 탐험 입력 잠금
+            try // 선택 화면 생성 보호
+            { // 생성 시작
+                trialRestScreen = TrialRestScreenView.Create(this); // 실제 휴식 선택 표시
+                return true; // 화면 진입 완료
+            } // 생성 끝
+            catch (System.Exception exception) // 화면 생성 실패 검사
+            { // 복구 시작
+                Flow.TryCloseInventory(); // 이전 탐험 단계 복구
+                Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+                Debug.LogError("Trial rest screen failed: " + exception.Message); // 실제 화면 오류 기록
+                return false; // 불완전한 화면 차단
+            } // 복구 끝
+        } // 진입 끝
+        public bool TryUseTrialRest(out string message) // 휴식 사용과 회복의 단일 저장
+        { // 사용 시작
+            message = string.Empty; // 기본 안내 초기화
+            var room = GameObject.Find("RoomTravel"); // 실제 던전 객체
+            var travel = room == null ? null : room.GetComponent<RoomTravelController>(); // 현재 방 제어
+            var savedId = savedRun == null ? null : savedRun.version < 7 ? runStorage?.LegacyRunId : savedRun.runId; // 기존 저장의 회차 식별자
+            if (trialRestScreen == null || Flow.Phase != GamePhase.Inventory || travel == null || !travel.CanUseTrialRest || runStorage == null || savedId != null && savedId != CurrentRunId) // 화면과 현재 방 및 회차 검사
+            { // 오류 시작
+                message = "현재 휴식 상태를 확인해 주세요."; // 다른 회차와 잘못된 상태 안내
+                return false; // 잘못된 사용 차단
+            } // 오류 끝
+            if (!TrialRestRules.TryUse(travel.CurrentRest, PlayerHealth, 100, PlayerMana, 50, out var next, out var health, out var mana)) // 실제 수치와 사용 상태 검사
+            { // 회복 오류 시작
+                message = "휴식을 사용할 수 없습니다."; // 잘못된 회복 안내
+                return false; // 기존 방과 수치 보존
+            } // 회복 오류 끝
+            var data = travel.CaptureInventoryRun(); // 현재 선택 화면의 독립 저장본
+            var rooms = travel.RestSnapshotsWith(next); // 사용 완료를 포함한 독립 층 기록
+            if (data == null || rooms == null) // 현재 위치와 휴식 기록 검사
+            { // 오류 시작
+                message = "현재 휴식 위치를 저장할 수 없습니다."; // 위치 오류 안내
+                return false; // 실제 회복과 사용 차단
+            } // 오류 끝
+            data.restRooms = rooms; // 사용 완료된 휴식 기록
+            data.health = health; // 회복된 체력
+            data.mana = mana; // 회복된 마나
+            var entry = "휴식 · 체력 +" + (health - PlayerHealth) + " · 마나 +" + (mana - PlayerMana); // 실제 회복량의 탐험 기록
+            var history = new System.Collections.Generic.List<string>(data.history); // 기존 회차 기록 복사
+            history.Add(entry); // 휴식 결과를 저장 후보에 추가
+            data.history = history.ToArray(); // 회복과 함께 저장할 기록 확정
+            if (!RunRestoreRules.IsValid(data) || !runStorage.TrySave(data, out message)) // 전체 회차 검증과 실제 기록
+            { // 저장 오류 시작
+                if (string.IsNullOrEmpty(message)) // 상세 오류 누락 검사
+                { // 안내 시작
+                    message = "휴식 결과를 저장할 수 없습니다."; // 기본 저장 오류
+                } // 안내 끝
+                return false; // 저장 실패 시 기존 수치와 방 보존
+            } // 저장 오류 끝
+            travel.ApplyRest(next); // 저장된 사용 완료 상태 적용
+            PlayerHealth = health; // 저장된 체력 적용
+            PlayerMana = mana; // 저장된 마나 적용
+            RecordExplorationEvent(entry); // 저장 성공 후 실제 탐험 기록 적용
+            savedRun = data; // 마지막 정상 저장 갱신
+            savedRunValid = true; // 저장 회차 재개 허용
+            message = "휴식 완료 · 저장 완료"; // 실제 사용 결과 안내
+            return true; // 안전한 휴식 완료
+        } // 사용 끝
+        public void CloseTrialRest() // 휴식 화면을 닫고 탐험 복귀
+        { // 종료 시작
+            if (trialRestScreen == null || !Flow.TryCloseInventory()) // 실제 선택 화면과 상태 검사
+            { // 차단 시작
+                return; // 다른 화면의 종료 차단
+            } // 차단 끝
+            trialRestScreen.gameObject.SetActive(false); // 이전 화면 입력 차단
+            Destroy(trialRestScreen.gameObject); // 휴식 화면 객체 정리
+            trialRestScreen = null; // 이전 화면 참조 해제
+            Input.SetPhase(GamePhase.Exploration); // 탐험 입력 복구
+        } // 종료 끝
         public bool OpenTrialNpc() // 현재 방의 시험 상인 대화 시작
         { // 진입 시작
             var room = GameObject.Find("RoomTravel"); // 현재 던전 객체

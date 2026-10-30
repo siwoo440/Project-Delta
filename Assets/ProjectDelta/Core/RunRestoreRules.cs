@@ -1,4 +1,5 @@
 using System; // 기록 문자열 검사
+using System.Collections.Generic; // 휴식 기록의 중복 층 검사
 namespace ProjectDelta.Core // 게임 규칙 이름 공간
 { // 이름 공간 시작
     public static class RunRestoreRules // 현재 구현 범위의 복원 검사
@@ -142,6 +143,58 @@ namespace ProjectDelta.Core // 게임 규칙 이름 공간
                     return false; // 복원 불가능한 기록 차단
                 } // 오류 끝
             } // 이벤트 검사 끝
+            if (data.version >= 21 && data.restRooms != null) // 현재 저장의 휴식 기록 검사
+            { // 휴식 검사 시작
+                if (data.restRooms.Length > 5 || !data.roomContentEnabled && data.restRooms.Length != 0) // 층 수와 콘텐츠 활성 상태 검사
+                { // 개수 오류 시작
+                    return false; // 잘못된 휴식 목록 차단
+                } // 개수 오류 끝
+                var floors = new HashSet<int>(); // 휴식 방의 중복 층 검사
+                foreach (var rest in data.restRooms) // 저장된 휴식 방 순회
+                { // 휴식 방 검사 시작
+                    if (rest == null || rest.floor < 1 || rest.floor > data.floor || !floors.Add(rest.floor) || data.roomContents == null) // 기록과 방문 층 범위 검사
+                    { // 기록 오류 시작
+                        return false; // 잘못된 층과 중복 방 차단
+                    } // 기록 오류 끝
+                    SavedFloorRoomContent content = null; // 같은 층의 콘텐츠 저장
+                    foreach (var candidate in data.roomContents) // 실제 저장 콘텐츠 순회
+                    { // 층 비교 시작
+                        if (candidate.floor == rest.floor) // 같은 층 검사
+                        { // 일치 시작
+                            content = candidate; // 재현할 기존 배치
+                            break; // 콘텐츠 검색 종료
+                        } // 일치 끝
+                    } // 층 비교 끝
+                    var restLayout = FloorLayoutRules.Generate(data.seed, rest.floor, generationVersion); // 저장 층의 재현 구조
+                    var restSeed = FloorSeedRules.For(data.seed, rest.floor); // 저장 층의 결정적 씨드
+                    var encounters = TrialRoomContentPlacement.Excluded(restLayout, rest.floor, generationVersion, data.groupEncounterEnabled); // 기존 조우의 제외 방
+                    if (data.restBeforeNpc && encounters != null) // 새 회차의 잠긴 방 검사
+                    { // 잠금 제외 시작
+                        encounters = TrialRestRules.ExcludeLockedRoom(restLayout, encounters); // 휴식 배치의 잠긴 말단 제외
+                    } // 잠금 제외 끝
+                    DungeonRoom eventRoom = null; // 기본 이벤트 방 없음
+                    if (data.trialEventsEnabled && data.trialEvents != null) // 저장된 이벤트 배치 검사
+                    { // 이벤트 검색 시작
+                        foreach (var record in data.trialEvents) // 층별 이벤트 순회
+                        { // 이벤트 층 검사 시작
+                            if (record.floor == rest.floor) // 같은 층 이벤트 검사
+                            { // 일치 시작
+                                eventRoom = restLayout.GetRoom(record.x, record.y); // 검증된 이벤트 방
+                                break; // 이벤트 검색 종료
+                            } // 일치 끝
+                        } // 이벤트 층 검사 끝
+                    } // 이벤트 검색 끝
+                    DungeonRoom npcRoom = null; // 기본 상인 방 없음
+                    if (data.trialNpcEnabled && !data.restBeforeNpc && content != null && encounters != null) // 이전 저장의 상인 우선 배치 검사
+                    { // 상인 재현 시작
+                        TrialNpcPlacement.TrySelect(restLayout, restSeed, content, encounters, eventRoom, out npcRoom); // 기존 규칙의 상인 방 재현
+                    } // 상인 재현 끝
+                    if (content == null || encounters == null || !TrialRestRules.TryRestore(rest, restLayout, restSeed, content, encounters, eventRoom, npcRoom)) // 실제 배치와 저장 좌표 검사
+                    { // 배치 오류 시작
+                        return false; // 손상되거나 점유된 휴식 방 차단
+                    } // 배치 오류 끝
+                } // 휴식 방 검사 끝
+            } // 휴식 검사 끝
             if (data.version >= 17 && data.hasTrialEventBattle && !ValidTrialEventBattle(data, layout, generationVersion)) // 이벤트 전투와 실제 방 및 참가자 검사
             { // 전투 오류 시작
                 return false; // 다른 방과 잘못된 참가자의 복원 차단

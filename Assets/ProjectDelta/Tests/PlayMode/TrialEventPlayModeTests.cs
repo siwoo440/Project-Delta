@@ -43,6 +43,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
         public IEnumerator Cleanup() // 시험 입력과 저장 경로 복구
         { // 정리 시작
             RoomTravelController.RoomContentTestOverride = null; // 방 콘텐츠 설정 복구
+            RoomTravelController.TrialEventTestOverride = null; // 이벤트 배치 설정 복구
             RoomTravelController.TutorialEncounterTestOverride = null; // 첫 조우 설정 복구
             RoomTravelController.GenerationSeedOverride = null; // 던전 씨드 설정 복구
             AppRoot.AutomaticEncounterTestOverride = null; // 조우 방식 설정 복구
@@ -64,6 +65,103 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             InputSystem.settings.editorInputBehaviorInPlayMode = originalEditor; // 편집기 입력 설정 복구
 #endif // 편집기 입력 조건 끝
         } // 정리 끝
+        [UnityTest] // 휴식 선택과 저장 실패 및 재개 검증
+        public IEnumerator RestRoom_CancelRetryAndRestartPreserveOneUse() // 실제 방 이동과 회복 기록 확인
+        { // 검증 시작
+            RoomTravelController.TrialEventTestOverride = false; // 경유 이벤트 화면 제외
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 열기
+            yield return WaitForPhase(GamePhase.Title); // 시작 화면 대기
+            AppRoot.Instance.StartNewGame(); // 새 회차 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 던전 생성 대기
+            var app = AppRoot.Instance; // 실제 회차 관리자
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 이동 관리자
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 격자 플레이어
+            var target = travel.TrialRestRoom; // 실제 휴식 방
+            Assert.That(target, Is.Not.Null); // 휴식 방 배치 확인
+            var route = FindRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), target); // 실제 연결 경로
+            foreach (var door in route) // 목적 방까지 문 순회
+            { // 방 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 이동 입력
+            } // 방 이동 끝
+            var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 객체 조회
+            var root = (GameObject)finder.Invoke(travel, new object[] { travel.RoomX, travel.RoomY }); // 현재 휴식 방
+            var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 실제 바닥 타일
+            var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 실제 장애물 타일
+            Assert.That(player.ChangeRoom(floor, obstacles, 0, 0), Is.True); // 휴식 지점으로 이동
+            yield return null; // 위치 변경 반영
+            app.UpdatePlayerHealth(40); // 손상된 체력 설정
+            app.UpdatePlayerMana(10); // 소모된 마나 설정
+            Assert.That(app.OpenTrialRest(), Is.True); // 실제 휴식 선택 열기
+            GameObject.Find("TrialRestLeave").GetComponent<Button>().onClick.Invoke(); // 휴식 보류 선택
+            Assert.That(travel.CurrentRest.used, Is.False); // 보류 후 미사용 상태 유지
+            Assert.That(app.OpenTrialRest(), Is.True); // 같은 휴식 공간 재방문
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 캡처 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null) // 자동 캡처 가능 검사
+            { // 캡처 시작
+                yield return null; // 실제 화면 갱신 대기
+                var image = CaptureScreen("TrialRestCanvas"); // 실제 휴식 선택 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 실제 화면 이미지 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 끝
+            System.IO.Directory.CreateDirectory(RunStorage.TestDirectoryOverride); // 독립 저장 폴더 준비
+            using (var gate = new System.IO.FileStream(System.IO.Path.Combine(RunStorage.TestDirectoryOverride, "run.lock"), System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None)) // 실제 회차 저장 잠금
+            { // 저장 잠금 시작
+                GameObject.Find("TrialRestConfirm").GetComponent<Button>().onClick.Invoke(); // 잠금 중 휴식 시도
+                Assert.That(app.PlayerHealth, Is.EqualTo(40)); // 저장 실패 시 체력 보존
+                Assert.That(app.PlayerMana, Is.EqualTo(10)); // 저장 실패 시 마나 보존
+                Assert.That(travel.CurrentRest.used, Is.False); // 저장 실패 시 미사용 보존
+                Assert.That(GameObject.Find("TrialRestNotice").GetComponent<Text>().text, Is.Not.Empty); // 저장 실패 안내 확인
+            } // 저장 잠금 끝
+            GameObject.Find("TrialRestConfirm").GetComponent<Button>().onClick.Invoke(); // 잠금 해제 후 재시도
+            yield return WaitForPhase(GamePhase.Exploration); // 저장 후 탐험 복귀
+            Assert.That(app.PlayerHealth, Is.EqualTo(70)); // 체력 삼십 회복
+            Assert.That(app.PlayerMana, Is.EqualTo(25)); // 마나 십오 회복
+            Assert.That(travel.CurrentRest.used, Is.True); // 사용 완료 상태 확인
+            var run = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 실제 회차 저장 조회
+            Assert.That(run.restRooms.Single(value => value.floor == 1).used, Is.True); // 휴식 완료 저장 확인
+            Assert.That(run.history.Last(), Does.Contain("휴식 · 체력 +30 · 마나 +15")); // 회복과 탐험 기록의 동시 저장
+            Object.Destroy(app.gameObject); // 실행 중단 모사
+            yield return null; // 기존 회차 정리 대기
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 관리자
+            Assert.That(app.ContinueRun(), Is.True); // 휴식 후 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 재개 탐험 대기
+            travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 방 관리자
+            Assert.That(app.PlayerHealth, Is.EqualTo(70)); // 저장된 체력 복원
+            Assert.That(app.PlayerMana, Is.EqualTo(25)); // 저장된 마나 복원
+            Assert.That(travel.CurrentRest.used, Is.True); // 재시작 후 사용 완료 유지
+            Assert.That(app.OpenTrialRest(), Is.False); // 중복 휴식 차단
+        } // 검증 끝
+        [UnityTest] // 이전 저장의 휴식 배치 호환 검증
+        public IEnumerator RestRoom_LegacySaveKeepsNpcPlacement() // 버전 이십 저장의 실제 재개 확인
+        { // 검증 시작
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 열기
+            yield return WaitForPhase(GamePhase.Title); // 시작 화면 대기
+            AppRoot.Instance.StartNewGame(); // 새 회차 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 던전 생성 대기
+            var app = AppRoot.Instance; // 실제 회차 관리자
+            Assert.That(app.TrySaveRun(out var saveMessage), Is.True, saveMessage); // 실제 회차 저장
+            var storage = new RunStorage(RunStorage.TestDirectoryOverride); // 독립 회차 저장소
+            var legacy = storage.Load(out var warning); // 실제 저장 회차 조회
+            Assert.That(warning, Is.Empty); // 정상 회차 조회
+            legacy.version = 20; // 기존 저장 버전 구성
+            legacy.restRooms = null; // 이전 형식의 휴식 기록 없음
+            legacy.restBeforeNpc = false; // 이전 상인 우선 순서
+            Assert.That(RunRestoreRules.IsValid(legacy), Is.True); // 이전 형식의 복원 가능 확인
+            Assert.That(storage.TrySave(legacy, out saveMessage), Is.True, saveMessage); // 이전 형식 저장
+            Object.Destroy(app.gameObject); // 실제 실행 중단 모사
+            yield return null; // 회차 객체 정리
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 새 실행 시작
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            app = AppRoot.Instance; // 새 실행 관리자
+            Assert.That(app.ContinueRun(), Is.True); // 이전 형식의 회차 재개
+            yield return WaitForPhase(GamePhase.Exploration); // 복원된 탐험 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 복원된 방 제어
+            var upgraded = travel.CaptureRun(); // 현재 상태의 새 저장 후보
+            Assert.That(upgraded.restBeforeNpc, Is.False); // 이전 상인 우선 배치 보존
+            Assert.That(RunRestoreRules.IsValid(upgraded), Is.True); // 새 저장 형식의 검증 통과
+        } // 검증 끝
         [UnityTest] // 실제 방 이동과 저장 재개 검증
         public IEnumerator EventRoom_SavesLeaveResultAndNeverRepeats() // 조건 비활성화와 결과 복원 확인
         { // 검증 시작

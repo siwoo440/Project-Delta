@@ -23,6 +23,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private int lastTransitionFrame = -1; // 같은 프레임 중복 전환 차단
         private int generationVersion = 3; // 현재 회차의 던전 생성 규칙
         private readonly List<FloorRoomContent> roomContents = new List<FloorRoomContent>(); // 방문한 층의 상자와 함정 상태
+        private readonly List<SavedFloorRest> restRooms = new List<SavedFloorRest>(); // 방문한 층의 휴식 방 상태
+        private bool restBeforeNpc; // 새 회차의 휴식 우선 배치
+        public SavedFloorRest CurrentRest => restRooms.Find(value => value.floor == Floor); // 현재 층의 휴식 기록
+        public DungeonRoom TrialRestRoom => CurrentRest == null ? null : Layout.GetRoom(CurrentRest.x, CurrentRest.y); // 현재 층의 휴식 방
+        public bool CanUseTrialRest => IsReady && CurrentRest != null && !CurrentRest.used && RoomX == CurrentRest.x && RoomY == CurrentRest.y; // 현재 방의 미사용 휴식
         private FloorRoomContent currentContent; // 현재 층의 시험 방 콘텐츠
         public static bool? RoomContentTestOverride { get; set; } // 자동 검증용 시험 콘텐츠 활성 설정
         public bool RoomContentEnabled { get; private set; } // 현재 회차의 상자와 함정 활성 여부
@@ -189,6 +194,8 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 trialNpcEnabled = TrialNpcEnabled, // 현재 회차의 시험 상인 활성 여부
                 trialEventsEnabled = TrialEventsEnabled, // 현재 회차의 시험 이벤트 활성 여부
                 trialEvents = TrialEventSnapshots(), // 층별 고정 이벤트와 결과
+                restRooms = RestSnapshots(), // 층별 휴식 방과 사용 기록
+                restBeforeNpc = restBeforeNpc, // 회차별 휴식과 상인 배치 순서
                 visitedRooms = Discovery.SaveVisited(), // 현재 층의 방문 기록
                 doorLock = lockData, // 현재 층의 잠금 기록
                 hasPreviousRoom = HasPreviousRoom, // 이전 방의 연결 여부
@@ -427,7 +434,17 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     throw new InvalidOperationException("Invalid trial event placement."); // 기존 콘텐츠와 충돌 차단
                 } // 이벤트 오류 끝
                 TrialNpcEnabled = TrialEventsEnabled && (saved != null && saved.version >= 16 ? saved.trialNpcEnabled : TrialNpcTestOverride ?? true); // 새 회차 또는 저장된 시험 상인 활성 여부
-                TrialNpcRoom = TrialNpcEnabled ? SelectTrialNpc(Layout, Floor, floorSeed, currentContent, TrialEventRoom) : null; // 기존 콘텐츠를 제외한 상인 방
+                restBeforeNpc = saved == null || saved.version >= 21 && saved.restBeforeNpc; // 새 회차의 휴식 우선과 이전 저장 순서 유지
+                if (restBeforeNpc) // 휴식 우선 배치 검사
+                { // 휴식 우선 시작
+                    InitializeRestRooms(saved, floorSeed); // 상인보다 먼저 휴식 기록 준비
+                } // 휴식 우선 끝
+                TrialNpcRoom = TrialNpcEnabled ? SelectTrialNpc(Layout, Floor, floorSeed, currentContent, TrialEventRoom, restBeforeNpc ? TrialRestRoom : null) : null; // 휴식과 기존 콘텐츠를 제외한 상인 방
+                if (!restBeforeNpc) // 기존 저장 배치 순서 검사
+                { // 이전 순서 시작
+                    InitializeRestRooms(saved, floorSeed); // 기존 상인 이후 휴식 기록 준비
+                } // 이전 순서 끝
+                AddTrialRestMarker(rooms, CurrentRest); // 미사용 휴식 방 표시
                 AddTrialNpcMarker(rooms, TrialNpcRoom); // 실제 상인 방의 시험 표시
                 AddContentMarkers(rooms, currentContent); // 실제 상자 방의 시험 표시 추가
                 AddStairMarker(Layout, rooms); // 계단 방의 실제 표시 추가
@@ -659,9 +676,88 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 새 콘텐츠 생성 끝
             return true; // 모든 층 배치 준비 완료
         } // 준비 끝
-        private DungeonRoom SelectTrialNpc(DungeonLayout layout, int floor, int seed, FloorRoomContent content, DungeonRoom eventRoom) // 기존 방과 분리된 시험 상인 선택
+        private SavedFloorRest CreateRest(DungeonLayout layout, int floor, int seed, FloorRoomContent content, DungeonRoom eventRoom, DungeonRoom npcRoom) // 기존 콘텐츠와 분리된 휴식 방 선택
         { // 선택 시작
             var excluded = TrialRoomContentPlacement.Excluded(layout, floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+            if (restBeforeNpc && excluded != null) // 새 회차의 잠긴 방 검사
+            { // 잠금 제외 시작
+                excluded = TrialRestRules.ExcludeLockedRoom(layout, excluded); // 접근 불가능한 방의 휴식 배치 차단
+            } // 잠금 제외 끝
+            return excluded != null && content != null && TrialRestRules.TryCreate(floor, layout, seed, content.Snapshot(), excluded, eventRoom, npcRoom, out var result) ? result : null; // 빈 방의 결정적 휴식 또는 배치 없음
+        } // 선택 끝
+        private static SavedFloorRest CopyRest(SavedFloorRest value) // 독립 휴식 상태 복사
+        { // 복사 시작
+            return value == null ? null : new SavedFloorRest { floor = value.floor, x = value.x, y = value.y, used = value.used }; // 좌표와 사용 상태 복사
+        } // 복사 끝
+        private void InitializeRestRooms(RunSaveData saved, int seed) // 저장된 기록과 현재 층 배치 준비
+        { // 준비 시작
+            if (saved != null && saved.version >= 21 && saved.restRooms != null) // 휴식 저장 기록 검사
+            { // 복원 시작
+                foreach (var record in saved.restRooms) // 방문 층 기록 순회
+                { // 복사 시작
+                    restRooms.Add(CopyRest(record)); // 검증된 독립 휴식 기록 복원
+                } // 복사 끝
+            } // 복원 끝
+            if (CurrentRest == null && currentContent != null) // 현재 층의 미배치 상태 검사
+            { // 배치 시작
+                var created = CreateRest(Layout, Floor, seed, currentContent, TrialEventRoom, TrialNpcRoom); // 다른 콘텐츠와 분리된 빈 방 선택
+                if (created != null) // 실제 빈 후보 검사
+                { // 후보 추가 시작
+                    restRooms.Add(created); // 현재 층 휴식 기록 보관
+                } // 후보 추가 끝
+            } // 배치 끝
+        } // 준비 끝
+        public SavedFloorRest[] RestSnapshots() // 독립 휴식 기록 조회
+        { // 조회 시작
+            var result = new SavedFloorRest[restRooms.Count]; // 저장용 독립 배열
+            for (var index = 0; index < result.Length; index++) // 층별 기록 순회
+            { // 복사 시작
+                result[index] = CopyRest(restRooms[index]); // 외부 변경을 막는 복사
+            } // 복사 끝
+            return result; // 독립 기록 전달
+        } // 조회 끝
+        public SavedFloorRest[] RestSnapshotsWith(SavedFloorRest next) // 변경된 현재 층의 독립 기록
+        { // 복사 시작
+            var result = RestSnapshots(); // 기존 기록 독립 복사
+            for (var index = 0; index < result.Length; index++) // 실제 층 기록 순회
+            { // 층 검사 시작
+                if (next != null && result[index].floor == Floor && next.floor == Floor && result[index].x == next.x && result[index].y == next.y) // 실제 좌표 일치 검사
+                { // 교체 시작
+                    result[index] = CopyRest(next); // 사용 완료 기록 반영
+                    return result; // 독립 저장본 전달
+                } // 교체 끝
+            } // 층 검사 끝
+            return null; // 일치하는 실제 기록 없음
+        } // 복사 끝
+        public bool ApplyRest(SavedFloorRest next) // 저장 후 사용 완료 적용
+        { // 적용 시작
+            var current = CurrentRest; // 실제 현재 층 기록
+            if (current == null || next == null || current.floor != next.floor || current.x != next.x || current.y != next.y || current.used || !next.used) // 동일한 미사용 방과 완료 상태 검사
+            { // 오류 시작
+                return false; // 다른 방과 중복 완료 차단
+            } // 오류 끝
+            current.used = true; // 저장된 사용 완료 반영
+            var root = FindRoom(current.x, current.y); // 실제 휴식 방 객체
+            var marker = root == null ? null : root.transform.Find("TrialRestMarker"); // 사용 전 휴식 표시
+            if (marker != null) // 실제 표시 검사
+            { // 표시 숨김 시작
+                marker.gameObject.SetActive(false); // 사용 후 빈 방 표시
+            } // 표시 숨김 끝
+            return true; // 실제 상태 적용 완료
+        } // 적용 끝
+        private DungeonRoom SelectTrialNpc(DungeonLayout layout, int floor, int seed, FloorRoomContent content, DungeonRoom eventRoom, DungeonRoom restRoom) // 기존 방과 분리된 시험 상인 선택
+        { // 선택 시작
+            var excluded = TrialRoomContentPlacement.Excluded(layout, floor, generationVersion, groupEncounterEnabled); // 기존 조우 방 제외
+            if (excluded != null && restBeforeNpc) // 새 회차의 잠긴 방 검사
+            { // 잠금 제외 시작
+                excluded = TrialRestRules.ExcludeLockedRoom(layout, excluded); // 접근 불가능한 방의 상인 배치 차단
+            } // 잠금 제외 끝
+            if (excluded != null && restRoom != null) // 우선 배치한 휴식 방 검사
+            { // 추가 제외 시작
+                var rooms = new List<DungeonRoom>(excluded); // 기존 제외 목록 복사
+                rooms.Add(restRoom); // 휴식 방의 상인 배치 차단
+                excluded = rooms.ToArray(); // 독립 제외 목록 확정
+            } // 추가 제외 끝
             return excluded != null && content != null && TrialNpcPlacement.TrySelect(layout, seed, content.Snapshot(), excluded, eventRoom, out var selected) ? selected : null; // 안전한 후보 또는 상인 없음
         } // 선택 끝
         private static SavedFloorTrialEvent CopyTrialEvent(SavedFloorTrialEvent record) // 이벤트 기록의 독립 복사
@@ -921,7 +1017,12 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             { // 전환 차단 조건 시작
                 return; // 중복 요청과 이동 중 입력 무시
             } // 전환 차단 조건 끝
-            if (TrialNpcRoom != null && RoomX == TrialNpcRoom.X && RoomY == TrialNpcRoom.Y && Math.Abs((long)player.X) + Math.Abs((long)player.Y) <= 1) // 현재 방의 인접 상인 검사
+            if (CanUseTrialRest && Math.Abs((long)player.X) + Math.Abs((long)player.Y) <= 1 && Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing) == null) // 중앙 휴식과 정면 출구 우선 검사
+            { // 휴식 선택 시작
+                AppRoot.Instance.OpenTrialRest(); // 실제 휴식 선택 화면 열기
+                return; // 같은 입력의 다른 상호작용 차단
+            } // 휴식 선택 끝
+            if (TrialNpcRoom != null && RoomX == TrialNpcRoom.X && RoomY == TrialNpcRoom.Y && Math.Abs((long)player.X) + Math.Abs((long)player.Y) <= 1 && Layout.FindDoor(state.RoomX, state.RoomY, player.X, player.Y, player.Facing) == null) // 인접 상인과 정면 출구 우선 검사
             { // 상인 대화 시작
                 AppRoot.Instance.OpenTrialNpc(); // 실제 대화와 서비스 화면 열기
                 return; // 같은 입력의 다른 상호작용 차단
@@ -1297,6 +1398,30 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 throw new InvalidOperationException("The encounter cell must be walkable."); // 방 변경 전 충돌 거절
             } // 통행 불가 조건 끝
         } // 검사 끝
+        private static void AddTrialRestMarker(RoomBinding[] bindings, SavedFloorRest rest) // 미사용 휴식 방의 시험 표시
+        { // 표시 시작
+            if (rest == null || rest.used) // 존재와 사용 상태 검사
+            { // 표시 제외 시작
+                return; // 사용한 방은 빈 방으로 표시
+            } // 표시 제외 끝
+            foreach (var binding in bindings) // 현재 층 방 순회
+            { // 방 검사 시작
+                if (binding.X != rest.x || binding.Y != rest.y) // 실제 휴식 좌표 검사
+                { // 다른 방 시작
+                    continue; // 다음 방 검사
+                } // 다른 방 끝
+                var floor = binding.Root.transform.Find("Floor").GetComponent<Tilemap>(); // 실제 방 바닥 조회
+                var marker = new GameObject("TrialRestMarker", typeof(SpriteRenderer)); // 휴식 위치 표시 객체
+                marker.transform.SetParent(binding.Root.transform, false); // 실제 방에 표시 연결
+                marker.transform.position = floor.GetCellCenterWorld(Vector3Int.zero); // 방 중앙에 표시 배치
+                var renderer = marker.GetComponent<SpriteRenderer>(); // 표시 색상 설정
+                renderer.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f); // 기본 휴식 표시 이미지
+                renderer.color = new Color(0.35f, 0.8f, 0.75f); // 휴식 공간의 청록색 표시
+                marker.transform.localScale = new Vector3(0.8f, 0.8f, 1f); // 표시 크기 조절
+                renderer.sortingOrder = 6; // 던전 바닥 위 표시
+                break; // 휴식 방 표시 완료
+            } // 방 검사 끝
+        } // 표시 끝
         private static void AddTrialNpcMarker(RoomBinding[] bindings, DungeonRoom npcRoom) // 상인 방의 실제 시안 표시
         { // 표시 시작
             if (npcRoom == null) // 상인 배치 검사
@@ -1534,7 +1659,19 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     throw new InvalidOperationException("Invalid next floor event."); // 공간 부족 시 기존 층 보존
                 } // 오류 끝
                 var nextEventRoom = nextEvent == null ? null : nextLayout.GetRoom(nextEvent.x, nextEvent.y); // 다음 층의 시험 이벤트 방
-                var nextNpcRoom = TrialNpcEnabled ? SelectTrialNpc(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom) : null; // 기존 콘텐츠와 분리된 다음 상인 방
+                var nextRest = restBeforeNpc && nextContent != null ? CreateRest(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom, null) : null; // 새 회차의 휴식 우선 선택
+                var nextRestRoom = nextRest == null ? null : nextLayout.GetRoom(nextRest.x, nextRest.y); // 우선 배치한 실제 휴식 방
+                var nextNpcRoom = TrialNpcEnabled ? SelectTrialNpc(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom, nextRestRoom) : null; // 휴식과 기존 콘텐츠를 제외한 상인 방
+                if (!restBeforeNpc && nextContent != null) // 기존 저장의 상인 우선 순서 검사
+                { // 이전 순서 시작
+                    nextRest = CreateRest(nextLayout, Floor + 1, nextSeed, nextContent, nextEventRoom, nextNpcRoom); // 기존 상인을 제외한 휴식 방
+                } // 이전 순서 끝
+                if (nextRest != null) // 실제 휴식 후보 검사
+                { // 저장 후보 시작
+                    var rests = new List<SavedFloorRest>(destination.restRooms); // 기존 층 휴식 기록 복사
+                    rests.Add(CopyRest(nextRest)); // 새 층의 미사용 휴식 추가
+                    destination.restRooms = rests.ToArray(); // 이동과 함께 저장할 독립 기록
+                } // 저장 후보 끝
                 destination.floor = Floor + 1; // 저장할 다음 층 번호
                 destination.layoutFingerprint = DungeonLayoutFingerprint.Compute(nextLayout); // 다음 층 구조 지문
                 destination.roomX = 0; // 시작 방 가로 좌표
@@ -1581,6 +1718,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                     room.Root.transform.SetParent(stage.transform, true); // 생성된 방의 일괄 관리
                 } // 상위 객체 연결 끝
                 DungeonPresentation.Apply(nextRooms); // 새 층에도 생성 이미지와 두 배 타일 적용
+                AddTrialRestMarker(nextRooms, nextRest); // 다음 층의 휴식 표시 생성
                 AddTrialNpcMarker(nextRooms, nextNpcRoom); // 다음 층의 상인 표시 생성
                 AddContentMarkers(nextRooms, nextContent); // 다음 층 상자 표시 생성
                 AddStairMarker(nextLayout, nextRooms); // 새 층 계단 표시 생성
@@ -1631,6 +1769,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 { // 이벤트 확정 시작
                     trialEvents.Add(nextEvent); // 이전 층 기록을 보존한 새 이벤트
                 } // 이벤트 확정 끝
+                if (nextRest != null) // 다음 층의 휴식 후보 검사
+                { // 저장된 기록 확정 시작
+                    restRooms.Add(nextRest); // 저장 성공 후 새 층 휴식 적용
+                } // 기록 확정 끝
                 TrialNpcRoom = nextNpcRoom; // 성공한 다음 층의 상인 확정
                 AppRoot.Instance.UpdatePlayerHealth(100); // 성공한 층 이동의 기본 체력 회복
             } // 준비 끝
