@@ -10,19 +10,13 @@
 
 ![최신 플레이 화면](docs/images/gameplay.png)
 
-타이틀의 결말 파편 누적 표시:
-
-![타이틀 파편 상태](docs/images/shard-status.png)
-
-내부 시험 수집 기록 화면:
-
-![시험 수집 기록](docs/images/trial-collection.png)
-
-전체 음량과 조우 섬광 설정 화면:
-
-![설정 화면](docs/images/settings.png)
+새로운 UI가 적용된 일시정지 메뉴:
 
 ![일시정지 메뉴](docs/images/pause-menu.png)
+
+새로운 UI가 적용된 전투 화면:
+
+![전투 화면](docs/images/battle-ui.png)
 
 ---
 ## 개발 환경

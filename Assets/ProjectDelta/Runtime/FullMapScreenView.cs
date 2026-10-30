@@ -29,6 +29,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 오른쪽 위 여백 제거
                 var backImage = background.GetComponent<Image>(); // 배경 색상 구성
                 backImage.color = new Color(0.025f, 0.045f, 0.06f, 0.97f); // 어두운 지도 바탕
+                UiFactory.Decorate(backImage, "MenuPanel"); // 화면 용도별 그림 장식
                 backImage.raycastTarget = false; // 다른 입력 방해 방지
                 UiFactory.CreateText(canvas.transform, "Title", "발견한 전체 지도", 42, new Vector2(0f, 450f), new Vector2(1000f, 80f), Color.white); // 지도 제목
                 UiFactory.CreateText(canvas.transform, "CloseHint", "방향키 / 패드 방향: 이동  ·  + / - / 어깨 버튼: 확대·축소  ·  Home / 패드 X: 현재 위치  ·  M / Esc: 닫기", 21, new Vector2(0f, -465f), new Vector2(1800f, 60f), Color.white); // 지도 조작 안내

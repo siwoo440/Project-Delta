@@ -22,6 +22,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래쪽 여백 제거
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 panel.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 도감 화면 배경색
+                UiFactory.Decorate(panel.GetComponent<Image>(), "MenuPanel"); // 화면 용도별 그림 장식
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 화면 강조 색상
                 UiFactory.CreateText(panel.transform, "JournalHeader", "관찰 기록", 58, new Vector2(0f, 410f), new Vector2(1000f, 90f), Color.white); // 도감 화면 제목
                 var observed = owner.Observations.Contains("trial-elite"); // 저장된 시험 대상 기록 검사

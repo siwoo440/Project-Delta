@@ -90,6 +90,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래쪽 여백 제거
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 배경색
+                UiFactory.Decorate(background.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 전투 안내 강조 색상
                 AddBattlePanel(canvas.transform, "BattleTopPanel", new Vector2(0f, 480f), new Vector2(1920f, 120f)); // 상단 라운드와 유물 영역
                 AddBattlePanel(canvas.transform, "BattlePlayerPanel", new Vector2(0f, -350f), new Vector2(1920f, 380f)); // 하단 플레이어와 행동 영역
@@ -166,6 +167,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.surrenderDialog.transform.SetParent(canvas.transform, false); // 전투 화면 위 배치
                 view.surrenderDialog.GetComponent<RectTransform>().sizeDelta = new Vector2(900f, 320f); // 확인 화면 크기
                 view.surrenderDialog.GetComponent<Image>().color = new Color(0.04f, 0.08f, 0.1f, 0.98f); // 확인 화면 배경색
+                UiFactory.Decorate(view.surrenderDialog.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
                 UiFactory.CreateText(view.surrenderDialog.transform, "Question", view.isBoss ? "항복 결과를 저장하고 결말을 기다립니다" : "항복하면 이번 회차가 종료됩니다", 30, new Vector2(0f, 85f), new Vector2(850f, 80f), Color.white); // 항복 결과 안내
                 var yes = UiFactory.CreateButton(view.surrenderDialog.transform, "ConfirmSurrender", "항복", new Vector2(-205f, -45f)); // 항복 확정 버튼
                 var no = UiFactory.CreateButton(view.surrenderDialog.transform, "CancelSurrender", "아니요", new Vector2(205f, -45f)); // 항복 취소 버튼
@@ -198,6 +200,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.sizeDelta = size; // 패널 기준 크기
             var image = panel.GetComponent<Image>(); // 패널 배경 조회
             image.color = new Color(0.09f, 0.10f, 0.14f, 0.92f); // 기존 전투 화면의 진한 배경
+            UiFactory.Decorate(image, "BattlePanel"); // 화면 용도별 그림 장식
             image.raycastTarget = false; // 버튼 입력 가로채기 방지
             return rect; // 생성한 패널 위치 전달
         } // 배경 끝
@@ -462,6 +465,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             itemDialog.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 0.98f); // 선택 화면 배경
+            UiFactory.Decorate(itemDialog.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             UiFactory.CreateText(itemDialog.transform, "BattleItemTitle", "사용할 아이템을 선택하세요", 40, new Vector2(0f, 390f), new Vector2(1200f, 80f), Color.white); // 아이템 선택 안내
             for (var index = 0; index < owner.Inventory.Slots.Count; index++) // 실제 소지품 슬롯 순회
             { // 슬롯 생성 시작

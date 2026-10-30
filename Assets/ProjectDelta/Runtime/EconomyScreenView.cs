@@ -47,6 +47,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 main.transform.SetParent(canvas.transform, false); // 경제 캔버스에 배치
                 Stretch(main.GetComponent<RectTransform>()); // 화면 전체 배경 확장
                 main.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 입력을 가리는 불투명 배경
+                UiFactory.Decorate(main.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
                 view.mainGroup = main.GetComponent<CanvasGroup>(); // 확인 중 기존 입력 잠금
                 UiFactory.CreateText(main.transform, "EconomyTitle", allowTrialRelics ? "시험 상점 · 유물" : "떠돌이 상인 · 시험 상점", 46, new Vector2(0f, 470f), new Vector2(1400f, 70f), Color.white); // 시험 경제 화면 제목
                 view.wallet = UiFactory.CreateText(main.transform, "EconomyWallet", "", 24, new Vector2(0f, 413f), new Vector2(1700f, 55f), Color.white); // 실제 잔액과 선택 안내
@@ -199,6 +200,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             panel.transform.SetParent(canvasRoot, false); // 경제 화면 위에 표시
             Stretch(panel.GetComponent<RectTransform>()); // 전체 화면 배경
             panel.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 0.98f); // 불투명 확인 배경
+            UiFactory.Decorate(panel.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
             mainGroup.interactable = false; // 아래 화면의 키보드와 버튼 입력 잠금
             return panel; // 준비된 확인 화면
         } // 생성 끝

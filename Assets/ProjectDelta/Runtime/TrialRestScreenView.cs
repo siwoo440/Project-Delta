@@ -43,6 +43,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 0.97f); // 휴식 화면 배경색
+            UiFactory.Decorate(background.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
             UiFactory.CreateText(canvas.transform, "TrialRestTitle", "휴식 공간", 48, new Vector2(0f, 300f), new Vector2(1000f, 90f), Color.white); // 휴식 화면 제목
             UiFactory.CreateText(canvas.transform, "TrialRestDescription", "휴식하면 체력과 마나를 각각 최대치의 30% 회복합니다.\n이 휴식 공간은 한 번만 사용할 수 있습니다. 정력 회복은 준비 중입니다.", 28, new Vector2(0f, 80f), new Vector2(1300f, 180f), Color.white); // 회복량과 사용 제한 안내
             notice = UiFactory.CreateText(canvas.transform, "TrialRestNotice", "", 24, new Vector2(0f, -80f), new Vector2(1300f, 90f), Color.white); // 저장 실패 안내

@@ -49,6 +49,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 상인 화면 바탕색
+            UiFactory.Decorate(background.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
             UiFactory.CreateText(canvas.transform, "TrialNpcTitle", "떠돌이 상인", 48, new Vector2(0f, 420f), new Vector2(1500f, 90f), Color.white); // 상인 화면 제목
             AddPortrait(canvas.transform); // 일본 애니메이션풍 시험 초상화
             dialogue = UiFactory.CreateText(canvas.transform, "TrialNpcDialogue", "어서 와요. 필요한 물건이 있나요?", 32, new Vector2(390f, 115f), new Vector2(970f, 260f), Color.white); // 상인의 현재 대화

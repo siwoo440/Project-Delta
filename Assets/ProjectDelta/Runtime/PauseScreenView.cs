@@ -127,6 +127,10 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.sizeDelta = size; // 상자 크기 지정
             var image = panel.GetComponent<Image>(); // 배경 이미지 조회
             image.color = color; // 상자 색상 적용
+            if (name != "PauseShade") // 배경 가림막 제외 검사
+            { // 메뉴 상자 장식 시작
+                UiFactory.Decorate(image, "MenuPanel"); // 메뉴와 기록 그림 장식
+            } // 메뉴 상자 장식 끝
             image.raycastTarget = false; // 버튼 입력 가림 방지
         } // 생성 끝
         private void Save() // 현재 회차 저장

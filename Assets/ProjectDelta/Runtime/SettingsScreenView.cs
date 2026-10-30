@@ -31,6 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래 여백 제거
                 rect.offsetMax = Vector2.zero; // 위 여백 제거
                 panel.GetComponent<Image>().color = new Color(0.025f, 0.045f, 0.06f, 1f); // 불투명 모달 배경
+                UiFactory.Decorate(panel.GetComponent<Image>(), "MenuPanel"); // 화면 용도별 그림 장식
                 var view = panel.GetComponent<SettingsScreenView>(); // 모달 제어 조회
                 view.current = current; // 현재 설정 연결
                 view.apply = apply; // 저장 동작 연결

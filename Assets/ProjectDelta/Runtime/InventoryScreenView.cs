@@ -78,6 +78,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래쪽 여백 제거
                 rect.offsetMax = Vector2.zero; // 위쪽 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 인벤토리 화면 배경색
+                UiFactory.Decorate(background.GetComponent<Image>(), "MenuPanel"); // 화면 용도별 그림 장식
                 var accent = new Color(0.62f, 0.87f, 0.79f); // 인벤토리 강조 색상
                 UiFactory.CreateText(canvas.transform, "Header", "인벤토리", 58, new Vector2(0f, 420f), new Vector2(1000f, 90f), Color.white); // 인벤토리 제목
                 view.status = UiFactory.CreateText(canvas.transform, "InventoryStatus", "", 25, new Vector2(0f, 345f), new Vector2(1200f, 60f), accent); // 슬롯과 획득 상태
@@ -311,6 +312,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             panel.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 0.97f); // 선택 화면 배경색
+            UiFactory.Decorate(panel.GetComponent<Image>(), "MenuPanel"); // 화면 용도별 그림 장식
             return panel; // 준비된 화면 전달
         } // 생성 끝
         private void ShowOfferChoice() // 새 아이템 획득 선택 표시

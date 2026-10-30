@@ -49,6 +49,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             backgroundRect.offsetMin = Vector2.zero; // 아래 여백 제거
             backgroundRect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 이벤트 화면 바탕색
+            UiFactory.Decorate(background.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
             var accent = new Color(0.89f, 0.77f, 0.48f, 1f); // 시험 이벤트 강조색
             title = UiFactory.CreateText(canvas.transform, "TrialEventTitle", "", 48, new Vector2(0f, 390f), new Vector2(1500f, 90f), Color.white); // 이벤트 제목
             description = UiFactory.CreateText(canvas.transform, "TrialEventDescription", "", 32, new Vector2(0f, 190f), new Vector2(1400f, 230f), Color.white); // 선택과 결과 설명

@@ -60,6 +60,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래 여백 제거
                 rect.offsetMax = Vector2.zero; // 위 여백 제거
                 background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 보상 배경색
+                UiFactory.Decorate(background.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
                 UiFactory.CreateText(canvas.transform, "Header", "승리 보상", 58, new Vector2(0f, 300f), new Vector2(1000f, 100f), Color.white); // 결과 제목
                 UiFactory.CreateText(canvas.transform, "RewardAmounts", "경험치 " + reward.experience + " · 시험 골드 " + reward.gold, 34, new Vector2(0f, 150f), new Vector2(1100f, 80f), Color.white); // 경험치와 시험 골드
                 UiFactory.CreateText(canvas.transform, "RewardItem", hasItem ? view.rewardName + " " + (equipment == null ? reward.potionCount : 1) + "개" : "획득한 아이템 없음", 30, new Vector2(0f, 55f), new Vector2(900f, 70f), Color.white); // 확정된 아이템 이름과 수량
@@ -144,6 +145,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             panel.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 기존 보상 입력을 가리는 배경
+            UiFactory.Decorate(panel.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             return panel; // 생성된 패널 전달
         } // 생성 끝
         private void OpenSelection() // 기존 아이템 교체 대상 선택

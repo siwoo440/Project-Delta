@@ -45,6 +45,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 어두운 결과 배경
+            UiFactory.Decorate(background.GetComponent<Image>(), "DialoguePanel"); // 화면 용도별 그림 장식
             choices = new GameObject("EndingChoices", typeof(RectTransform)); // 선택 영역 객체
             choices.transform.SetParent(canvas, false); // 화면 안에 배치
             UiFactory.CreateText(choices.transform, "EndingTitle", "마왕 전투 이후의 선택", 43, new Vector2(0f, 390f), new Vector2(1500f, 85f), Color.white); // 결말 선택 제목

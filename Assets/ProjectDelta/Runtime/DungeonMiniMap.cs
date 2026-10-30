@@ -30,6 +30,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.sizeDelta = new Vector2(220f, 180f); // 지도 표시 크기
             var background = mapObject.GetComponent<Image>(); // 지도 배경 조회
             background.color = new Color(0.025f, 0.055f, 0.07f, 0.9f); // 어두운 지도 배경
+            UiFactory.Decorate(background, "MenuPanel"); // 미니맵 배경 그림 장식
             background.raycastTarget = false; // 게임 입력 가림 방지
             var title = UiFactory.CreateText(mapObject.transform, "Label", "지도", 20, new Vector2(0f, 66f), new Vector2(120f, 30f), Color.white); // 지도 제목 표시
             title.raycastTarget = false; // 제목 입력 가림 방지

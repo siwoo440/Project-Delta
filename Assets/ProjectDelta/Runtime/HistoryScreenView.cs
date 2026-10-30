@@ -31,6 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMax = Vector2.zero; // 오른쪽 위 여백 제거
                 var image = background.GetComponent<Image>(); // 배경 색상 구성
                 image.color = new Color(0.025f, 0.045f, 0.06f, 0.97f); // 어두운 기록 바탕
+                UiFactory.Decorate(image, "MenuPanel"); // 화면 용도별 그림 장식
                 image.raycastTarget = false; // 다른 입력 방해 방지
                 UiFactory.CreateText(canvas.transform, "Title", "현재 회차 탐험 기록", 42, new Vector2(0f, 450f), new Vector2(1100f, 80f), Color.white); // 기록 제목
                 view.entries = UiFactory.CreateText(canvas.transform, "HistoryEntries", "", 28, new Vector2(0f, 40f), new Vector2(1200f, 640f), Color.white); // 시간순 기록 내용

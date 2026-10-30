@@ -98,6 +98,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.sizeDelta = size; // 안내 문구를 감싸는 크기
             var image = background.GetComponent<Image>(); // 배경 이미지 구성
             image.color = new Color(0.025f, 0.045f, 0.055f, 0.86f); // 던전 바닥과 구분되는 어두운 색
+            UiFactory.Decorate(image, "MenuPanel"); // 화면 용도별 그림 장식
             image.raycastTarget = false; // 마우스와 게임 입력 통과
         } // 생성 끝
         private void OnDestroy() // 화면 이벤트 연결 정리

@@ -46,6 +46,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 결과 화면 바탕색
+            UiFactory.Decorate(background.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             var heading = outcome == 1 ? "마왕 전투 승리" : outcome == 2 ? "마왕 전투 패배" : "마왕 전투 항복"; // 실제 저장된 전투 결과
             var color = outcome == 1 ? new Color(0.85f, 0.75f, 0.48f, 1f) : new Color(0.86f, 0.55f, 0.53f, 1f); // 승리 또는 종료 강조색
             UiFactory.CreateText(canvas.transform, "BossResultHeading", heading, 48, new Vector2(0f, 195f), new Vector2(1400f, 110f), color); // 저장된 전투 결과 제목

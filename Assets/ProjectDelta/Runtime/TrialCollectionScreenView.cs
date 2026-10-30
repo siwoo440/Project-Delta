@@ -39,6 +39,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 rect.offsetMin = Vector2.zero; // 아래 여백 제거
                 rect.offsetMax = Vector2.zero; // 위 여백 제거
                 panel.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 화면 배경색
+                UiFactory.Decorate(panel.GetComponent<Image>(), "MenuPanel"); // 화면 용도별 그림 장식
                 var view = panel.GetComponent<TrialCollectionScreenView>(); // 화면 동작 조회
                 view.close = close; // 닫기 동작 보관
                 view.Build(owner); // 기록 조회와 화면 구성

@@ -57,6 +57,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 준비 화면 바탕색
+            UiFactory.Decorate(background.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             var accent = new Color(0.85f, 0.72f, 0.47f, 1f); // 준비 정보 강조색
             UiFactory.CreateText(canvas.transform, "BossPreparationTitle", "마왕 전투 준비", 46, new Vector2(0f, 455f), new Vector2(1500f, 75f), Color.white); // 전투 준비 제목
             status = UiFactory.CreateText(canvas.transform, "BossPreparationStatus", "", 28, new Vector2(0f, 365f), new Vector2(1600f, 70f), accent); // 체력과 마나 및 회차 수치

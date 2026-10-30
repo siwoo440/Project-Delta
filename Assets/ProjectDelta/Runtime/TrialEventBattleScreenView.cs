@@ -60,6 +60,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             background.GetComponent<Image>().color = new Color(0.035f, 0.055f, 0.075f, 1f); // 전투 화면 바탕색
+            UiFactory.Decorate(background.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             var accent = new Color(0.70f, 0.87f, 0.80f, 1f); // 상태 강조 색상
             UiFactory.CreateText(canvas.transform, "TrialEventBattleTitle", "시험 이벤트 전투", 43, new Vector2(-650f, 460f), new Vector2(550f, 70f), Color.white); // 시험 전투 제목
             status = UiFactory.CreateText(canvas.transform, "TrialEventBattleStatus", "", 27, new Vector2(220f, 460f), new Vector2(1000f, 70f), accent); // 정력과 현재 주도권
@@ -99,6 +100,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             rect.offsetMin = Vector2.zero; // 아래 여백 제거
             rect.offsetMax = Vector2.zero; // 위 여백 제거
             retreatDialog.GetComponent<Image>().color = new Color(0.025f, 0.035f, 0.05f, 0.98f); // 아래 전투 화면 입력 차단
+            UiFactory.Decorate(retreatDialog.GetComponent<Image>(), "BattlePanel"); // 화면 용도별 그림 장식
             UiFactory.CreateText(retreatDialog.transform, "TrialEventBattleRetreatQuestion", "시험 전투를 중단하고 이전 방으로 돌아갑니다.\n이번 전투의 보상을 포기합니다.\n정식 도주 판정은 적용되지 않습니다.", 32, new Vector2(0f, 150f), new Vector2(1450f, 250f), Color.white); // 중단 결과와 시험 범위 안내
             retreatNotice = UiFactory.CreateText(retreatDialog.transform, "TrialEventBattleRetreatNotice", "", 24, new Vector2(0f, -20f), new Vector2(1400f, 70f), Color.white); // 중단 저장 오류 표시
             MakeButton(retreatDialog.transform, "TrialEventBattleConfirmRetreat", "중단", new Vector2(-220f, -150f), new Vector2(380f, 84f), ConfirmRetreat); // 손실을 확인한 중단
