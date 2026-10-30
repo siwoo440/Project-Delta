@@ -85,24 +85,29 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             } // 방 이동 끝
             var finder = typeof(RoomTravelController).GetMethod("FindRoom", BindingFlags.Instance | BindingFlags.NonPublic); // 실제 방 객체 조회
             var root = (GameObject)finder.Invoke(travel, new object[] { travel.RoomX, travel.RoomY }); // 현재 휴식 방
+            var marker = root.transform.Find("TrialRestMarker"); // 현재 휴식 공간 표시
+            Assert.That(marker, Is.Not.Null); // 휴식 지점 표시 존재
+            var restSprite = marker.GetComponent<SpriteRenderer>().sprite; // 실제 휴식 소품 이미지
+            Assert.That(restSprite, Is.Not.Null); // 휴식 이미지 연결 확인
+            Assert.That(restSprite.texture.name, Is.EqualTo("RestCamp")); // 실제 야영 소품 텍스처 확인
             var floor = root.transform.Find("Floor").GetComponent<Tilemap>(); // 실제 바닥 타일
             var obstacles = root.transform.Find("Obstacles").GetComponent<Tilemap>(); // 실제 장애물 타일
             Assert.That(player.ChangeRoom(floor, obstacles, 0, 0), Is.True); // 휴식 지점으로 이동
             yield return null; // 위치 변경 반영
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 캡처 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null) // 자동 캡처 가능 검사
+            { // 캡처 시작
+                yield return null; // 실제 화면 갱신 대기
+                var image = CaptureScreen("DungeonCanvas"); // 실제 휴식 공간 탐험 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 실제 화면 이미지 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 끝
             app.UpdatePlayerHealth(40); // 손상된 체력 설정
             app.UpdatePlayerMana(10); // 소모된 마나 설정
             Assert.That(app.OpenTrialRest(), Is.True); // 실제 휴식 선택 열기
             GameObject.Find("TrialRestLeave").GetComponent<Button>().onClick.Invoke(); // 휴식 보류 선택
             Assert.That(travel.CurrentRest.used, Is.False); // 보류 후 미사용 상태 유지
             Assert.That(app.OpenTrialRest(), Is.True); // 같은 휴식 공간 재방문
-            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 캡처 경로
-            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null) // 자동 캡처 가능 검사
-            { // 캡처 시작
-                yield return null; // 실제 화면 갱신 대기
-                var image = CaptureScreen("TrialRestCanvas"); // 실제 휴식 선택 화면 렌더링
-                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 실제 화면 이미지 저장
-                Object.Destroy(image); // 임시 이미지 정리
-            } // 캡처 끝
             System.IO.Directory.CreateDirectory(RunStorage.TestDirectoryOverride); // 독립 저장 폴더 준비
             using (var gate = new System.IO.FileStream(System.IO.Path.Combine(RunStorage.TestDirectoryOverride, "run.lock"), System.IO.FileMode.OpenOrCreate, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None)) // 실제 회차 저장 잠금
             { // 저장 잠금 시작
@@ -117,6 +122,7 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             Assert.That(app.PlayerHealth, Is.EqualTo(70)); // 체력 삼십 회복
             Assert.That(app.PlayerMana, Is.EqualTo(25)); // 마나 십오 회복
             Assert.That(travel.CurrentRest.used, Is.True); // 사용 완료 상태 확인
+            Assert.That(marker.gameObject.activeSelf, Is.False); // 사용 후 소품 표시 제거
             var run = new RunStorage(RunStorage.TestDirectoryOverride).Load(out _); // 실제 회차 저장 조회
             Assert.That(run.restRooms.Single(value => value.floor == 1).used, Is.True); // 휴식 완료 저장 확인
             Assert.That(run.history.Last(), Does.Contain("휴식 · 체력 +30 · 마나 +15")); // 회복과 탐험 기록의 동시 저장

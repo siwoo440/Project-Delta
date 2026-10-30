@@ -1430,9 +1430,18 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 marker.transform.SetParent(binding.Root.transform, false); // 실제 방에 표시 연결
                 marker.transform.position = floor.GetCellCenterWorld(Vector3Int.zero); // 방 중앙에 표시 배치
                 var renderer = marker.GetComponent<SpriteRenderer>(); // 표시 색상 설정
-                renderer.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f); // 기본 휴식 표시 이미지
-                renderer.color = new Color(0.35f, 0.8f, 0.75f); // 휴식 공간의 청록색 표시
-                marker.transform.localScale = new Vector3(0.8f, 0.8f, 1f); // 표시 크기 조절
+                var texture = Resources.Load<Texture2D>("DungeonArt/RestCamp"); // 일본 애니메이션풍 휴식 소품
+                if (texture != null) // 실제 소품 이미지 검사
+                { // 이미지 표시 시작
+                    renderer.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width); // 원본 비율을 유지한 야영 소품
+                    marker.transform.localScale = new Vector3(2.2f, 2.2f, 1f); // 확대된 던전 타일에 맞춘 크기
+                } // 이미지 표시 끝
+                else // 소품 이미지 누락 분기
+                { // 대체 표시 시작
+                    renderer.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f); // 이미지 누락 시 기본 표시
+                    renderer.color = new Color(0.35f, 0.8f, 0.75f); // 휴식 공간의 청록색 표시
+                    marker.transform.localScale = new Vector3(0.8f, 0.8f, 1f); // 기본 표시 크기 조절
+                } // 대체 표시 끝
                 renderer.sortingOrder = 6; // 던전 바닥 위 표시
                 break; // 휴식 방 표시 완료
             } // 방 검사 끝
