@@ -453,7 +453,9 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             var canvas = GameObject.Find(canvasName).GetComponent<Canvas>(); // 실제 이벤트 캔버스
             var dungeonObject = GameObject.Find("DungeonCanvas"); // 기존 탐험 화면 객체
             var dungeon = dungeonObject == null ? null : dungeonObject.GetComponent<Canvas>(); // 선택적인 탐험 캔버스
-            var target = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32); // 화면 밖 캡처 영역
+            var width = int.TryParse(System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_WIDTH"), out var requestedWidth) && requestedWidth > 0 ? requestedWidth : 1280; // 검증 화면의 가로 해상도
+            var height = int.TryParse(System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_HEIGHT"), out var requestedHeight) && requestedHeight > 0 ? requestedHeight : 720; // 검증 화면의 세로 해상도
+            var target = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32); // 지정 해상도의 화면 밖 캡처 영역
             var oldActive = RenderTexture.active; // 기존 활성 렌더링 대상
             var oldTarget = camera.targetTexture; // 기존 카메라 렌더링 대상
             var oldMode = canvas.renderMode; // 기존 캔버스 렌더링 방식
@@ -484,8 +486,8 @@ namespace ProjectDelta.Tests // 검증 이름 공간
                 Canvas.ForceUpdateCanvases(); // 실제 UI 배치 갱신
                 camera.Render(); // 이벤트 선택 화면 렌더링
                 RenderTexture.active = target; // 픽셀을 읽을 영역 선택
-                var image = new Texture2D(1280, 720, TextureFormat.RGB24, false); // 실제 화면 이미지 생성
-                image.ReadPixels(new Rect(0f, 0f, 1280f, 720f), 0, 0); // 렌더링된 픽셀 읽기
+                var image = new Texture2D(width, height, TextureFormat.RGB24, false); // 지정 해상도의 실제 화면 이미지 생성
+                image.ReadPixels(new Rect(0f, 0f, width, height), 0, 0); // 지정 해상도의 실제 픽셀 읽기
                 image.Apply(); // 이미지 픽셀 적용
                 return image; // 실제 화면 이미지 반환
             } // 렌더링 끝
