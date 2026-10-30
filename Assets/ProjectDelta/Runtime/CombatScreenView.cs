@@ -31,6 +31,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
         private Button skill; // 강한 일격 시험 기술 버튼
         private Button itemButton; // 선택한 전투 소비품 사용 버튼
         private Button tempt; // 시험 이벤트 전투 진입 버튼
+        private Button observe; // 실제 전투 관찰 버튼
         private GameObject itemDialog; // 전투 아이템 선택 화면
         private Text itemNotice; // 선택한 아이템의 사용 결과
         private Text playerMana; // 현재 플레이어 마나 표시
@@ -154,11 +155,11 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.flee.interactable = !view.isBoss; // 마왕전 도주 차단
                 view.tempt.interactable = !view.isBoss; // 미구현 마왕 이벤트 전투 차단
                 var persuade = UiFactory.CreateButton(canvas.transform, "PersuadeBattleButton", "회유 · 준비 중", Vector2.zero); // 미구현 전투 회유 행동
-                var observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰 · 준비 중", Vector2.zero); // 미구현 전투 관찰 행동
+                view.observe = UiFactory.CreateButton(canvas.transform, "ObserveBattleButton", "관찰", Vector2.zero); // 실제 전투 관찰 행동
+                view.observe.onClick.AddListener(view.Observe); // 관찰 행동 연결
                 view.itemButton = UiFactory.CreateButton(canvas.transform, "BattleItemListButton", "아이템 선택", Vector2.zero); // 전투 중 보유 아이템 선택
                 view.itemButton.onClick.AddListener(view.OpenBattleItems); // 실제 전투 아이템 화면 연결
                 persuade.interactable = false; // 미구현 전투 회유 차단
-                observe.interactable = false; // 미구현 전투 관찰 차단
                 view.exit = UiFactory.CreateButton(canvas.transform, "ExitBattleButton", "항복", Vector2.zero); // 하단 항복과 결과 복귀 버튼
                 view.exit.onClick.AddListener(view.Complete); // 실제 전투 종료 연결
                 view.surrenderDialog = new GameObject("SurrenderDialog", typeof(RectTransform), typeof(Image)); // 항복 확인 배경
@@ -173,7 +174,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 view.surrenderDialog.SetActive(false); // 확인 화면 초기 숨김
                 var actionLayout = canvas.gameObject.AddComponent<CombatActionLayout>(); // 화면 너비별 행동 배치
                 actionLayout.Initialize(canvas.GetComponent<RectTransform>(), view.advance, view.flee, view.defend, view.potion, view.skill, -380f); // 하단 첫 행동 줄 배치
-                actionLayout.SetSecondaryRow(new[] { view.tempt, persuade, observe, view.itemButton, view.exit }, -475f); // 아이템과 항복의 하단 두 번째 줄
+                actionLayout.SetSecondaryRow(new[] { view.tempt, persuade, view.observe, view.itemButton, view.exit }, -475f); // 아이템과 항복의 하단 두 번째 줄
                 view.StartTrialRound(); // 시험 참가자의 첫 라운드 시작
                 if (view.outcome == CombatOutcome.Ongoing) // 진행 중인 전투 검사
                 { // 기본 선택 시작
@@ -361,6 +362,21 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             } // 전투 종료 조건 끝
             CompletePlayerTurn(); // 플레이어 행동 후 남은 순서 진행
         } // 행동 끝
+        private void Observe() // 선택한 적의 능력치 관찰
+        { // 관찰 시작
+            if (owner == null || owner.Flow.Phase != GamePhase.Combat || itemDialog != null || surrenderDialog == null || surrenderDialog.activeSelf || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 전투 상태와 중복 행동 검사
+            { // 행동 거절 시작
+                return; // 잘못된 관찰 차단
+            } // 행동 거절 끝
+            if (!HasSelectedTarget()) // 생존 대상 선택 검사
+            { // 대상 누락 시작
+                notice.text = "관찰할 대상을 선택하세요"; // 직접 대상 선택 안내
+                return; // 행동 차례 보존
+            } // 대상 누락 끝
+            lastActionFrame = Time.frameCount; // 같은 프레임의 중복 행동 차단
+            notice.text = "관찰 · " + enemy.Actor.Name + " · 체력 " + enemy.Health + "/" + enemy.MaxHealth + " · 공격 " + enemy.Attack + " · 방어 " + enemy.Defense + " · 속도 " + enemy.Actor.Speed; // 현재 대상 능력치 표시
+            CompletePlayerTurn(); // 관찰 행동 소모와 상대 행동
+        } // 관찰 끝
         private void Defend() // 플레이어의 방어 행동
         { // 방어 시작
             if (itemDialog != null || pendingRetreat || outcome != CombatOutcome.Ongoing || current == null || !current.IsPlayer || lastActionFrame == Time.frameCount) // 아이템 선택과 전투 상태 및 중복 행동 검사
@@ -428,6 +444,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             skill.interactable = false; // 선택 중 기술 차단
             itemButton.interactable = false; // 중복 아이템 화면 차단
             tempt.interactable = false; // 선택 중 이벤트 전투 차단
+            observe.interactable = false; // 선택 중 관찰 차단
             exit.interactable = false; // 선택 중 항복 차단
             if (groupTargets != null) // 다수 대상 버튼 검사
             { // 대상 잠금 시작
@@ -502,6 +519,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
             tempt.interactable = !isBoss; // 마왕전 제한을 유지한 이벤트 전투 선택 복구
+            observe.interactable = true; // 관찰 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 생존한 적의 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 전투 기본 선택 복구
@@ -684,6 +702,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             skill.interactable = false; // 종료된 전투의 기술 차단
             itemButton.interactable = false; // 종료된 전투의 아이템 선택 차단
             tempt.interactable = false; // 종료된 전투의 진입 차단
+            observe.interactable = false; // 종료된 전투의 관찰 차단
             exit.transform.Find("Label").GetComponent<Text>().text = outcome == CombatOutcome.Victory ? "탐험 복귀" : "타이틀로"; // 결과에 따른 복귀 안내
             EventSystem.current.SetSelectedGameObject(exit.gameObject); // 결과 확인 버튼 선택
             if (isBoss) // 마왕 전투의 즉시 결과 저장 검사
@@ -721,6 +740,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
                 skill.interactable = false; // 확인 중 기술 차단
                 itemButton.interactable = false; // 확인 중 아이템 선택 차단
                 tempt.interactable = false; // 항복 확인 중 진입 차단
+                observe.interactable = false; // 항복 확인 중 관찰 차단
                 exit.interactable = false; // 중복 확인 화면 차단
                 if (groupTargets != null) // 다수 대상 버튼 검사
                 { // 대상 잠금 시작
@@ -823,6 +843,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             skill.interactable = true; // 기술 선택 복구
             itemButton.interactable = true; // 아이템 선택 복구
             tempt.interactable = !isBoss; // 마왕전 제한을 유지한 이벤트 전투 선택 복구
+            observe.interactable = true; // 관찰 선택 복구
             exit.interactable = true; // 항복 선택 복구
             RefreshGroupTargets(); // 다수 적의 생존 선택 복구
             EventSystem.current.SetSelectedGameObject(advance.gameObject); // 기존 행동 선택 복귀
@@ -867,6 +888,7 @@ namespace ProjectDelta.Runtime // 실행 이름 공간
             skill.interactable = false; // 패배 후 기술 차단
             itemButton.interactable = false; // 패배 후 아이템 선택 차단
             tempt.interactable = false; // 패배 후 진입 차단
+            observe.interactable = false; // 패배 후 관찰 차단
             exit.transform.Find("Label").GetComponent<Text>().text = "기록 후 타이틀로"; // 저장 실패 시 재시도 안내
             var travelObject = GameObject.Find("RoomTravel"); // 현재 조우 객체
             var travel = travelObject == null ? null : travelObject.GetComponent<RoomTravelController>(); // 실제 조우 상태

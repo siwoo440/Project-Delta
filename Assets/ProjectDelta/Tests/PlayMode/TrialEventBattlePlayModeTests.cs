@@ -86,6 +86,84 @@ namespace ProjectDelta.Tests // 검증 이름 공간
             GameObject.Find("TemptBattleButton").GetComponent<Button>().onClick.Invoke(); // 실제 이벤트 전투 진입
             yield return WaitForObject("TrialEventBattleAction_3"); // 실제 행동 화면 대기
         } // 진입 끝
+        [UnityTest] // 일반 전투 관찰과 턴 소모 검증
+        public IEnumerator Combat_ObserveShowsTargetAndConsumesTurn() // 실제 자동 조우와 관찰 확인
+        { // 검증 시작
+            yield return SceneManager.LoadSceneAsync("BootstrapScene"); // 실제 시작 씬 로드
+            yield return WaitForPhase(GamePhase.Title); // 타이틀 대기
+            AppRoot.Instance.StartNewGame(); // 새 회차 시작
+            yield return WaitForPhase(GamePhase.Exploration); // 실제 던전 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 격자 플레이어
+            var first = travel.Layout.Doors.First(door => door.RoomX == 0 && door.RoomY == 0 && !door.IsSecret); // 첫 일반 방 연결
+            yield return UseDoor(travel, player, first); // 첫 슬라임 방 이동
+            yield return WaitForObject("ObserveBattleButton"); // 실제 관찰 버튼 대기
+            while (GameObject.Find("EncounterTransitionCanvas") != null) // 조우 연출 완료 검사
+            { // 연출 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 연출 대기 끝
+            yield return null; // 전환 완료 프레임 대기
+            var observe = GameObject.Find("ObserveBattleButton").GetComponent<Button>(); // 실제 관찰 버튼
+            Assert.That(observe.interactable, Is.True); // 전투 관찰 사용 가능
+            var before = GameObject.Find("RoundStatus").GetComponent<Text>().text; // 관찰 전 라운드
+            observe.onClick.Invoke(); // 실제 대상 관찰 선택
+            var after = GameObject.Find("RoundStatus").GetComponent<Text>().text; // 관찰 후 라운드 보관
+            observe.onClick.Invoke(); // 같은 프레임의 중복 관찰 시도
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<Text>().text, Is.EqualTo(after)); // 중복 행동 차단 확인
+            yield return null; // 상대 행동 반영 대기
+            var notice = GameObject.Find("Notice").GetComponent<Text>().text; // 실제 관찰 결과
+            Assert.That(notice, Does.Contain("관찰")); // 관찰 안내 확인
+            Assert.That(notice, Does.Contain("체력 70/70")); // 실제 대상 체력 확인
+            Assert.That(notice, Does.Contain("공격 11")); // 실제 대상 공격력 확인
+            Assert.That(notice, Does.Contain("방어 7")); // 실제 대상 방어력 확인
+            Assert.That(GameObject.Find("RoundStatus").GetComponent<Text>().text, Is.Not.EqualTo(before)); // 관찰 후 다음 라운드 진행
+            Assert.That(AppRoot.Instance.Observations.Contains("MON_SLIME"), Is.False); // 영구 조우 관찰 판정 미변경
+            var capturePath = System.Environment.GetEnvironmentVariable("PROJECT_DELTA_CAPTURE_PATH"); // 실제 화면 캡처 경로
+            if (!string.IsNullOrEmpty(capturePath) && Application.isBatchMode && SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null) // 그래픽 캡처 가능 검사
+            { // 캡처 시작
+                var image = CaptureScreen("BattleCanvas"); // 실제 관찰 전투 화면 렌더링
+                System.IO.File.WriteAllBytes(capturePath, image.EncodeToPNG()); // 실제 화면 이미지 저장
+                Object.Destroy(image); // 임시 이미지 정리
+            } // 캡처 끝
+        } // 검증 끝
+        [UnityTest] // 다수 적 선택과 관찰 보호 검증
+        public IEnumerator Combat_ObserveRequiresSelectedLivingTarget() // 실제 고블린의 대상 선택 확인
+        { // 검증 시작
+            CombatScreenView.RandomOverride = (minimum, maximum) => minimum; // 결정적인 시험 전투 판정
+            yield return EnterEventBattle(); // 첫 슬라임 이벤트 전투 진입
+            yield return CompleteTrialEventBattle(); // 첫 슬라임 승리 대기
+            GameObject.Find("TrialEventBattleConfirm").GetComponent<Button>().onClick.Invoke(); // 첫 조우 완료 확정
+            yield return WaitForPhase(GamePhase.Exploration); // 탐험 복귀 대기
+            var travel = GameObject.Find("RoomTravel").GetComponent<RoomTravelController>(); // 실제 방 제어
+            var player = GameObject.Find("PlayerPreview").GetComponent<GridMoveController>(); // 실제 격자 플레이어
+            var groupRoom = travel.GroupEncounterRoom; // 실제 다수 조우 방
+            Assert.That(groupRoom, Is.Not.Null); // 다수 조우 배치 확인
+            foreach (var door in FindRoute(travel.Layout, travel.Layout.GetRoom(travel.RoomX, travel.RoomY), groupRoom)) // 실제 문 경로 순회
+            { // 방 이동 시작
+                yield return UseDoor(travel, player, door); // 실제 연결 문 통과
+            } // 방 이동 끝
+            yield return WaitForObject("GroupTarget1"); // 실제 다수 전투 화면 대기
+            while (GameObject.Find("EncounterTransitionCanvas") != null) // 전투 전환 종료 검사
+            { // 대기 시작
+                yield return null; // 다음 프레임 대기
+            } // 대기 끝
+            yield return null; // 입력 차단 프레임 종료
+            var observe = GameObject.Find("ObserveBattleButton").GetComponent<Button>(); // 실제 관찰 버튼
+            var round = GameObject.Find("RoundStatus").GetComponent<Text>(); // 현재 라운드 표시
+            var before = round.text; // 선택 전 라운드 보관
+            observe.onClick.Invoke(); // 대상 없이 관찰 시도
+            Assert.That(round.text, Is.EqualTo(before)); // 대상 누락 시 턴 유지
+            Assert.That(GameObject.Find("Notice").GetComponent<Text>().text, Does.Contain("대상을 선택")); // 직접 선택 안내
+            GameObject.Find("GroupTarget2").GetComponent<Button>().onClick.Invoke(); // 두 번째 고블린 선택
+            observe.onClick.Invoke(); // 선택한 대상 관찰
+            Assert.That(GameObject.Find("Notice").GetComponent<Text>().text, Does.Contain("고블린 2")); // 선택한 실제 대상 표시
+            Assert.That(round.text, Is.Not.EqualTo(before)); // 관찰 후 턴 소모
+            yield return null; // 다음 프레임 대기
+            GameObject.Find("ExitBattleButton").GetComponent<Button>().onClick.Invoke(); // 항복 확인 화면 표시
+            Assert.That(observe.interactable, Is.False); // 확인 중 관찰 입력 차단
+            GameObject.Find("CancelSurrender").GetComponent<Button>().onClick.Invoke(); // 항복 취소
+            Assert.That(observe.interactable, Is.True); // 취소 후 관찰 입력 복구
+        } // 검증 끝
         [UnityTest] // 행동 저장과 재실행 및 승리 검증
         public IEnumerator EventBattle_ActionResumesAndVictoryPaysOnce() // 저장된 행동과 경험치 복원
         { // 검증 시작
